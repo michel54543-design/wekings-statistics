@@ -29,14 +29,22 @@ def commit_with_retry(db):
 
 
 def number(text: str, label: str):
-    match = re.search(rf"{re.escape(label)}\s*:\s*([\d\s]+)", text, re.I)
+    match = re.search(
+        rf"{re.escape(label)}[ \t\u00a0]*:[ \t\u00a0]*([0-9 \t\u00a0]+)",
+        text,
+        re.I,
+    )
     return int(re.sub(r"\D", "", match.group(1))) if match else None
 
 
 def numbers(text: str, label: str):
     return [
         int(re.sub(r"\D", "", value))
-        for value in re.findall(rf"{re.escape(label)}\s*:\s*([\d\s]+)", text, re.I)
+        for value in re.findall(
+            rf"{re.escape(label)}[ \t\u00a0]*:[ \t\u00a0]*([0-9 \t\u00a0]+)",
+            text,
+            re.I,
+        )
     ]
 
 
@@ -143,7 +151,10 @@ def parse_profile(player_id: int, html: str):
         return None
 
     level = number(text, "Уровень")
-    glory = number(text, "Cлава") or number(text, "Слава")
+    glory_values = numbers(text, "Слава") or numbers(text, "Cлава")
+    # В профиле может быть старая запись «Слава: 15436 15.08»,
+    # а ниже — актуальная слава. Берём последнее значение из статистики.
+    glory = glory_values[-1] if glory_values else None
     power = number(text, "Сила")
     if level is None and glory is None and power is None:
         return None
@@ -223,6 +234,17 @@ def scan_all_players(db, Player, PlayerSnapshot, ScanState):
         state.current_player_id = 1
     else:
         start_id = state.current_player_id if 1 <= state.current_player_id <= max_id else 1
+        # Старый парсер мог присоединить к славе цифры даты из соседней
+        # строки. Один раз возвращаемся к первой подозрительной записи.
+        suspicious_id = (
+            db.session.query(Player.id)
+            .filter(Player.glory > 300_000)
+            .order_by(Player.id.asc())
+            .scalar()
+        )
+        if suspicious_id is not None:
+            start_id = min(start_id, suspicious_id)
+            state.current_player_id = start_id
     batch_at = state.started_at or datetime.now(timezone.utc)
     state.max_player_id = max_id
     state.found_players = 0
