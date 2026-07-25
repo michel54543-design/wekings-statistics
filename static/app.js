@@ -92,10 +92,6 @@ async function loadPlayerDetail(playerId, scroll = true) {
 
 async function loadStatus() {
   const data = await fetch("/api/status").then(r => r.json());
-  $("totalPlayers").textContent = fmt(data.total_players);
-  $("progress").textContent = data.max_player_id
-    ? `${fmt(Math.min(data.current_player_id, data.max_player_id))} / ${fmt(data.max_player_id)}`
-    : "Ожидание";
   $("statusText").textContent = data.running
     ? `Сейчас проверяется игрок №${fmt(data.current_player_id)}`
     : data.last_error ? "Обновление временно приостановлено — продолжится автоматически" : data.finished_at
