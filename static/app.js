@@ -64,7 +64,7 @@ async function loadPlayers() {
       <td><a href="${p.profile_url}" target="_blank" rel="noreferrer">${escapeHtml(p.nickname)}</a></td>
       <td><b class="level">${p.level ?? "—"}</b></td>
       <td class="group">${escapeHtml(group)}</td>
-      <td class="value">${state.mode === "general" ? fmt(mainValue) : `+${fmt(mainValue)}`}</td>
+      <td class="value">${state.mode === "general" ? fmt(mainValue) : (mainValue == null ? "—" : `+${fmt(mainValue)}`)}</td>
       <td class="${gain > 0 ? "gain" : "muted"}">${gain > 0 ? `+${fmt(gain)}` : "—"}</td>
     </tr>`;
   }).join("") : `<tr><td colspan="6" class="loading">${data.dates?.length < 2 && state.mode !== "general" ? "Прирост появится после второго снимка статистики" : "Игроки не найдены"}</td></tr>`;
