@@ -374,6 +374,53 @@ def api_status():
     )
 
 
+@app.get("/api/player/<int:player_id>")
+def api_player_detail(player_id):
+    player = db.session.get(Player, player_id)
+    if player is None:
+        return jsonify(error="Игрок не найден"), 404
+
+    fields = [
+        "glory", "power", "defense", "agility", "mastery", "vitality",
+        "stat_sum", "wins", "losses", "dragon_wins", "serpent_wins",
+        "beasts_killed", "silver_stolen", "silver_lost",
+        "crystals_stolen", "crystals_lost",
+    ]
+    snapshots = (
+        PlayerSnapshot.query.filter_by(player_id=player_id)
+        .order_by(PlayerSnapshot.batch_at.asc())
+        .all()
+    )
+    history = [
+        {
+            "date": snapshot.batch_at.isoformat(),
+            **{field: getattr(snapshot, field) for field in fields},
+        }
+        for snapshot in snapshots
+    ]
+    if not history:
+        history = [
+            {
+                "date": (player.scanned_at or datetime.utcnow()).isoformat(),
+                **{
+                    field: getattr(player, field, None)
+                    for field in fields
+                },
+            }
+        ]
+    latest = snapshots[-1] if snapshots else player
+    return jsonify(
+        id=player.id,
+        nickname=player.nickname,
+        level=latest.level,
+        clan=latest.clan,
+        brotherhood=latest.brotherhood,
+        last_activity=player.last_activity,
+        profile_url=f"https://playwekings.mobi/hero/detail?player={player.id}",
+        history=history,
+    )
+
+
 def run_scan():
     from scraper import scan_all_players
 
