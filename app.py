@@ -18,10 +18,23 @@ def normalize_database_url(value: str) -> str:
 
 
 app = Flask(__name__)
-app.config["SQLALCHEMY_DATABASE_URI"] = normalize_database_url(
-    os.getenv("DATABASE_URL", "sqlite:///wekings.db")
-)
+database_url = normalize_database_url(os.getenv("DATABASE_URL", "sqlite:///wekings.db"))
+app.config["SQLALCHEMY_DATABASE_URI"] = database_url
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
+if database_url.startswith("postgresql"):
+    app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {
+        "pool_pre_ping": True,
+        "pool_recycle": 120,
+        "pool_size": 3,
+        "max_overflow": 2,
+        "pool_use_lifo": True,
+        "connect_args": {
+            "keepalives": 1,
+            "keepalives_idle": 30,
+            "keepalives_interval": 10,
+            "keepalives_count": 3,
+        },
+    }
 db = SQLAlchemy(app)
 
 
@@ -361,7 +374,14 @@ def api_players():
 
 @app.get("/api/status")
 def api_status():
-    state = db.session.get(ScanState, 1)
+    try:
+        state = db.session.get(ScanState, 1)
+        total_players = Player.query.count()
+    except Exception:
+        db.session.rollback()
+        db.engine.dispose()
+        state = db.session.get(ScanState, 1)
+        total_players = Player.query.count()
     return jsonify(
         running=state.running,
         current_player_id=state.current_player_id,
@@ -370,7 +390,7 @@ def api_status():
         started_at=state.started_at.isoformat() if state.started_at else None,
         finished_at=state.finished_at.isoformat() if state.finished_at else None,
         last_error=state.last_error,
-        total_players=Player.query.count(),
+        total_players=total_players,
     )
 
 
@@ -437,18 +457,30 @@ def run_scan():
             scan_all_players(db, Player, PlayerSnapshot, ScanState)
             state = db.session.get(ScanState, 1)
             state.finished_at = datetime.now(timezone.utc)
+            state.last_error = None
+            db.session.commit()
         except Exception as exc:
             db.session.rollback()
-            state = db.session.get(ScanState, 1)
-            state.last_error = str(exc)[:2000]
             app.logger.exception("Wekings scan failed")
-            # При временной ошибке Wekings не создаём бесконечный поток
-            # повторов каждые 10 секунд. Следующий запуск выполнит планировщик.
+            try:
+                db.engine.dispose()
+                state = db.session.get(ScanState, 1)
+                state.last_error = str(exc)[:2000]
+                db.session.commit()
+            except Exception:
+                db.session.rollback()
+            # При временном обрыве базы продолжаем с последнего сохранённого
+            # игрока через 5 минут, не создавая частых повторов.
+            threading.Timer(300, start_scan_thread).start()
         finally:
             db.session.rollback()
-            state = db.session.get(ScanState, 1)
-            state.running = False
-            db.session.commit()
+            try:
+                state = db.session.get(ScanState, 1)
+                state.running = False
+                db.session.commit()
+            except Exception:
+                db.session.rollback()
+                db.engine.dispose()
 
 
 def start_scan_thread():
