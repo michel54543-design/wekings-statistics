@@ -1,12 +1,16 @@
-const state = { page: 1, pages: 1 };
+const state = { page: 1, pages: 1, mode: "general", datesLoaded: false };
 const metricNames = {
   glory: "Слава", stat_sum: "Сумма характеристик", power: "Сила",
   defense: "Защита", agility: "Ловкость", mastery: "Мастерство",
   vitality: "Живучесть", wins: "Победы", losses: "Поражения",
-  dragon_wins: "Победы над Драконом", serpent_wins: "Победы над Змеем"
+  dragon_wins: "Победы над Драконом", serpent_wins: "Победы над Змеем",
+  beasts_killed: "Убито зверей", silver_stolen: "Награбил (серебро)",
+  silver_lost: "Потерял (серебро)", crystals_stolen: "Награбил (кристаллы)",
+  crystals_lost: "Потерял (кристаллы)"
 };
 const $ = (id) => document.getElementById(id);
 const fmt = (v) => v == null ? "—" : Number(v).toLocaleString("ru-RU");
+const dateText = (value) => new Date(value).toLocaleString("ru-RU", {day:"2-digit",month:"2-digit",year:"numeric",hour:"2-digit",minute:"2-digit"});
 
 async function loadStatus() {
   const data = await fetch("/api/status").then(r => r.json());
@@ -19,17 +23,33 @@ async function loadStatus() {
     : data.finished_at ? `Последнее обновление: ${new Date(data.finished_at).toLocaleString("ru-RU")}` : "Первый сбор данных";
 }
 
+function fillDates(dates, selectedFrom, selectedTo) {
+  if (!dates?.length) return;
+  const options = dates.map(value => `<option value="${value}">${dateText(value)}</option>`).join("");
+  $("dateFrom").innerHTML = options;
+  $("dateTo").innerHTML = options;
+  $("dateFrom").value = selectedFrom || dates[Math.min(1, dates.length - 1)];
+  $("dateTo").value = selectedTo || dates[0];
+  state.datesLoaded = true;
+}
+
 async function loadPlayers() {
   const sort = $("sort").value;
-  const params = new URLSearchParams({ page: state.page, per_page: 50, sort });
+  const params = new URLSearchParams({ page: state.page, per_page: 50, sort, mode: state.mode });
   if ($("query").value.trim()) params.set("q", $("query").value.trim());
   if ($("level").value) params.set("level", $("level").value);
+  if (state.datesLoaded && state.mode !== "general") {
+    params.set("from", $("dateFrom").value);
+    params.set("to", $("dateTo").value);
+  }
   $("rows").innerHTML = '<tr><td colspan="6" class="loading">Загрузка…</td></tr>';
   const data = await fetch(`/api/players?${params}`).then(r => r.json());
+  if (!state.datesLoaded && data.dates?.length) fillDates(data.dates, data.date_from, data.date_to);
   state.pages = Math.max(1, data.pages);
   $("resultCount").textContent = `${fmt(data.total)} игроков`;
-  $("tableTitle").textContent = `Рейтинг: ${metricNames[sort]}`;
-  $("metricTitle").textContent = metricNames[sort];
+  const prefix = state.mode === "general" ? "Рейтинг" : state.mode === "growth" ? "Прирост" : "Лучшие приросты";
+  $("tableTitle").textContent = `${prefix}: ${metricNames[sort]}`;
+  $("metricTitle").textContent = state.mode === "general" ? metricNames[sort] : "Прирост";
   $("pageText").textContent = `Страница ${data.page} из ${state.pages}`;
   $("prev").disabled = state.page <= 1;
   $("next").disabled = state.page >= state.pages;
@@ -37,26 +57,40 @@ async function loadPlayers() {
     const rank = (state.page - 1) * 50 + i + 1;
     const medal = rank < 4 ? ["🥇","🥈","🥉"][rank - 1] : rank;
     const group = p.brotherhood || p.clan || "—";
-    const value = p[sort];
-    const gain = sort === "glory" ? p.glory_gain : (sort === "stat_sum" ? p.stats_gain : null);
+    const mainValue = state.mode === "general" ? p[sort] : p.gain;
+    const gain = p.gain;
     return `<tr>
       <td class="rank">${medal}</td>
       <td><a href="${p.profile_url}" target="_blank" rel="noreferrer">${escapeHtml(p.nickname)}</a></td>
       <td><b class="level">${p.level ?? "—"}</b></td>
       <td class="group">${escapeHtml(group)}</td>
-      <td class="value">${fmt(value)}</td>
+      <td class="value">${state.mode === "general" ? fmt(mainValue) : `+${fmt(mainValue)}`}</td>
       <td class="${gain > 0 ? "gain" : "muted"}">${gain > 0 ? `+${fmt(gain)}` : "—"}</td>
     </tr>`;
-  }).join("") : '<tr><td colspan="6" class="loading">Игроки не найдены</td></tr>';
+  }).join("") : `<tr><td colspan="6" class="loading">${data.dates?.length < 2 && state.mode !== "general" ? "Прирост появится после второго снимка статистики" : "Игроки не найдены"}</td></tr>`;
 }
 
 function escapeHtml(value) {
   return String(value ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 }
 
+document.querySelectorAll(".modes button").forEach(button => {
+  button.onclick = () => {
+    document.querySelectorAll(".modes button").forEach(item => item.classList.remove("active"));
+    button.classList.add("active");
+    state.mode = button.dataset.mode;
+    const showDates = state.mode === "growth";
+    $("fromWrap").classList.toggle("hidden", !showDates);
+    $("toWrap").classList.toggle("hidden", !showDates);
+    state.page = 1;
+    loadPlayers();
+  };
+});
 $("find").onclick = () => { state.page = 1; loadPlayers(); };
 $("query").onkeydown = (e) => { if (e.key === "Enter") { state.page = 1; loadPlayers(); } };
 $("sort").onchange = () => { state.page = 1; loadPlayers(); };
+$("dateFrom").onchange = () => { state.page = 1; loadPlayers(); };
+$("dateTo").onchange = () => { state.page = 1; loadPlayers(); };
 $("prev").onclick = () => { if (state.page > 1) { state.page--; loadPlayers(); } };
 $("next").onclick = () => { if (state.page < state.pages) { state.page++; loadPlayers(); } };
 $("theme").onclick = () => document.body.classList.toggle("dark");
