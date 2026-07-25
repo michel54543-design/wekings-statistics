@@ -1,0 +1,29 @@
+services:
+  - type: web
+    name: wekings-statistics
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn --workers 1 --threads 4 --timeout 120 app:app
+    healthCheckPath: /health
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.4
+      - key: DATABASE_URL
+        fromDatabase:
+          name: wekings-statistics-db
+          property: connectionString
+      - key: SCAN_ENABLED
+        value: "true"
+      - key: SCAN_INTERVAL_HOURS
+        value: "12"
+      - key: REQUEST_DELAY
+        value: "0.7"
+      - key: START_SCAN_ON_BOOT
+        value: "true"
+
+databases:
+  - name: wekings-statistics-db
+    plan: free
+    databaseName: wekings
+    user: wekings
