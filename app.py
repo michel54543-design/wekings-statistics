@@ -492,7 +492,7 @@ if os.getenv("SCAN_ENABLED", "true").lower() == "true":
     scheduler.add_job(
         start_scan_thread,
         "interval",
-        hours=float(os.getenv("SCAN_INTERVAL_HOURS", "15")),
+        hours=float(os.getenv("SCAN_INTERVAL_HOURS", "24")),
         id="wekings-scan",
         max_instances=1,
         coalesce=True,
