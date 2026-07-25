@@ -18,6 +18,12 @@
       <button id="theme" class="theme" aria-label="Сменить тему">🌙</button>
     </header>
 
+    <nav class="modes" aria-label="Режим статистики">
+      <button data-mode="general" class="active">Общий</button>
+      <button data-mode="growth">Прирост</button>
+      <button data-mode="best">Лучшие приросты <small>за 30 дней</small></button>
+    </nav>
+
     <section class="hero-stats">
       <article><span>Игроков в базе</span><strong id="totalPlayers">—</strong></article>
       <article><span>Проверено профилей</span><strong id="progress">—</strong></article>
@@ -25,6 +31,8 @@
     </section>
 
     <section class="controls">
+      <label id="fromWrap" class="date-control hidden"><span>От</span><select id="dateFrom"></select></label>
+      <label id="toWrap" class="date-control hidden"><span>До</span><select id="dateTo"></select></label>
       <label><span>Показатель</span>
         <select id="sort">
           <option value="glory">Слава</option>
@@ -38,6 +46,11 @@
           <option value="losses">Поражения</option>
           <option value="dragon_wins">Победы над Драконом</option>
           <option value="serpent_wins">Победы над Змеем</option>
+          <option value="beasts_killed">Убито зверей</option>
+          <option value="silver_stolen">Награбил (серебро)</option>
+          <option value="silver_lost">Потерял (серебро)</option>
+          <option value="crystals_stolen">Награбил (кристаллы)</option>
+          <option value="crystals_lost">Потерял (кристаллы)</option>
         </select>
       </label>
       <label><span>Уровень</span><input id="level" type="number" min="1" placeholder="Все"></label>
