@@ -103,9 +103,14 @@ class PlayerSnapshot(db.Model):
 
 with app.app_context():
     db.create_all()
-    if db.session.get(ScanState, 1) is None:
+    scan_state = db.session.get(ScanState, 1)
+    if scan_state is None:
         db.session.add(ScanState(id=1))
-        db.session.commit()
+    else:
+        # Render can stop the process during a scan. A database flag from that
+        # dead process must not block the new worker from resuming.
+        scan_state.running = False
+    db.session.commit()
     duplicate_groups = (
         db.session.query(
             PlayerSnapshot.batch_at,
