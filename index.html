@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#0d1627">
+  <title>Wekings — статистика игроков</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <main class="page">
+    <header>
+      <div>
+        <p class="brand">WEKINGS.ONLINE</p>
+        <h1>Статистика игроков</h1>
+        <p class="status"><i></i><span id="statusText">Проверяем состояние базы…</span></p>
+      </div>
+      <button id="theme" class="theme" aria-label="Сменить тему">🌙</button>
+    </header>
+
+    <section class="hero-stats">
+      <article><span>Игроков в базе</span><strong id="totalPlayers">—</strong></article>
+      <article><span>Проверено профилей</span><strong id="progress">—</strong></article>
+      <article><span>Обновление</span><strong>каждые 12 часов</strong></article>
+    </section>
+
+    <section class="controls">
+      <label><span>Показатель</span>
+        <select id="sort">
+          <option value="glory">Слава</option>
+          <option value="stat_sum">Сумма характеристик</option>
+          <option value="power">Сила</option>
+          <option value="defense">Защита</option>
+          <option value="agility">Ловкость</option>
+          <option value="mastery">Мастерство</option>
+          <option value="vitality">Живучесть</option>
+          <option value="wins">Победы</option>
+          <option value="losses">Поражения</option>
+          <option value="dragon_wins">Победы над Драконом</option>
+          <option value="serpent_wins">Победы над Змеем</option>
+        </select>
+      </label>
+      <label><span>Уровень</span><input id="level" type="number" min="1" placeholder="Все"></label>
+      <label class="search"><span>Поиск по нику</span><input id="query" placeholder="Введите ник игрока…"></label>
+      <button id="find">Найти</button>
+    </section>
+
+    <section class="card">
+      <div class="card-head">
+        <div><h2 id="tableTitle">Рейтинг по славе</h2><p>Данные напрямую из профилей Wekings</p></div>
+        <span id="resultCount">—</span>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>№</th><th>Игрок</th><th>Ур.</th><th>Братство / клан</th><th id="metricTitle">Слава</th><th>Прирост</th></tr></thead>
+          <tbody id="rows"><tr><td colspan="6" class="loading">Загрузка статистики…</td></tr></tbody>
+        </table>
+      </div>
+      <footer>
+        <button id="prev">← Назад</button>
+        <span id="pageText">Страница 1</span>
+        <button id="next">Вперёд →</button>
+      </footer>
+    </section>
+  </main>
+  <script src="/static/app.js"></script>
+</body>
+</html>
