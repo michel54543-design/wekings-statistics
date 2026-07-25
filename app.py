@@ -106,6 +106,35 @@ with app.app_context():
     if db.session.get(ScanState, 1) is None:
         db.session.add(ScanState(id=1))
         db.session.commit()
+    duplicate_groups = (
+        db.session.query(
+            PlayerSnapshot.batch_at,
+            PlayerSnapshot.nickname,
+            PlayerSnapshot.level,
+            db.func.count(PlayerSnapshot.id),
+        )
+        .group_by(
+            PlayerSnapshot.batch_at,
+            PlayerSnapshot.nickname,
+            PlayerSnapshot.level,
+        )
+        .having(db.func.count(PlayerSnapshot.id) > 1)
+        .all()
+    )
+    for batch_at, nickname, level, _ in duplicate_groups:
+        duplicates = (
+            PlayerSnapshot.query.filter_by(
+                batch_at=batch_at,
+                nickname=nickname,
+                level=level,
+            )
+            .order_by(PlayerSnapshot.player_id.asc())
+            .all()
+        )
+        for duplicate in duplicates[1:]:
+            db.session.delete(duplicate)
+    if duplicate_groups:
+        db.session.commit()
 
 
 SORT_FIELDS = {

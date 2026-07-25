@@ -94,6 +94,17 @@ def parse_profile(player_id: int, html: str):
     if "Начать игру" in text or "Зарегистрироваться" in text:
         raise PermissionError("Гостевая сессия Wekings завершилась")
 
+    canonical_ids = []
+    for link in main.find_all("a", href=True):
+        match = re.search(
+            r"(?:/gifts/|/curses/|[?&]player=|[?&]id=)(\d+)",
+            link["href"],
+        )
+        if match:
+            canonical_ids.append(int(match.group(1)))
+    if canonical_ids and player_id not in canonical_ids:
+        return None
+
     level = number(text, "Уровень")
     glory = number(text, "Cлава") or number(text, "Слава")
     power = number(text, "Сила")
