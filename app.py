@@ -2,11 +2,13 @@ from __future__ import annotations
 
 import os
 import threading
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from apscheduler.schedulers.background import BackgroundScheduler
 from flask import Flask, jsonify, render_template, request
 from flask_sqlalchemy import SQLAlchemy
+from sqlalchemy import and_
+from sqlalchemy.orm import aliased
 
 
 def normalize_database_url(value: str) -> str:
@@ -69,6 +71,36 @@ class ScanState(db.Model):
     last_error = db.Column(db.Text)
 
 
+class PlayerSnapshot(db.Model):
+    __table_args__ = (
+        db.UniqueConstraint("player_id", "batch_at", name="uq_player_snapshot_batch"),
+        db.Index("ix_snapshot_batch_player", "batch_at", "player_id"),
+    )
+    id = db.Column(db.BigInteger, primary_key=True)
+    player_id = db.Column(db.Integer, nullable=False, index=True)
+    batch_at = db.Column(db.DateTime(timezone=True), nullable=False, index=True)
+    nickname = db.Column(db.String(160), nullable=False)
+    level = db.Column(db.Integer)
+    glory = db.Column(db.BigInteger)
+    power = db.Column(db.BigInteger)
+    defense = db.Column(db.BigInteger)
+    agility = db.Column(db.BigInteger)
+    mastery = db.Column(db.BigInteger)
+    vitality = db.Column(db.BigInteger)
+    stat_sum = db.Column(db.BigInteger)
+    wins = db.Column(db.BigInteger)
+    losses = db.Column(db.BigInteger)
+    dragon_wins = db.Column(db.BigInteger)
+    serpent_wins = db.Column(db.BigInteger)
+    beasts_killed = db.Column(db.BigInteger)
+    silver_stolen = db.Column(db.BigInteger)
+    silver_lost = db.Column(db.BigInteger)
+    crystals_stolen = db.Column(db.BigInteger)
+    crystals_lost = db.Column(db.BigInteger)
+    clan = db.Column(db.String(160))
+    brotherhood = db.Column(db.String(160))
+
+
 with app.app_context():
     db.create_all()
     if db.session.get(ScanState, 1) is None:
@@ -77,17 +109,22 @@ with app.app_context():
 
 
 SORT_FIELDS = {
-    "glory": Player.glory,
-    "power": Player.power,
-    "defense": Player.defense,
-    "agility": Player.agility,
-    "mastery": Player.mastery,
-    "vitality": Player.vitality,
-    "stat_sum": Player.stat_sum,
-    "wins": Player.wins,
-    "losses": Player.losses,
-    "dragon_wins": Player.dragon_wins,
-    "serpent_wins": Player.serpent_wins,
+    "glory": "glory",
+    "power": "power",
+    "defense": "defense",
+    "agility": "agility",
+    "mastery": "mastery",
+    "vitality": "vitality",
+    "stat_sum": "stat_sum",
+    "wins": "wins",
+    "losses": "losses",
+    "dragon_wins": "dragon_wins",
+    "serpent_wins": "serpent_wins",
+    "beasts_killed": "beasts_killed",
+    "silver_stolen": "silver_stolen",
+    "silver_lost": "silver_lost",
+    "crystals_stolen": "crystals_stolen",
+    "crystals_lost": "crystals_lost",
 }
 
 
@@ -105,49 +142,112 @@ def health():
 def api_players():
     page = max(1, request.args.get("page", 1, type=int))
     per_page = min(100, max(10, request.args.get("per_page", 50, type=int)))
-    sort = request.args.get("sort", "glory")
+    metric = request.args.get("sort", "glory")
+    mode = request.args.get("mode", "general")
     query = request.args.get("q", "").strip()
     level = request.args.get("level", type=int)
+    field_name = SORT_FIELDS.get(metric, "glory")
+    dates = [
+        row[0]
+        for row in db.session.query(PlayerSnapshot.batch_at)
+        .distinct()
+        .order_by(PlayerSnapshot.batch_at.desc())
+        .limit(100)
+        .all()
+    ]
+    if not dates:
+        return jsonify(players=[], page=1, pages=1, total=0, dates=[])
 
-    statement = Player.query
+    def parse_date(value, fallback):
+        if not value:
+            return fallback
+        try:
+            return datetime.fromisoformat(value.replace("Z", "+00:00"))
+        except ValueError:
+            return fallback
+
+    date_to = parse_date(request.args.get("to"), dates[0])
+    if mode == "best":
+        cutoff = date_to - timedelta(days=30)
+        eligible = [value for value in dates if cutoff <= value <= date_to]
+        date_from = eligible[-1] if eligible else dates[-1]
+    else:
+        date_from = parse_date(
+            request.args.get("from"),
+            dates[1] if len(dates) > 1 else dates[0],
+        )
+
+    current = aliased(PlayerSnapshot)
+    previous = aliased(PlayerSnapshot)
+    value_column = getattr(current, field_name)
+    previous_column = getattr(previous, field_name)
+    gain_column = value_column - previous_column
+    statement = db.session.query(current, gain_column.label("gain"))
+    if mode in {"growth", "best"}:
+        statement = statement.join(
+            previous,
+            and_(
+                previous.player_id == current.player_id,
+                previous.batch_at == date_from,
+            ),
+        )
+    else:
+        statement = statement.outerjoin(
+            previous,
+            and_(
+                previous.player_id == current.player_id,
+                previous.batch_at == (dates[1] if len(dates) > 1 else dates[0]),
+            ),
+        )
+    statement = statement.filter(current.batch_at == date_to)
     if query:
-        statement = statement.filter(Player.nickname.ilike(f"%{query}%"))
+        statement = statement.filter(current.nickname.ilike(f"%{query}%"))
     if level:
-        statement = statement.filter(Player.level == level)
+        statement = statement.filter(current.level == level)
+    if mode in {"growth", "best"}:
+        statement = statement.filter(gain_column > 0).order_by(gain_column.desc().nullslast())
+    else:
+        statement = statement.order_by(value_column.desc().nullslast())
+    result = statement.paginate(page=page, per_page=per_page, error_out=False)
 
-    sort_column = SORT_FIELDS.get(sort, Player.glory)
-    result = statement.order_by(sort_column.desc().nullslast()).paginate(
-        page=page, per_page=per_page, error_out=False
-    )
     return jsonify(
         players=[
             {
-                "id": p.id,
+                "id": p.player_id,
                 "nickname": p.nickname,
                 "level": p.level,
                 "glory": p.glory,
-                "glory_gain": p.glory_gain,
+                "glory_gain": gain if metric == "glory" else None,
                 "power": p.power,
                 "defense": p.defense,
                 "agility": p.agility,
                 "mastery": p.mastery,
                 "vitality": p.vitality,
                 "stat_sum": p.stat_sum,
-                "stats_gain": p.stats_gain,
+                "stats_gain": gain if metric == "stat_sum" else None,
                 "wins": p.wins,
                 "losses": p.losses,
                 "dragon_wins": p.dragon_wins,
                 "serpent_wins": p.serpent_wins,
+                "beasts_killed": p.beasts_killed,
+                "silver_stolen": p.silver_stolen,
+                "silver_lost": p.silver_lost,
+                "crystals_stolen": p.crystals_stolen,
+                "crystals_lost": p.crystals_lost,
+                "gain": gain,
                 "clan": p.clan,
                 "brotherhood": p.brotherhood,
                 "last_activity": p.last_activity,
-                "profile_url": f"https://playwekings.mobi/hero/detail?player={p.id}",
+                "profile_url": f"https://playwekings.mobi/hero/detail?player={p.player_id}",
             }
-            for p in result.items
+            for p, gain in result.items
         ],
         page=result.page,
         pages=result.pages,
         total=result.total,
+        dates=[value.isoformat() for value in dates],
+        date_from=date_from.isoformat(),
+        date_to=date_to.isoformat(),
     )
 
 
@@ -174,11 +274,12 @@ def run_scan():
         if state.running:
             return
         state.running = True
-        state.started_at = datetime.now(timezone.utc)
+        if state.current_player_id <= 1 or state.started_at is None:
+            state.started_at = datetime.now(timezone.utc)
         state.last_error = None
         db.session.commit()
         try:
-            scan_all_players(db, Player, ScanState)
+            scan_all_players(db, Player, PlayerSnapshot, ScanState)
             state = db.session.get(ScanState, 1)
             state.finished_at = datetime.now(timezone.utc)
         except Exception as exc:

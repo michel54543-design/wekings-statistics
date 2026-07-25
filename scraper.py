@@ -21,6 +21,13 @@ def number(text: str, label: str):
     return int(re.sub(r"\D", "", match.group(1))) if match else None
 
 
+def numbers(text: str, label: str):
+    return [
+        int(re.sub(r"\D", "", value))
+        for value in re.findall(rf"{re.escape(label)}\s*:\s*([\d\s]+)", text, re.I)
+    ]
+
+
 def text_value(text: str, label: str):
     match = re.search(rf"{re.escape(label)}\s*:\s*([^\n\r]+)", text, re.I)
     return match.group(1).strip() if match else None
@@ -131,6 +138,8 @@ def parse_profile(player_id: int, html: str):
     vitality = number(text, "Живучесть")
     values = [power, defense, agility, mastery, vitality]
 
+    stolen = numbers(text, "Награбил")
+    lost = numbers(text, "Потерял")
     return {
         "id": player_id,
         "nickname": nickname[:160],
@@ -146,17 +155,27 @@ def parse_profile(player_id: int, html: str):
         "losses": number(text, "Поражений"),
         "dragon_wins": number(text, "Побед над Драконом"),
         "serpent_wins": number(text, "Побед над Змеем"),
+        "beasts_killed": number(text, "Убито зверей"),
+        "silver_stolen": stolen[0] if stolen else None,
+        "silver_lost": lost[0] if lost else None,
+        "crystals_stolen": stolen[1] if len(stolen) > 1 else None,
+        "crystals_lost": lost[1] if len(lost) > 1 else None,
         "clan": clan,
         "brotherhood": brotherhood,
         "last_activity": text_value(text, "Последняя активность"),
     }
 
 
-def scan_all_players(db, Player, ScanState):
+def scan_all_players(db, Player, PlayerSnapshot, ScanState):
     session, home_html = create_guest_session()
     max_id = discover_max_id(home_html)
     state = db.session.get(ScanState, 1)
-    start_id = state.current_player_id if 1 <= state.current_player_id <= max_id else 1
+    if db.session.query(PlayerSnapshot.id).first() is None:
+        start_id = 1
+        state.current_player_id = 1
+    else:
+        start_id = state.current_player_id if 1 <= state.current_player_id <= max_id else 1
+    batch_at = state.started_at or datetime.now(timezone.utc)
     state.max_player_id = max_id
     state.found_players = 0
     db.session.commit()
@@ -193,10 +212,29 @@ def scan_all_players(db, Player, ScanState):
             else:
                 player.previous_glory = player.glory
                 player.previous_stat_sum = player.stat_sum
+            player_fields = {
+                "nickname", "level", "glory", "power", "defense", "agility",
+                "mastery", "vitality", "stat_sum", "wins", "losses",
+                "dragon_wins", "serpent_wins", "clan", "brotherhood",
+                "last_activity",
+            }
             for field, value in data.items():
-                if field != "id":
+                if field in player_fields:
                     setattr(player, field, value)
             player.scanned_at = datetime.now(timezone.utc)
+            snapshot = PlayerSnapshot.query.filter_by(
+                player_id=player_id, batch_at=batch_at
+            ).first()
+            if snapshot is None:
+                snapshot = PlayerSnapshot(
+                    player_id=player_id,
+                    batch_at=batch_at,
+                    nickname=data["nickname"],
+                )
+                db.session.add(snapshot)
+            for field, value in data.items():
+                if field not in {"id", "last_activity"}:
+                    setattr(snapshot, field, value)
             state.found_players += 1
 
         state.current_player_id = player_id + 1
