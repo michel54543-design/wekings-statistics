@@ -10,7 +10,7 @@ import requests
 from bs4 import BeautifulSoup
 
 
-BASE_URL = os.getenv("WEKINGS_BASE_URL", "https://playwekings.mobi")
+BASE_URL = os.getenv("WEKINGS_BASE_URL", "https://wekings.online").rstrip("/")
 DELAY = max(0.3, float(os.getenv("REQUEST_DELAY", "0.7")))
 TIMEOUT = int(os.getenv("REQUEST_TIMEOUT", "25"))
 SAVE_EVERY = int(os.getenv("SAVE_EVERY", "1"))
@@ -46,45 +46,70 @@ def text_value(text: str, label: str):
 
 
 def create_guest_session():
-    session = requests.Session()
-    session.headers.update(
-        {
-            "User-Agent": "Mozilla/5.0 (compatible; WekingsStatistics/1.0)",
-            "Accept-Language": "ru-RU,ru;q=0.9",
-        }
-    )
-    first = session.get(f"{BASE_URL}/", timeout=TIMEOUT)
-    first.raise_for_status()
-    if "/rating" in first.text or re.search(r"Викинг\s*#\d+", first.text):
-        return session, first.text
-
-    soup = BeautifulSoup(first.text, "html.parser")
-    start_button = soup.find(
-        lambda tag: tag.name in {"button", "input", "a"}
-        and "начать игру" in (tag.get_text(" ", strip=True) or tag.get("value", "")).lower()
-    )
-    if start_button:
-        form = start_button.find_parent("form")
-        if form:
-            action = urljoin(BASE_URL, form.get("action") or "/")
-            payload = {
-                field.get("name"): field.get("value", "")
-                for field in form.select("input[name]")
-                if field.get("name")
+    candidates = list(dict.fromkeys([BASE_URL, "https://wekings.online"]))
+    errors = []
+    for base_url in candidates:
+        session = requests.Session()
+        session.headers.update(
+            {
+                "User-Agent": "Mozilla/5.0 (compatible; WekingsStatistics/1.0)",
+                "Accept-Language": "ru-RU,ru;q=0.9",
             }
-            method = (form.get("method") or "get").lower()
-            response = session.post(action, data=payload, timeout=TIMEOUT) if method == "post" else session.get(action, params=payload, timeout=TIMEOUT)
-        elif start_button.name == "a" and start_button.get("href"):
-            response = session.get(urljoin(BASE_URL, start_button["href"]), timeout=TIMEOUT)
-        else:
-            response = None
-        if response is not None and ("/rating" in response.text or re.search(r"Викинг\s*#\d+", response.text)):
-            return session, response.text
+        )
+        try:
+            first = session.get(f"{base_url}/", timeout=TIMEOUT)
+            first.raise_for_status()
+            if re.search(r"Викинг\s*#\d+", first.text):
+                return session, first.text, base_url
 
-    raise RuntimeError(
-        "Не удалось автоматически нажать «Начать игру». "
-        "Проверьте, не изменилась ли стартовая страница Wekings."
-    )
+            soup = BeautifulSoup(first.text, "html.parser")
+            start_button = soup.find(
+                lambda tag: tag.name in {"button", "input", "a"}
+                and "начать игру" in " ".join(
+                    filter(
+                        None,
+                        [
+                            tag.get_text(" ", strip=True),
+                            tag.get("value", ""),
+                            tag.get("title", ""),
+                            tag.get("aria-label", ""),
+                        ],
+                    )
+                ).lower()
+            )
+            if not start_button:
+                start_form = soup.find("form", id="start-game-form")
+                start_button = start_form.find(["button", "input"]) if start_form else None
+            if not start_button:
+                raise RuntimeError("кнопка «Начать игру» не найдена")
+
+            form = start_button.find_parent("form")
+            if form:
+                action = urljoin(base_url, form.get("action") or "/")
+                payload = {
+                    field.get("name"): field.get("value", "")
+                    for field in form.select("input[name]")
+                    if field.get("name")
+                }
+                method = (form.get("method") or "get").lower()
+                response = (
+                    session.post(action, data=payload, timeout=TIMEOUT)
+                    if method == "post"
+                    else session.get(action, params=payload, timeout=TIMEOUT)
+                )
+            elif start_button.name == "a" and start_button.get("href"):
+                response = session.get(urljoin(base_url, start_button["href"]), timeout=TIMEOUT)
+            else:
+                response = None
+            if response is not None:
+                response.raise_for_status()
+            if response is not None and re.search(r"Викинг\s*#\d+", response.text):
+                return session, response.text, base_url
+            raise RuntimeError("игровая страница после нажатия не открылась")
+        except (requests.RequestException, RuntimeError) as exc:
+            errors.append(f"{base_url}: {exc}")
+
+    raise RuntimeError("Не удалось открыть гостевую игру Wekings. " + "; ".join(errors))
 
 
 def discover_max_id(home_html: str):
@@ -190,7 +215,7 @@ def parse_profile(player_id: int, html: str):
 
 
 def scan_all_players(db, Player, PlayerSnapshot, ScanState):
-    session, home_html = create_guest_session()
+    session, home_html, active_base_url = create_guest_session()
     max_id = discover_max_id(home_html)
     state = db.session.get(ScanState, 1)
     if db.session.query(PlayerSnapshot.id).first() is None:
@@ -207,7 +232,7 @@ def scan_all_players(db, Player, PlayerSnapshot, ScanState):
     for player_id in range(start_id, max_id + 1):
         try:
             response = session.get(
-                f"{BASE_URL}/hero/detail",
+                f"{active_base_url}/hero/detail",
                 params={"player": player_id},
                 timeout=TIMEOUT,
             )
@@ -220,7 +245,7 @@ def scan_all_players(db, Player, PlayerSnapshot, ScanState):
         except PermissionError:
             consecutive_auth_errors += 1
             if consecutive_auth_errors > 2:
-                session, _ = create_guest_session()
+                session, _, active_base_url = create_guest_session()
                 consecutive_auth_errors = 0
             continue
         except requests.RequestException:

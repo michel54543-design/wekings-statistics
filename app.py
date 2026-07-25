@@ -442,7 +442,8 @@ def run_scan():
             state = db.session.get(ScanState, 1)
             state.last_error = str(exc)[:2000]
             app.logger.exception("Wekings scan failed")
-            threading.Timer(10, start_scan_thread).start()
+            # При временной ошибке Wekings не создаём бесконечный поток
+            # повторов каждые 10 секунд. Следующий запуск выполнит планировщик.
         finally:
             db.session.rollback()
             state = db.session.get(ScanState, 1)
@@ -459,7 +460,7 @@ if os.getenv("SCAN_ENABLED", "true").lower() == "true":
     scheduler.add_job(
         start_scan_thread,
         "interval",
-        hours=float(os.getenv("SCAN_INTERVAL_HOURS", "12")),
+        hours=float(os.getenv("SCAN_INTERVAL_HOURS", "15")),
         id="wekings-scan",
         max_instances=1,
         coalesce=True,
