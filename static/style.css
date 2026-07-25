@@ -8,3 +8,36 @@ body.dark{--bg:#0d1523;--panel:#172338ee;--text:#e8eef9;--muted:#99a7bd;--line:#
 @media(max-width:760px){.detail-head{display:block}.detail-head a{display:inline-block;margin-top:14px}.detail-dates{display:grid;grid-template-columns:1fr 1fr}.detail-dates label{min-width:0}.metric-grid{grid-template-columns:repeat(2,1fr)}}
 @media(max-width:450px){.controls:has(.date-control:not(.hidden)){grid-template-columns:1fr}}
 @media(max-width:450px){.player-detail{padding:16px}.detail-dates,.metric-grid{grid-template-columns:1fr}}
+@media(max-width:760px){
+  .page{width:100%;padding:20px 10px 45px}
+  header{padding:0 4px}.theme{width:42px;height:42px}
+  h1{font-size:34px}.status{font-size:13px}
+  .modes{margin-top:22px}.modes button{min-height:44px;flex:1;padding:0 9px;font-size:13px}
+  .hero-stats{grid-template-columns:repeat(3,1fr);gap:7px;margin-top:18px}
+  .hero-stats article{display:block;padding:12px 10px;min-width:0}
+  .hero-stats span{display:block;font-size:10px;min-height:25px}
+  .hero-stats strong{display:block;font-size:16px;white-space:nowrap}
+  .controls,.controls:has(.date-control:not(.hidden)){grid-template-columns:1fr 1fr;padding:12px;gap:10px}
+  .controls .search{grid-column:1/-1}.controls button{grid-column:1/-1;height:46px}
+  .controls label>span{font-size:11px}.controls input,.controls select{height:42px}
+  .card{border-radius:14px}.card-head{padding:16px 14px}.card-head h2{font-size:19px}
+  .table-wrap{overflow:visible}table{display:block;min-width:0;padding:0 10px 10px}
+  thead{display:none}tbody{display:grid;gap:9px}tbody tr{display:grid;grid-template-columns:42px 1fr auto;border:1px solid var(--line);border-radius:12px;padding:10px 11px;background:rgba(255,255,255,.42)}
+  td{display:flex;justify-content:space-between;align-items:center;gap:10px;border:0;padding:6px 0;font-size:13px;min-width:0}
+  td::before{content:attr(data-label);color:var(--muted);font-size:10px;font-weight:700;text-transform:uppercase}
+  td.rank{grid-row:1;grid-column:1;width:auto;justify-content:flex-start;font-size:18px}
+  td.rank::before,.player-name::before{display:none}
+  td.player-name{grid-row:1;grid-column:2;font-size:16px;justify-content:flex-start}
+  td:nth-child(3){grid-row:1;grid-column:3}
+  td:nth-child(n+4){grid-column:1/-1;border-top:1px solid var(--line)}
+  td.value,td.gain{font-size:14px}
+  td.loading{display:block;grid-column:1/-1;padding:28px 8px;text-align:center}
+  footer{padding:12px 10px}
+  body.dark tbody tr{background:#111d2f}
+}
+@media(max-width:390px){
+  h1{font-size:30px}.brand{font-size:10px}
+  .hero-stats{grid-template-columns:1fr}.hero-stats article{display:flex;min-height:0}
+  .hero-stats span{min-height:0}.controls,.controls:has(.date-control:not(.hidden)){grid-template-columns:1fr}
+  .controls .search,.controls button{grid-column:auto}
+}

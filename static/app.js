@@ -112,13 +112,13 @@ async function loadPlayers() {
     const mainValue = state.mode === "general" ? p[sort] : p.gain;
     const gain = p.gain;
     return `<tr>
-      <td class="rank">${medal}</td>
-      <td><a href="${p.profile_url}" target="_blank" rel="noreferrer">${escapeHtml(p.nickname)}</a></td>
-      <td><b class="level">${p.level ?? "—"}</b></td>
-      <td class="group">${escapeHtml(p.brotherhood || "—")}</td>
-      <td class="group">${escapeHtml(p.clan || "—")}</td>
-      <td class="value">${state.mode === "general" ? fmt(mainValue) : (mainValue == null ? "—" : `+${fmt(mainValue)}`)}</td>
-      <td class="${gain > 0 ? "gain" : "muted"}">${gain > 0 ? `+${fmt(gain)}` : "—"}</td>
+      <td class="rank" data-label="Место">${medal}</td>
+      <td class="player-name" data-label="Игрок"><a href="${p.profile_url}" target="_blank" rel="noreferrer">${escapeHtml(p.nickname)}</a></td>
+      <td data-label="Уровень"><b class="level">${p.level ?? "—"}</b></td>
+      <td class="group" data-label="Братство">${escapeHtml(p.brotherhood || "—")}</td>
+      <td class="group" data-label="Клан">${escapeHtml(p.clan || "—")}</td>
+      <td class="value" data-label="${metricNames[sort]}">${state.mode === "general" ? fmt(mainValue) : (mainValue == null ? "—" : `+${fmt(mainValue)}`)}</td>
+      <td class="${gain > 0 ? "gain" : "muted"}" data-label="Прирост">${gain > 0 ? `+${fmt(gain)}` : "—"}</td>
     </tr>`;
   }).join("") : `<tr><td colspan="7" class="loading">${data.dates?.length < 2 && state.mode !== "general" ? "Прирост появится после второго снимка статистики" : "Игроки не найдены"}</td></tr>`;
   const query = $("query").value.trim();
