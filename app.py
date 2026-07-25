@@ -135,6 +135,31 @@ with app.app_context():
             db.session.delete(duplicate)
     if duplicate_groups:
         db.session.commit()
+    legacy_duplicate_groups = (
+        db.session.query(
+            Player.nickname,
+            Player.level,
+            Player.glory,
+            db.func.count(Player.id),
+        )
+        .group_by(Player.nickname, Player.level, Player.glory)
+        .having(db.func.count(Player.id) > 1)
+        .all()
+    )
+    for nickname, level, glory, _ in legacy_duplicate_groups:
+        duplicates = (
+            Player.query.filter_by(
+                nickname=nickname,
+                level=level,
+                glory=glory,
+            )
+            .order_by(Player.id.asc())
+            .all()
+        )
+        for duplicate in duplicates[1:]:
+            db.session.delete(duplicate)
+    if legacy_duplicate_groups:
+        db.session.commit()
 
 
 SORT_FIELDS = {
