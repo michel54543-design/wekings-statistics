@@ -185,7 +185,57 @@ def api_players():
         .all()
     ]
     if not dates:
-        return jsonify(players=[], page=1, pages=1, total=0, dates=[])
+        legacy_fields = {
+            "glory": Player.glory,
+            "power": Player.power,
+            "defense": Player.defense,
+            "agility": Player.agility,
+            "mastery": Player.mastery,
+            "vitality": Player.vitality,
+            "stat_sum": Player.stat_sum,
+            "wins": Player.wins,
+            "losses": Player.losses,
+            "dragon_wins": Player.dragon_wins,
+            "serpent_wins": Player.serpent_wins,
+        }
+        statement = Player.query
+        if query:
+            statement = statement.filter(Player.nickname.ilike(f"%{query}%"))
+        if level:
+            statement = statement.filter(Player.level == level)
+        sort_column = legacy_fields.get(metric, Player.glory)
+        result = statement.order_by(sort_column.desc().nullslast()).paginate(
+            page=page, per_page=per_page, error_out=False
+        )
+        return jsonify(
+            players=[
+                {
+                    "id": p.id,
+                    "nickname": p.nickname,
+                    "level": p.level,
+                    "glory": p.glory,
+                    "power": p.power,
+                    "defense": p.defense,
+                    "agility": p.agility,
+                    "mastery": p.mastery,
+                    "vitality": p.vitality,
+                    "stat_sum": p.stat_sum,
+                    "wins": p.wins,
+                    "losses": p.losses,
+                    "dragon_wins": p.dragon_wins,
+                    "serpent_wins": p.serpent_wins,
+                    "gain": None,
+                    "clan": p.clan,
+                    "brotherhood": p.brotherhood,
+                    "profile_url": f"https://playwekings.mobi/hero/detail?player={p.id}",
+                }
+                for p in result.items
+            ],
+            page=result.page,
+            pages=result.pages,
+            total=result.total,
+            dates=[],
+        )
 
     def parse_date(value, fallback):
         if not value:
