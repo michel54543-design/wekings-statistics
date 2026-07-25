@@ -70,7 +70,9 @@ async function loadStatus() {
     : "Ожидание";
   $("statusText").textContent = data.running
     ? `Сейчас проверяется игрок №${fmt(data.current_player_id)}`
-    : data.finished_at ? `Последнее обновление: ${new Date(data.finished_at).toLocaleString("ru-RU")}` : "Первый сбор данных";
+    : data.last_error ? `Сбор остановлен: ${data.last_error}` : data.finished_at
+      ? `Последнее обновление: ${new Date(data.finished_at).toLocaleString("ru-RU")}`
+      : "Первый сбор данных ещё не запущен";
 }
 
 function fillDates(dates, selectedFrom, selectedTo) {
