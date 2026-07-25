@@ -14,6 +14,7 @@
         <p class="brand">WEKINGS.ONLINE</p>
         <h1>Статистика игроков</h1>
         <p class="status"><i></i><span id="statusText">Проверяем состояние базы…</span></p>
+        <p id="lastSnapshot" class="last-snapshot"></p>
       </div>
       <button id="theme" class="theme" aria-label="Сменить тему">🌙</button>
     </header>
@@ -30,7 +31,14 @@
       <article><span>Обновление</span><strong>каждые 15 часов</strong></article>
     </section>
 
-    <section class="controls">
+    <section id="scanProgress" class="scan-progress hidden">
+      <div><span>Сбор статистики</span><strong id="progressPercent">0%</strong></div>
+      <div class="progress-track"><i id="progressBar"></i></div>
+      <small id="progressEta">Подготавливаем проверку…</small>
+    </section>
+
+    <button id="filterToggle" class="filter-toggle">⚙ Фильтры</button>
+    <section id="filters" class="controls">
       <label id="fromWrap" class="date-control hidden"><span>От</span><select id="dateFrom"></select></label>
       <label id="toWrap" class="date-control hidden"><span id="toLabel">Снимок данных</span><select id="dateTo"></select></label>
       <label><span>Показатель</span>
@@ -71,6 +79,10 @@
         <label><span>Сравнить от</span><select id="detailFrom"></select></label>
         <label><span>до</span><select id="detailTo"></select></label>
       </div>
+      <div class="detail-chart">
+        <div><strong id="chartTitle">Изменение показателя</strong><small>История по сохранённым снимкам</small></div>
+        <svg id="historyChart" viewBox="0 0 700 190" role="img" aria-label="График изменения статистики"></svg>
+      </div>
       <div id="detailMetrics" class="metric-grid"></div>
     </section>
 
@@ -92,6 +104,11 @@
       </footer>
     </section>
   </main>
+  <nav class="mobile-nav" aria-label="Основные разделы">
+    <button data-mobile-mode="general" class="active"><span>🏆</span>Рейтинг</button>
+    <button data-mobile-mode="growth"><span>📈</span>Прирост</button>
+    <button id="mobilePlayer"><span>👤</span>Игрок</button>
+  </nav>
   <script src="/static/app.js"></script>
 </body>
 </html>
