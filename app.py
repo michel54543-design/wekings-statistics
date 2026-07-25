@@ -346,7 +346,6 @@ def api_players():
                 "gain": gain,
                 "clan": p.clan,
                 "brotherhood": p.brotherhood,
-                "last_activity": p.last_activity,
                 "profile_url": f"https://playwekings.mobi/hero/detail?player={p.player_id}",
             }
             for p, gain in result.items
