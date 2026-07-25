@@ -195,7 +195,6 @@ $("detailFrom").onchange = renderPlayerDetail;
 $("detailTo").onchange = renderPlayerDetail;
 $("prev").onclick = () => { if (state.page > 1) { state.page--; loadPlayers(); } };
 $("next").onclick = () => { if (state.page < state.pages) { state.page++; loadPlayers(); } };
-$("theme").onclick = () => document.body.classList.toggle("dark");
 $("filterToggle").onclick = () => {
   $("filters").classList.toggle("mobile-open");
   $("filterToggle").classList.toggle("active");
