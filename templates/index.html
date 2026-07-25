@@ -58,6 +58,22 @@
       <button id="find">Найти</button>
     </section>
 
+    <section id="playerDetail" class="player-detail hidden">
+      <div class="detail-head">
+        <div>
+          <p>Личная статистика</p>
+          <h2 id="detailName">Игрок</h2>
+          <div id="detailMeta" class="detail-meta"></div>
+        </div>
+        <a id="detailProfile" target="_blank" rel="noreferrer">Открыть профиль Wekings ↗</a>
+      </div>
+      <div class="detail-dates">
+        <label><span>Сравнить от</span><select id="detailFrom"></select></label>
+        <label><span>до</span><select id="detailTo"></select></label>
+      </div>
+      <div id="detailMetrics" class="metric-grid"></div>
+    </section>
+
     <section class="card">
       <div class="card-head">
         <div><h2 id="tableTitle">Рейтинг по славе</h2><p>Данные напрямую из профилей Wekings</p></div>
