@@ -13,7 +13,19 @@ from bs4 import BeautifulSoup
 BASE_URL = os.getenv("WEKINGS_BASE_URL", "https://playwekings.mobi")
 DELAY = max(0.3, float(os.getenv("REQUEST_DELAY", "0.7")))
 TIMEOUT = int(os.getenv("REQUEST_TIMEOUT", "25"))
-SAVE_EVERY = int(os.getenv("SAVE_EVERY", "25"))
+SAVE_EVERY = int(os.getenv("SAVE_EVERY", "1"))
+
+
+def commit_with_retry(db):
+    try:
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+        try:
+            db.engine.dispose()
+        except Exception:
+            pass
+        raise
 
 
 def number(text: str, label: str):
@@ -189,7 +201,7 @@ def scan_all_players(db, Player, PlayerSnapshot, ScanState):
     batch_at = state.started_at or datetime.now(timezone.utc)
     state.max_player_id = max_id
     state.found_players = 0
-    db.session.commit()
+    commit_with_retry(db)
 
     consecutive_auth_errors = 0
     for player_id in range(start_id, max_id + 1):
@@ -233,9 +245,10 @@ def scan_all_players(db, Player, PlayerSnapshot, ScanState):
                 if field in player_fields:
                     setattr(player, field, value)
             player.scanned_at = datetime.now(timezone.utc)
-            snapshot = PlayerSnapshot.query.filter_by(
-                player_id=player_id, batch_at=batch_at
-            ).first()
+            with db.session.no_autoflush:
+                snapshot = PlayerSnapshot.query.filter_by(
+                    player_id=player_id, batch_at=batch_at
+                ).first()
             if snapshot is None:
                 snapshot = PlayerSnapshot(
                     player_id=player_id,
@@ -250,8 +263,8 @@ def scan_all_players(db, Player, PlayerSnapshot, ScanState):
 
         state.current_player_id = player_id + 1
         if player_id % SAVE_EVERY == 0:
-            db.session.commit()
+            commit_with_retry(db)
         time.sleep(DELAY)
 
     state.current_player_id = 1
-    db.session.commit()
+    commit_with_retry(db)

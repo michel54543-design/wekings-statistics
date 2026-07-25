@@ -391,10 +391,14 @@ def run_scan():
             state = db.session.get(ScanState, 1)
             state.finished_at = datetime.now(timezone.utc)
         except Exception as exc:
+            db.session.rollback()
             state = db.session.get(ScanState, 1)
             state.last_error = str(exc)[:2000]
             app.logger.exception("Wekings scan failed")
+            threading.Timer(10, start_scan_thread).start()
         finally:
+            db.session.rollback()
+            state = db.session.get(ScanState, 1)
             state.running = False
             db.session.commit()
 
