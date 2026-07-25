@@ -1,4 +1,4 @@
-const state = { page: 1, pages: 1, mode: "general", datesLoaded: false };
+const state = { page: 1, pages: 1, mode: "general", datesLoaded: false, playerDetail: null };
 const metricNames = {
   glory: "Слава", stat_sum: "Сумма характеристик", power: "Сила",
   defense: "Защита", agility: "Ловкость", mastery: "Мастерство",
@@ -11,6 +11,56 @@ const metricNames = {
 const $ = (id) => document.getElementById(id);
 const fmt = (v) => v == null ? "—" : Number(v).toLocaleString("ru-RU");
 const dateText = (value) => new Date(value).toLocaleString("ru-RU", {day:"2-digit",month:"2-digit",year:"numeric",hour:"2-digit",minute:"2-digit"});
+const detailMetricKeys = Object.keys(metricNames);
+
+function hidePlayerDetail() {
+  state.playerDetail = null;
+  $("playerDetail").classList.add("hidden");
+}
+
+function renderPlayerDetail() {
+  const player = state.playerDetail;
+  if (!player?.history?.length) return hidePlayerDetail();
+  const fromIndex = Math.max(0, Number($("detailFrom").value || 0));
+  const toIndex = Math.max(0, Number($("detailTo").value || player.history.length - 1));
+  const from = player.history[Math.min(fromIndex, toIndex)];
+  const to = player.history[Math.max(fromIndex, toIndex)];
+  $("detailMetrics").innerHTML = detailMetricKeys.map(key => {
+    const current = to[key];
+    const delta = current == null || from[key] == null ? null : Number(current) - Number(from[key]);
+    const deltaClass = delta > 0 ? "up" : delta < 0 ? "down" : "zero";
+    const deltaText = delta == null ? "нет данных" : delta > 0 ? `+${fmt(delta)}` : fmt(delta);
+    return `<article class="metric-card">
+      <span>${metricNames[key]}</span>
+      <strong>${fmt(current)}</strong>
+      <small class="delta ${deltaClass}">${deltaText}</small>
+    </article>`;
+  }).join("");
+}
+
+async function loadPlayerDetail(playerId) {
+  const player = await fetch(`/api/player/${playerId}`).then(r => {
+    if (!r.ok) throw new Error("Игрок не найден");
+    return r.json();
+  });
+  state.playerDetail = player;
+  $("detailName").textContent = player.nickname;
+  $("detailMeta").innerHTML = [
+    `Уровень ${player.level ?? "—"}`,
+    player.brotherhood ? `Братство: ${escapeHtml(player.brotherhood)}` : "",
+    player.clan ? `Клан: ${escapeHtml(player.clan)}` : ""
+  ].filter(Boolean).map(value => `<span>${value}</span>`).join("");
+  $("detailProfile").href = player.profile_url;
+  const options = player.history.map((item, index) =>
+    `<option value="${index}">${dateText(item.date)}</option>`
+  ).join("");
+  $("detailFrom").innerHTML = options;
+  $("detailTo").innerHTML = options;
+  $("detailFrom").value = Math.max(0, player.history.length - 2);
+  $("detailTo").value = player.history.length - 1;
+  $("playerDetail").classList.remove("hidden");
+  renderPlayerDetail();
+}
 
 async function loadStatus() {
   const data = await fetch("/api/status").then(r => r.json());
@@ -69,6 +119,12 @@ async function loadPlayers() {
       <td class="${gain > 0 ? "gain" : "muted"}">${gain > 0 ? `+${fmt(gain)}` : "—"}</td>
     </tr>`;
   }).join("") : `<tr><td colspan="7" class="loading">${data.dates?.length < 2 && state.mode !== "general" ? "Прирост появится после второго снимка статистики" : "Игроки не найдены"}</td></tr>`;
+  const query = $("query").value.trim();
+  if (query && data.players.length === 1) {
+    loadPlayerDetail(data.players[0].id).catch(hidePlayerDetail);
+  } else {
+    hidePlayerDetail();
+  }
 }
 
 function escapeHtml(value) {
@@ -94,6 +150,8 @@ $("query").onkeydown = (e) => { if (e.key === "Enter") { state.page = 1; loadPla
 $("sort").onchange = () => { state.page = 1; loadPlayers(); };
 $("dateFrom").onchange = () => { state.page = 1; loadPlayers(); };
 $("dateTo").onchange = () => { state.page = 1; loadPlayers(); };
+$("detailFrom").onchange = renderPlayerDetail;
+$("detailTo").onchange = renderPlayerDetail;
 $("prev").onclick = () => { if (state.page > 1) { state.page--; loadPlayers(); } };
 $("next").onclick = () => { if (state.page < state.pages) { state.page++; loadPlayers(); } };
 $("theme").onclick = () => document.body.classList.toggle("dark");
