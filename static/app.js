@@ -31,6 +31,7 @@ function fillDates(dates, selectedFrom, selectedTo) {
   $("dateFrom").value = selectedFrom || dates[Math.min(1, dates.length - 1)];
   $("dateTo").value = selectedTo || dates[0];
   state.datesLoaded = true;
+  if (state.mode === "general") $("toWrap").classList.remove("hidden");
 }
 
 async function loadPlayers() {
@@ -38,9 +39,9 @@ async function loadPlayers() {
   const params = new URLSearchParams({ page: state.page, per_page: 50, sort, mode: state.mode });
   if ($("query").value.trim()) params.set("q", $("query").value.trim());
   if ($("level").value) params.set("level", $("level").value);
-  if (state.datesLoaded && state.mode !== "general") {
-    params.set("from", $("dateFrom").value);
+  if (state.datesLoaded && state.mode !== "best") {
     params.set("to", $("dateTo").value);
+    if (state.mode === "growth") params.set("from", $("dateFrom").value);
   }
   $("rows").innerHTML = '<tr><td colspan="6" class="loading">Загрузка…</td></tr>';
   const data = await fetch(`/api/players?${params}`).then(r => r.json());
@@ -79,9 +80,11 @@ document.querySelectorAll(".modes button").forEach(button => {
     document.querySelectorAll(".modes button").forEach(item => item.classList.remove("active"));
     button.classList.add("active");
     state.mode = button.dataset.mode;
-    const showDates = state.mode === "growth";
-    $("fromWrap").classList.toggle("hidden", !showDates);
-    $("toWrap").classList.toggle("hidden", !showDates);
+    const growthDates = state.mode === "growth" && state.datesLoaded;
+    const generalDate = state.mode === "general" && state.datesLoaded;
+    $("fromWrap").classList.toggle("hidden", !growthDates);
+    $("toWrap").classList.toggle("hidden", !(growthDates || generalDate));
+    $("toLabel").textContent = state.mode === "growth" ? "До" : "Снимок данных";
     state.page = 1;
     loadPlayers();
   };
