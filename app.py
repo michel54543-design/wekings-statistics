@@ -214,11 +214,11 @@ def health():
 def api_players():
     page = max(1, request.args.get("page", 1, type=int))
     per_page = min(100, max(10, request.args.get("per_page", 50, type=int)))
-    metric = request.args.get("sort", "glory")
+    metric = request.args.get("sort", "power")
     mode = request.args.get("mode", "general")
     query = request.args.get("q", "").strip()
     level = request.args.get("level", type=int)
-    field_name = SORT_FIELDS.get(metric, "glory")
+    field_name = SORT_FIELDS.get(metric, "power")
     dates = [
         row[0]
         for row in db.session.query(PlayerSnapshot.batch_at)
