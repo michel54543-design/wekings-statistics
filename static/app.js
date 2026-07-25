@@ -36,9 +36,36 @@ function renderPlayerDetail() {
       <small class="delta ${deltaClass}">${deltaText}</small>
     </article>`;
   }).join("");
+  renderHistoryChart();
 }
 
-async function loadPlayerDetail(playerId) {
+function renderHistoryChart() {
+  const history = state.playerDetail?.history || [];
+  const key = $("sort").value;
+  const points = history.filter(item => item[key] != null);
+  $("chartTitle").textContent = `Динамика: ${metricNames[key]}`;
+  if (points.length < 2) {
+    $("historyChart").innerHTML = '<text x="350" y="98" text-anchor="middle" class="chart-empty">График появится после второго снимка</text>';
+    return;
+  }
+  const values = points.map(item => Number(item[key]));
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+  const spread = max - min || 1;
+  const coords = values.map((value, index) => ({
+    x: 32 + index * (636 / Math.max(1, values.length - 1)),
+    y: 155 - ((value - min) / spread) * 115,
+    value
+  }));
+  $("historyChart").innerHTML = `
+    <line x1="32" y1="155" x2="668" y2="155" class="chart-axis"/>
+    <polyline points="${coords.map(point => `${point.x},${point.y}`).join(" ")}" class="chart-line"/>
+    ${coords.map(point => `<circle cx="${point.x}" cy="${point.y}" r="4" class="chart-dot"><title>${fmt(point.value)}</title></circle>`).join("")}
+    <text x="32" y="178" class="chart-label">${dateText(points[0].date)}</text>
+    <text x="668" y="178" text-anchor="end" class="chart-label">${dateText(points[points.length - 1].date)}</text>`;
+}
+
+async function loadPlayerDetail(playerId, scroll = true) {
   const player = await fetch(`/api/player/${playerId}`).then(r => {
     if (!r.ok) throw new Error("Игрок не найден");
     return r.json();
@@ -60,6 +87,7 @@ async function loadPlayerDetail(playerId) {
   $("detailTo").value = player.history.length - 1;
   $("playerDetail").classList.remove("hidden");
   renderPlayerDetail();
+  if (scroll) $("playerDetail").scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
 async function loadStatus() {
@@ -70,9 +98,24 @@ async function loadStatus() {
     : "Ожидание";
   $("statusText").textContent = data.running
     ? `Сейчас проверяется игрок №${fmt(data.current_player_id)}`
-    : data.last_error ? `Сбор остановлен: ${data.last_error}` : data.finished_at
+    : data.last_error ? "Обновление временно приостановлено — продолжится автоматически" : data.finished_at
       ? `Последнее обновление: ${new Date(data.finished_at).toLocaleString("ru-RU")}`
       : "Первый сбор данных ещё не запущен";
+  $("lastSnapshot").textContent = data.finished_at
+    ? `Готовый снимок: ${new Date(data.finished_at).toLocaleString("ru-RU")}`
+    : "";
+  const percent = data.max_player_id ? Math.min(100, data.current_player_id / data.max_player_id * 100) : 0;
+  $("scanProgress").classList.toggle("hidden", !data.running);
+  $("progressPercent").textContent = `${percent.toFixed(1)}%`;
+  $("progressBar").style.width = `${percent}%`;
+  if (data.running && data.started_at && data.current_player_id > 10) {
+    const elapsed = Date.now() - new Date(data.started_at).getTime();
+    const remaining = elapsed / data.current_player_id * (data.max_player_id - data.current_player_id);
+    const hours = Math.max(0, Math.round(remaining / 3600000));
+    $("progressEta").textContent = hours ? `Примерно осталось: ${hours} ч.` : "Завершение ожидается менее чем через час";
+  } else {
+    $("progressEta").textContent = "Подготавливаем проверку…";
+  }
 }
 
 function fillDates(dates, selectedFrom, selectedTo) {
@@ -113,7 +156,7 @@ async function loadPlayers() {
     const gain = p.gain;
     return `<tr>
       <td class="rank" data-label="Место">${medal}</td>
-      <td class="player-name" data-label="Игрок"><a href="${p.profile_url}" target="_blank" rel="noreferrer">${escapeHtml(p.nickname)}</a></td>
+      <td class="player-name" data-label="Игрок"><a href="#playerDetail" class="internal-player" data-player-id="${p.id}">${escapeHtml(p.nickname)}</a></td>
       <td data-label="Уровень"><b class="level">${p.level ?? "—"}</b></td>
       <td class="group" data-label="Братство">${escapeHtml(p.brotherhood || "—")}</td>
       <td class="group" data-label="Клан">${escapeHtml(p.clan || "—")}</td>
@@ -123,7 +166,7 @@ async function loadPlayers() {
   }).join("") : `<tr><td colspan="7" class="loading">${data.dates?.length < 2 && state.mode !== "general" ? "Прирост появится после второго снимка статистики" : "Игроки не найдены"}</td></tr>`;
   const query = $("query").value.trim();
   if (query && data.players.length === 1) {
-    loadPlayerDetail(data.players[0].id).catch(hidePlayerDetail);
+    loadPlayerDetail(data.players[0].id, false).catch(hidePlayerDetail);
   } else {
     hidePlayerDetail();
   }
@@ -157,6 +200,33 @@ $("detailTo").onchange = renderPlayerDetail;
 $("prev").onclick = () => { if (state.page > 1) { state.page--; loadPlayers(); } };
 $("next").onclick = () => { if (state.page < state.pages) { state.page++; loadPlayers(); } };
 $("theme").onclick = () => document.body.classList.toggle("dark");
+$("filterToggle").onclick = () => {
+  $("filters").classList.toggle("mobile-open");
+  $("filterToggle").classList.toggle("active");
+};
+document.addEventListener("click", event => {
+  const link = event.target.closest(".internal-player");
+  if (!link) return;
+  event.preventDefault();
+  loadPlayerDetail(link.dataset.playerId).catch(hidePlayerDetail);
+});
+document.querySelectorAll("[data-mobile-mode]").forEach(button => {
+  button.onclick = () => {
+    document.querySelectorAll("[data-mobile-mode]").forEach(item => item.classList.remove("active"));
+    button.classList.add("active");
+    document.querySelector(`.modes button[data-mode="${button.dataset.mobileMode}"]`)?.click();
+    document.querySelector(".modes").scrollIntoView({ behavior: "smooth" });
+  };
+});
+$("mobilePlayer").onclick = () => {
+  if (!$("playerDetail").classList.contains("hidden")) {
+    $("playerDetail").scrollIntoView({ behavior: "smooth" });
+  } else {
+    $("filters").classList.add("mobile-open");
+    $("query").focus();
+    $("filters").scrollIntoView({ behavior: "smooth" });
+  }
+};
 
 loadStatus().catch(() => {});
 loadPlayers().catch(() => $("rows").innerHTML = '<tr><td colspan="7" class="loading">Не удалось загрузить данные</td></tr>');
