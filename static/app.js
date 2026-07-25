@@ -43,7 +43,7 @@ async function loadPlayers() {
     params.set("to", $("dateTo").value);
     if (state.mode === "growth") params.set("from", $("dateFrom").value);
   }
-  $("rows").innerHTML = '<tr><td colspan="6" class="loading">Загрузка…</td></tr>';
+  $("rows").innerHTML = '<tr><td colspan="7" class="loading">Загрузка…</td></tr>';
   const data = await fetch(`/api/players?${params}`).then(r => r.json());
   if (!state.datesLoaded && data.dates?.length) fillDates(data.dates, data.date_from, data.date_to);
   state.pages = Math.max(1, data.pages);
@@ -57,18 +57,18 @@ async function loadPlayers() {
   $("rows").innerHTML = data.players.length ? data.players.map((p, i) => {
     const rank = (state.page - 1) * 50 + i + 1;
     const medal = rank < 4 ? ["🥇","🥈","🥉"][rank - 1] : rank;
-    const group = p.brotherhood || p.clan || "—";
     const mainValue = state.mode === "general" ? p[sort] : p.gain;
     const gain = p.gain;
     return `<tr>
       <td class="rank">${medal}</td>
       <td><a href="${p.profile_url}" target="_blank" rel="noreferrer">${escapeHtml(p.nickname)}</a></td>
       <td><b class="level">${p.level ?? "—"}</b></td>
-      <td class="group">${escapeHtml(group)}</td>
+      <td class="group">${escapeHtml(p.brotherhood || "—")}</td>
+      <td class="group">${escapeHtml(p.clan || "—")}</td>
       <td class="value">${state.mode === "general" ? fmt(mainValue) : (mainValue == null ? "—" : `+${fmt(mainValue)}`)}</td>
       <td class="${gain > 0 ? "gain" : "muted"}">${gain > 0 ? `+${fmt(gain)}` : "—"}</td>
     </tr>`;
-  }).join("") : `<tr><td colspan="6" class="loading">${data.dates?.length < 2 && state.mode !== "general" ? "Прирост появится после второго снимка статистики" : "Игроки не найдены"}</td></tr>`;
+  }).join("") : `<tr><td colspan="7" class="loading">${data.dates?.length < 2 && state.mode !== "general" ? "Прирост появится после второго снимка статистики" : "Игроки не найдены"}</td></tr>`;
 }
 
 function escapeHtml(value) {
@@ -99,5 +99,5 @@ $("next").onclick = () => { if (state.page < state.pages) { state.page++; loadPl
 $("theme").onclick = () => document.body.classList.toggle("dark");
 
 loadStatus().catch(() => {});
-loadPlayers().catch(() => $("rows").innerHTML = '<tr><td colspan="6" class="loading">Не удалось загрузить данные</td></tr>');
+loadPlayers().catch(() => $("rows").innerHTML = '<tr><td colspan="7" class="loading">Не удалось загрузить данные</td></tr>');
 setInterval(() => loadStatus().catch(() => {}), 30000);
