@@ -467,7 +467,13 @@ if os.getenv("SCAN_ENABLED", "true").lower() == "true":
     )
     scheduler.start()
     if os.getenv("START_SCAN_ON_BOOT", "true").lower() == "true":
-        start_scan_thread()
+        scheduler.add_job(
+            start_scan_thread,
+            "date",
+            run_date=datetime.now(timezone.utc) + timedelta(seconds=20),
+            id="wekings-first-scan",
+            replace_existing=True,
+        )
 
 
 if __name__ == "__main__":
