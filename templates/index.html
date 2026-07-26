@@ -21,6 +21,7 @@
       <button data-mode="general" class="active">Общий</button>
       <button data-mode="growth">Прирост</button>
       <button data-mode="best">Лучшие приросты <small>за 30 дней</small></button>
+      <button data-mode="stats">Искать едину</button>
     </nav>
 
     <section id="scanProgress" class="scan-progress hidden">
@@ -84,8 +85,8 @@
         <span id="resultCount">—</span>
       </div>
       <div class="table-wrap">
-        <table>
-          <thead><tr><th>№</th><th>Игрок</th><th>Ур.</th><th>Братство</th><th>Клан</th><th id="metricTitle">Сила</th><th>Прирост</th></tr></thead>
+        <table id="rankingTable">
+          <thead id="tableHead"><tr><th>№</th><th>Игрок</th><th>Ур.</th><th>Братство</th><th>Клан</th><th id="metricTitle">Сила</th><th>Прирост</th></tr></thead>
           <tbody id="rows"><tr><td colspan="7" class="loading">Загрузка статистики…</td></tr></tbody>
         </table>
       </div>
