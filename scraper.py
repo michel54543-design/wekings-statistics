@@ -151,6 +151,8 @@ def parse_profile(player_id: int, html: str):
         return None
 
     level = number(text, "Уровень")
+    if level is not None and 1 <= level <= 4:
+        return {"id": player_id, "level": level, "_skip_low_level": True}
     glory_values = numbers(text, "Слава") or numbers(text, "Cлава")
     # В профиле может быть старая запись «Слава: 15436 15.08»,
     # а ниже — актуальная слава. Берём последнее значение из статистики.
@@ -249,7 +251,6 @@ def scan_all_players(db, Player, PlayerSnapshot, ScanState):
     state.max_player_id = max_id
     state.found_players = 0
     commit_with_retry(db)
-
     consecutive_auth_errors = 0
     for player_id in range(start_id, max_id + 1):
         try:
@@ -274,7 +275,7 @@ def scan_all_players(db, Player, PlayerSnapshot, ScanState):
             time.sleep(min(15, DELAY * 5))
             continue
 
-        if data:
+        if data and not data.get("_skip_low_level"):
             player = db.session.get(Player, player_id)
             if player is None:
                 player = Player(id=player_id, nickname=data["nickname"], scanned_at=datetime.now(timezone.utc))
