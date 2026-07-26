@@ -219,11 +219,15 @@ def api_players():
     query = request.args.get("q", "").strip()
     level = request.args.get("level", type=int)
     field_name = SORT_FIELDS.get(metric, "power")
+    scan_state = db.session.get(ScanState, 1)
+    dates_query = db.session.query(PlayerSnapshot.batch_at).distinct()
+    if scan_state.finished_at:
+        # Публикуем только полностью завершённые снимки. Текущий частичный
+        # сбор станет доступен сразу после проверки последнего игрока.
+        dates_query = dates_query.filter(PlayerSnapshot.batch_at <= scan_state.finished_at)
     dates = [
         row[0]
-        for row in db.session.query(PlayerSnapshot.batch_at)
-        .distinct()
-        .order_by(PlayerSnapshot.batch_at.desc())
+        for row in dates_query.order_by(PlayerSnapshot.batch_at.desc())
         .limit(100)
         .all()
     ]
@@ -406,11 +410,13 @@ def api_player_detail(player_id):
         "beasts_killed", "silver_stolen", "silver_lost",
         "crystals_stolen", "crystals_lost",
     ]
-    snapshots = (
-        PlayerSnapshot.query.filter_by(player_id=player_id)
-        .order_by(PlayerSnapshot.batch_at.asc())
-        .all()
-    )
+    snapshots_query = PlayerSnapshot.query.filter_by(player_id=player_id)
+    scan_state = db.session.get(ScanState, 1)
+    if scan_state.finished_at:
+        snapshots_query = snapshots_query.filter(
+            PlayerSnapshot.batch_at <= scan_state.finished_at
+        )
+    snapshots = snapshots_query.order_by(PlayerSnapshot.batch_at.asc()).all()
     history = [
         {
             "date": snapshot.batch_at.isoformat(),
