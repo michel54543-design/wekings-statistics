@@ -152,7 +152,7 @@ async function loadPlayers() {
     if (statsMode) {
       return `<tr class="stats-row">
         <td class="rank">${medal}</td>
-        <td class="player-name"><a href="#playerDetail" class="internal-player" data-player-id="${p.id}">${escapeHtml(p.nickname)}</a><small>${p.level ?? "—"}</small></td>
+        <td class="player-name"><a href="#playerDetail" class="internal-player" data-player-id="${p.id}">${escapeHtml(p.nickname)}</a><button class="copy-nick" data-nickname="${escapeHtml(p.nickname)}" title="Скопировать ник" aria-label="Скопировать ник">⧉</button><small>${p.level ?? "—"}</small></td>
         <td class="stat-number">${fmt(p.power)}</td>
         <td class="stat-number">${fmt(p.defense)}</td>
         <td class="stat-number">${fmt(p.agility)}</td>
@@ -164,7 +164,7 @@ async function loadPlayers() {
     const gain = p.gain;
     return `<tr>
       <td class="rank" data-label="Место">${medal}</td>
-      <td class="player-name" data-label="Игрок"><a href="#playerDetail" class="internal-player" data-player-id="${p.id}">${escapeHtml(p.nickname)}</a></td>
+      <td class="player-name" data-label="Игрок"><a href="#playerDetail" class="internal-player" data-player-id="${p.id}">${escapeHtml(p.nickname)}</a><button class="copy-nick" data-nickname="${escapeHtml(p.nickname)}" title="Скопировать ник" aria-label="Скопировать ник">⧉</button></td>
       <td data-label="Уровень"><b class="level">${p.level ?? "—"}</b></td>
       <td class="group" data-label="Братство">${escapeHtml(p.brotherhood || "—")}</td>
       <td class="group" data-label="Клан">${escapeHtml(p.clan || "—")}</td>
@@ -213,6 +213,28 @@ $("filterToggle").onclick = () => {
   $("filterToggle").classList.toggle("active");
 };
 document.addEventListener("click", event => {
+  const copyButton = event.target.closest(".copy-nick");
+  if (copyButton) {
+    event.preventDefault();
+    event.stopPropagation();
+    const nickname = copyButton.dataset.nickname;
+    const copy = navigator.clipboard?.writeText
+      ? navigator.clipboard.writeText(nickname)
+      : Promise.reject();
+    copy.catch(() => {
+      const input = document.createElement("textarea");
+      input.value = nickname;
+      document.body.appendChild(input);
+      input.select();
+      document.execCommand("copy");
+      input.remove();
+    }).finally(() => {
+      $("copyToast").classList.add("show");
+      clearTimeout(state.toastTimer);
+      state.toastTimer = setTimeout(() => $("copyToast").classList.remove("show"), 1600);
+    });
+    return;
+  }
   const link = event.target.closest(".internal-player");
   if (!link) return;
   event.preventDefault();
