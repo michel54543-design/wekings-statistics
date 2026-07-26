@@ -15,8 +15,6 @@ services:
           property: connectionString
       - key: SCAN_ENABLED
         value: "true"
-      - key: SCAN_INTERVAL_HOURS
-        value: "24"
       - key: REQUEST_DELAY
         value: "0.7"
       - key: START_SCAN_ON_BOOT

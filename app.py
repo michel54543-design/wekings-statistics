@@ -451,6 +451,7 @@ def run_scan():
     from scraper import scan_all_players
 
     with app.app_context():
+        next_scan_delay = None
         state = db.session.get(ScanState, 1)
         if state.running:
             return
@@ -465,6 +466,7 @@ def run_scan():
             state.finished_at = datetime.now(timezone.utc)
             state.last_error = None
             db.session.commit()
+            next_scan_delay = 10
         except Exception as exc:
             db.session.rollback()
             app.logger.exception("Wekings scan failed")
@@ -477,7 +479,7 @@ def run_scan():
                 db.session.rollback()
             # При временном обрыве базы продолжаем с последнего сохранённого
             # игрока через 5 минут, не создавая частых повторов.
-            threading.Timer(300, start_scan_thread).start()
+            next_scan_delay = 300
         finally:
             db.session.rollback()
             try:
@@ -487,6 +489,8 @@ def run_scan():
             except Exception:
                 db.session.rollback()
                 db.engine.dispose()
+            if next_scan_delay is not None:
+                threading.Timer(next_scan_delay, start_scan_thread).start()
 
 
 def start_scan_thread():
@@ -495,14 +499,6 @@ def start_scan_thread():
 
 if os.getenv("SCAN_ENABLED", "true").lower() == "true":
     scheduler = BackgroundScheduler(timezone="Europe/Chisinau")
-    scheduler.add_job(
-        start_scan_thread,
-        "interval",
-        hours=float(os.getenv("SCAN_INTERVAL_HOURS", "24")),
-        id="wekings-scan",
-        max_instances=1,
-        coalesce=True,
-    )
     scheduler.start()
     if os.getenv("START_SCAN_ON_BOOT", "true").lower() == "true":
         scheduler.add_job(
