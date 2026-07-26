@@ -136,15 +136,30 @@ async function loadPlayers() {
   if (!state.datesLoaded && data.dates?.length) fillDates(data.dates, data.date_from, data.date_to);
   state.pages = Math.max(1, data.pages);
   $("resultCount").textContent = `${fmt(data.total)} игроков`;
-  const prefix = state.mode === "general" ? "Рейтинг" : state.mode === "growth" ? "Прирост" : "Лучшие приросты";
-  $("tableTitle").textContent = `${prefix}: ${metricNames[sort]}`;
-  $("metricTitle").textContent = state.mode === "general" ? metricNames[sort] : "Прирост";
+  const statsMode = state.mode === "stats";
+  const prefix = state.mode === "general" ? "Рейтинг" : state.mode === "growth" ? "Прирост" : state.mode === "best" ? "Лучшие приросты" : "Все параметры";
+  $("tableTitle").textContent = statsMode ? "Параметры всех игроков" : `${prefix}: ${metricNames[sort]}`;
+  $("rankingTable").classList.toggle("stats-table", statsMode);
+  $("tableHead").innerHTML = statsMode
+    ? '<tr><th>№</th><th>Игрок</th><th>Сила</th><th>Защита</th><th>Ловкость</th><th>Мастерство</th><th>Живучесть</th></tr>'
+    : `<tr><th>№</th><th>Игрок</th><th>Ур.</th><th>Братство</th><th>Клан</th><th id="metricTitle">${state.mode === "general" ? metricNames[sort] : "Прирост"}</th><th>Прирост</th></tr>`;
   $("pageText").textContent = `Страница ${data.page} из ${state.pages}`;
   $("prev").disabled = state.page <= 1;
   $("next").disabled = state.page >= state.pages;
   $("rows").innerHTML = data.players.length ? data.players.map((p, i) => {
     const rank = (state.page - 1) * 50 + i + 1;
     const medal = rank < 4 ? ["🥇","🥈","🥉"][rank - 1] : rank;
+    if (statsMode) {
+      return `<tr class="stats-row">
+        <td class="rank">${medal}</td>
+        <td class="player-name"><a href="#playerDetail" class="internal-player" data-player-id="${p.id}">${escapeHtml(p.nickname)}</a><small>${p.level ?? "—"}</small></td>
+        <td class="stat-number">${fmt(p.power)}</td>
+        <td class="stat-number">${fmt(p.defense)}</td>
+        <td class="stat-number">${fmt(p.agility)}</td>
+        <td class="stat-number">${fmt(p.mastery)}</td>
+        <td class="stat-number">${fmt(p.vitality)}</td>
+      </tr>`;
+    }
     const mainValue = state.mode === "general" ? p[sort] : p.gain;
     const gain = p.gain;
     return `<tr>
@@ -175,10 +190,11 @@ document.querySelectorAll(".modes button").forEach(button => {
     button.classList.add("active");
     state.mode = button.dataset.mode;
     const growthDates = state.mode === "growth" && state.datesLoaded;
-    const generalDate = state.mode === "general" && state.datesLoaded;
+    const generalDate = ["general", "stats"].includes(state.mode) && state.datesLoaded;
     $("fromWrap").classList.toggle("hidden", !growthDates);
     $("toWrap").classList.toggle("hidden", !(growthDates || generalDate));
     $("toLabel").textContent = state.mode === "growth" ? "До" : "Снимок данных";
+    $("sort").closest("label").classList.toggle("hidden", state.mode === "stats");
     state.page = 1;
     loadPlayers();
   };
