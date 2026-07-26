@@ -1,4 +1,4 @@
-const state = { page: 1, pages: 1, mode: "general", datesLoaded: false, playerDetail: null };
+const state = { page: 1, pages: 1, mode: "general", datesLoaded: false, playerDetail: null, finishedAt: undefined };
 const metricNames = {
   glory: "Слава", stat_sum: "Сумма характеристик", power: "Сила",
   defense: "Защита", agility: "Ловкость", mastery: "Мастерство",
@@ -97,21 +97,18 @@ async function loadStatus() {
     : data.last_error ? "Обновление временно приостановлено — продолжится автоматически" : data.finished_at
       ? `Последнее обновление: ${new Date(data.finished_at).toLocaleString("ru-RU")}`
       : "Первый сбор данных ещё не запущен";
-  $("lastSnapshot").textContent = data.finished_at
-    ? `Готовый снимок: ${new Date(data.finished_at).toLocaleString("ru-RU")}`
-    : "";
   const percent = data.max_player_id ? Math.min(100, data.current_player_id / data.max_player_id * 100) : 0;
   $("scanProgress").classList.toggle("hidden", !data.running);
   $("progressPercent").textContent = `${percent.toFixed(1)}%`;
   $("progressBar").style.width = `${percent}%`;
-  if (data.running && data.started_at && data.current_player_id > 10) {
-    const elapsed = Date.now() - new Date(data.started_at).getTime();
-    const remaining = elapsed / data.current_player_id * (data.max_player_id - data.current_player_id);
-    const hours = Math.max(0, Math.round(remaining / 3600000));
-    $("progressEta").textContent = hours ? `Примерно осталось: ${hours} ч.` : "Завершение ожидается менее чем через час";
-  } else {
-    $("progressEta").textContent = "Подготавливаем проверку…";
+  $("progressEta").textContent = data.finished_at
+    ? `Последнее обновление: ${new Date(data.finished_at).toLocaleString("ru-RU")}`
+    : "Первое обновление готовится…";
+  if (state.finishedAt !== undefined && state.finishedAt !== data.finished_at && data.finished_at) {
+    state.datesLoaded = false;
+    await loadPlayers();
   }
+  state.finishedAt = data.finished_at;
 }
 
 function fillDates(dates, selectedFrom, selectedTo) {
