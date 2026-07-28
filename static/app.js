@@ -123,7 +123,7 @@ function fillDates(dates, selectedFrom, selectedTo) {
     year: "numeric"
   });
   const options = dailyDates.map(value =>
-    `<option value="${value}">${snapshotDateText(value)}</option>`
+    `<option value="${value}">Отчёт за ${snapshotDateText(value)}</option>`
   ).join("");
   $("dateFrom").innerHTML = options;
   $("dateTo").innerHTML = options;
