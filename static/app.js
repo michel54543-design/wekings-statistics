@@ -12,6 +12,22 @@ const $ = (id) => document.getElementById(id);
 const fmt = (v) => v == null ? "—" : Number(v).toLocaleString("ru-RU");
 const dateText = (value) => new Date(value).toLocaleString("ru-RU", {day:"2-digit",month:"2-digit",year:"numeric",hour:"2-digit",minute:"2-digit"});
 const detailMetricKeys = Object.keys(metricNames);
+const rankBadge = rank => rank < 4
+  ? `<span class="rank-medal place-${rank}">${rank}</span>`
+  : `<span class="rank-number">${rank}</span>`;
+
+function syncMobileNav() {
+  document.querySelectorAll(".mobile-nav button").forEach(item => item.classList.remove("active"));
+  if (["growth", "best"].includes(state.mode)) {
+    document.querySelector('[data-mobile-mode="growth"]')?.classList.add("active");
+  } else if (["clans", "brotherhoods"].includes(state.mode)) {
+    $("mobileGroups")?.classList.add("active");
+  } else if (state.mode === "stats") {
+    $("mobilePlayer")?.classList.add("active");
+  } else {
+    document.querySelector('[data-mobile-mode="general"]')?.classList.add("active");
+  }
+}
 
 function hidePlayerDetail() {
   state.playerDetail = null;
@@ -167,9 +183,9 @@ async function loadOrganizations() {
   }
   $("rows").innerHTML = data.organizations.length ? data.organizations.map((group, i) => {
     const rank = (state.page - 1) * 50 + i + 1;
-    const medal = rank < 4 ? ["🥇","🥈","🥉"][rank - 1] : rank;
+    const medal = rankBadge(rank);
     const members = group.members.map((member, memberIndex) => {
-      const memberPlace = memberIndex < 3 ? ["🥇", "🥈", "🥉"][memberIndex] : memberIndex + 1;
+      const memberPlace = rankBadge(memberIndex + 1);
       return (
       `<button class="org-player internal-player" data-player-id="${member.id}">
         <b class="org-player-place">${memberPlace}</b>
@@ -218,7 +234,9 @@ async function loadPlayers() {
   $("resultCount").textContent = `${fmt(data.total)} игроков`;
   const statsMode = state.mode === "stats";
   const prefix = state.mode === "general" ? "Рейтинг" : state.mode === "growth" ? "Прирост" : state.mode === "best" ? "Лучшие приросты" : "Все параметры";
-  $("tableTitle").textContent = statsMode ? "Параметры всех игроков" : `${prefix}: ${metricNames[sort]}`;
+  $("tableTitle").textContent = statsMode
+    ? "Параметры всех игроков"
+    : state.mode === "general" && sort === "power" ? "Рейтинг по силе" : `${prefix}: ${metricNames[sort]}`;
   $("rankingTable").classList.remove("organization-table");
   $("rankingTable").classList.toggle("stats-table", statsMode);
   $("tableHead").innerHTML = statsMode
@@ -229,7 +247,7 @@ async function loadPlayers() {
   $("next").disabled = state.page >= state.pages;
   $("rows").innerHTML = data.players.length ? data.players.map((p, i) => {
     const rank = (state.page - 1) * 50 + i + 1;
-    const medal = rank < 4 ? ["🥇","🥈","🥉"][rank - 1] : rank;
+    const medal = rankBadge(rank);
     if (statsMode) {
       return `<tr class="stats-row">
         <td class="rank">${medal}</td>
@@ -245,7 +263,7 @@ async function loadPlayers() {
     const gain = p.gain;
     return `<tr>
       <td class="rank" data-label="Место">${medal}</td>
-      <td class="player-name" data-label="Игрок"><a href="#playerDetail" class="internal-player" data-player-id="${p.id}">${escapeHtml(p.nickname)}</a><button class="copy-nick" data-nickname="${escapeHtml(p.nickname)}" title="Скопировать ник" aria-label="Скопировать ник">⧉</button></td>
+      <td class="player-name" data-label="Игрок"><a href="#playerDetail" class="internal-player" data-player-id="${p.id}">${escapeHtml(p.nickname)}</a><button class="copy-nick" data-nickname="${escapeHtml(p.nickname)}" title="Скопировать ник" aria-label="Скопировать ник">⧉</button><b class="mobile-level">${p.level ?? "—"}</b></td>
       <td data-label="Уровень"><b class="level">${p.level ?? "—"}</b></td>
       <td class="group" data-label="Братство">${escapeHtml(p.brotherhood || "—")}</td>
       <td class="group" data-label="Клан">${escapeHtml(p.clan || "—")}</td>
@@ -270,6 +288,7 @@ document.querySelectorAll(".modes button").forEach(button => {
     document.querySelectorAll(".modes button").forEach(item => item.classList.remove("active"));
     button.classList.add("active");
     state.mode = button.dataset.mode;
+    syncMobileNav();
     const growthDates = state.mode === "growth" && state.datesLoaded;
     const generalDate = ["general", "stats", "clans", "brotherhoods"].includes(state.mode) && state.datesLoaded;
     $("fromWrap").classList.toggle("hidden", !growthDates);
@@ -337,13 +356,16 @@ document.addEventListener("click", event => {
 });
 document.querySelectorAll("[data-mobile-mode]").forEach(button => {
   button.onclick = () => {
-    document.querySelectorAll("[data-mobile-mode]").forEach(item => item.classList.remove("active"));
-    button.classList.add("active");
     document.querySelector(`.modes button[data-mode="${button.dataset.mobileMode}"]`)?.click();
     document.querySelector(".modes").scrollIntoView({ behavior: "smooth" });
   };
 });
+$("mobileGroups").onclick = () => {
+  document.querySelector('.modes button[data-mode="clans"]')?.click();
+  document.querySelector(".modes").scrollIntoView({ behavior: "smooth" });
+};
 $("mobilePlayer").onclick = () => {
+  document.querySelector('.modes button[data-mode="stats"]')?.click();
   if (!$("playerDetail").classList.contains("hidden")) {
     $("playerDetail").scrollIntoView({ behavior: "smooth" });
   } else {
@@ -353,6 +375,10 @@ $("mobilePlayer").onclick = () => {
   }
 };
 
+$("todayBadge").textContent = new Date().toLocaleDateString("ru-RU", {
+  day: "2-digit", month: "short"
+}).replace(".", "").toUpperCase();
+syncMobileNav();
 loadStatus().catch(() => {});
 loadPlayers().catch(() => $("rows").innerHTML = '<tr><td colspan="7" class="loading">Не удалось загрузить данные</td></tr>');
 setInterval(() => loadStatus().catch(() => {}), 30000);
