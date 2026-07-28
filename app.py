@@ -376,6 +376,137 @@ def api_players():
     )
 
 
+def completed_snapshot_dates():
+    scan_state = db.session.get(ScanState, 1)
+    query = db.session.query(PlayerSnapshot.batch_at).distinct()
+    if scan_state and scan_state.finished_at:
+        query = query.filter(PlayerSnapshot.batch_at <= scan_state.finished_at)
+    return [row[0] for row in query.order_by(PlayerSnapshot.batch_at.desc()).limit(100).all()]
+
+
+def valid_group_name(value):
+    if not value:
+        return False
+    normalized = value.strip().lower().replace("ё", "е")
+    if not normalized or normalized in {"—", "-", "нет", "none"}:
+        return False
+    return not any(
+        phrase in normalized
+        for phrase in (
+            "не состоит в клане",
+            "не состоит в братстве",
+            "не состоит",
+        )
+    )
+
+
+@app.get("/api/organizations")
+def api_organizations():
+    organization_type = request.args.get("type", "clan")
+    if organization_type not in {"clan", "brotherhood"}:
+        return jsonify(error="Неизвестный тип рейтинга"), 400
+
+    page = max(1, request.args.get("page", 1, type=int))
+    per_page = min(100, max(10, request.args.get("per_page", 50, type=int)))
+    dates = completed_snapshot_dates()
+    if len(dates) < 2:
+        return jsonify(
+            organizations=[],
+            page=1,
+            pages=1,
+            total=0,
+            dates=[value.isoformat() for value in dates],
+            ready=False,
+        )
+
+    def parse_date(value, fallback):
+        if not value:
+            return fallback
+        try:
+            parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+            return parsed if parsed in dates else fallback
+        except ValueError:
+            return fallback
+
+    date_to = parse_date(request.args.get("to"), dates[0])
+    date_to_index = dates.index(date_to)
+    date_from = dates[min(date_to_index + 1, len(dates) - 1)]
+    group_column = (
+        PlayerSnapshot.clan
+        if organization_type == "clan"
+        else PlayerSnapshot.brotherhood
+    )
+    rows = (
+        db.session.query(
+            PlayerSnapshot.player_id,
+            PlayerSnapshot.nickname,
+            PlayerSnapshot.level,
+            PlayerSnapshot.stat_sum,
+            group_column.label("group_name"),
+            PlayerSnapshot.batch_at,
+        )
+        .filter(PlayerSnapshot.batch_at.in_([date_from, date_to]))
+        .all()
+    )
+
+    current_groups = {}
+    previous_groups = {}
+    for row in rows:
+        if not valid_group_name(row.group_name):
+            continue
+        name = row.group_name.strip()
+        destination = current_groups if row.batch_at == date_to else previous_groups
+        destination.setdefault(name, {})[row.player_id] = {
+            "id": row.player_id,
+            "nickname": row.nickname,
+            "level": row.level,
+            "stat_sum": row.stat_sum or 0,
+        }
+
+    organizations = []
+    for name, current_members in current_groups.items():
+        previous_members = previous_groups.get(name, {})
+        current_ids = set(current_members)
+        previous_ids = set(previous_members)
+        stat_sum = sum(member["stat_sum"] for member in current_members.values())
+        previous_stat_sum = sum(member["stat_sum"] for member in previous_members.values())
+        joined = [current_members[player_id] for player_id in current_ids - previous_ids]
+        left = [previous_members[player_id] for player_id in previous_ids - current_ids]
+        members = sorted(
+            current_members.values(),
+            key=lambda member: (-member["stat_sum"], member["nickname"].lower()),
+        )
+        organizations.append(
+            {
+                "name": name,
+                "member_count": len(current_members),
+                "member_delta": len(current_members) - len(previous_members),
+                "stat_sum": stat_sum,
+                "stat_delta": stat_sum - previous_stat_sum,
+                "members": members,
+                "joined": sorted(joined, key=lambda member: member["nickname"].lower()),
+                "left": sorted(left, key=lambda member: member["nickname"].lower()),
+            }
+        )
+
+    organizations.sort(key=lambda group: (-group["stat_sum"], group["name"].lower()))
+    total = len(organizations)
+    pages = max(1, (total + per_page - 1) // per_page)
+    page = min(page, pages)
+    start = (page - 1) * per_page
+    return jsonify(
+        organizations=organizations[start : start + per_page],
+        page=page,
+        pages=pages,
+        total=total,
+        dates=[value.isoformat() for value in dates],
+        date_from=date_from.isoformat(),
+        date_to=date_to.isoformat(),
+        ready=True,
+        type=organization_type,
+    )
+
+
 @app.get("/api/status")
 def api_status():
     try:
