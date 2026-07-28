@@ -119,10 +119,72 @@ function fillDates(dates, selectedFrom, selectedTo) {
   $("dateFrom").value = selectedFrom || dates[Math.min(1, dates.length - 1)];
   $("dateTo").value = selectedTo || dates[0];
   state.datesLoaded = true;
-  if (state.mode === "general") $("toWrap").classList.remove("hidden");
+  if (["general", "stats", "clans", "brotherhoods"].includes(state.mode)) {
+    $("toWrap").classList.remove("hidden");
+  }
+}
+
+const isOrganizationMode = () => ["clans", "brotherhoods"].includes(state.mode);
+
+function signedValue(value) {
+  if (value == null || Number(value) === 0) return '<span class="change-zero">—</span>';
+  const number = Number(value);
+  return `<span class="${number > 0 ? "change-up" : "change-down"}">${number > 0 ? "+" : "−"}${fmt(Math.abs(number))}</span>`;
+}
+
+async function loadOrganizations() {
+  const type = state.mode === "clans" ? "clan" : "brotherhood";
+  const params = new URLSearchParams({ type, page: state.page, per_page: 50 });
+  if (state.datesLoaded && $("dateTo").value) params.set("to", $("dateTo").value);
+  $("rows").innerHTML = '<tr><td colspan="5" class="loading">Считаем рейтинг…</td></tr>';
+  const data = await fetch(`/api/organizations?${params}`).then(r => r.json());
+  if (!state.datesLoaded && data.dates?.length) fillDates(data.dates, data.date_from, data.date_to);
+  state.pages = Math.max(1, data.pages || 1);
+  const title = type === "clan" ? "Рейтинг кланов" : "Рейтинг братств";
+  $("tableTitle").textContent = title;
+  $("resultCount").textContent = `${fmt(data.total)} ${type === "clan" ? "кланов" : "братств"}`;
+  $("rankingTable").className = "organization-table";
+  $("tableHead").innerHTML = `<tr><th>№</th><th>${type === "clan" ? "Клан" : "Братство"}</th><th>Игроков</th><th>Сумма статов</th><th>Изменение</th></tr>`;
+  $("pageText").textContent = `Страница ${data.page || 1} из ${state.pages}`;
+  $("prev").disabled = state.page <= 1;
+  $("next").disabled = state.page >= state.pages;
+  if (!data.ready) {
+    $("rows").innerHTML = '<tr><td colspan="5" class="loading">Рейтинг появится после двух завершённых снимков статистики</td></tr>';
+    return;
+  }
+  $("rows").innerHTML = data.organizations.length ? data.organizations.map((group, i) => {
+    const rank = (state.page - 1) * 50 + i + 1;
+    const medal = rank < 4 ? ["🥇","🥈","🥉"][rank - 1] : rank;
+    const members = group.members.map(member =>
+      `<button class="org-player internal-player" data-player-id="${member.id}">
+        <span>${escapeHtml(member.nickname)}</span><small>ур. ${member.level ?? "—"} · ${fmt(member.stat_sum)}</small>
+      </button>`
+    ).join("");
+    const joined = group.joined.length
+      ? `<div class="membership-list joined"><strong>Пришли:</strong> ${group.joined.map(member => escapeHtml(member.nickname)).join(", ")}</div>`
+      : "";
+    const left = group.left.length
+      ? `<div class="membership-list left"><strong>Ушли:</strong> ${group.left.map(member => escapeHtml(member.nickname)).join(", ")}</div>`
+      : "";
+    return `<tr class="organization-row" data-org-index="${i}">
+      <td class="rank">${medal}</td>
+      <td class="organization-name"><button class="organization-toggle" aria-expanded="false"><span>▶</span>${escapeHtml(group.name)}</button></td>
+      <td class="member-count">${group.member_count} ${signedValue(group.member_delta)}</td>
+      <td class="value">${fmt(group.stat_sum)}</td>
+      <td class="organization-change">${signedValue(group.stat_delta)}</td>
+    </tr>
+    <tr class="organization-members hidden" data-members-index="${i}">
+      <td colspan="5">
+        <div class="membership-changes">${joined}${left}</div>
+        <div class="organization-player-list">${members}</div>
+      </td>
+    </tr>`;
+  }).join("") : '<tr><td colspan="5" class="loading">Организации не найдены</td></tr>';
+  hidePlayerDetail();
 }
 
 async function loadPlayers() {
+  if (isOrganizationMode()) return loadOrganizations();
   const sort = $("sort").value;
   const params = new URLSearchParams({ page: state.page, per_page: 50, sort, mode: state.mode });
   if ($("query").value.trim()) params.set("q", $("query").value.trim());
@@ -139,6 +201,7 @@ async function loadPlayers() {
   const statsMode = state.mode === "stats";
   const prefix = state.mode === "general" ? "Рейтинг" : state.mode === "growth" ? "Прирост" : state.mode === "best" ? "Лучшие приросты" : "Все параметры";
   $("tableTitle").textContent = statsMode ? "Параметры всех игроков" : `${prefix}: ${metricNames[sort]}`;
+  $("rankingTable").classList.remove("organization-table");
   $("rankingTable").classList.toggle("stats-table", statsMode);
   $("tableHead").innerHTML = statsMode
     ? '<tr><th>№</th><th>Игрок</th><th>Сила</th><th>Защита</th><th>Ловкость</th><th>Мастерство</th><th>Живучесть</th></tr>'
@@ -190,11 +253,15 @@ document.querySelectorAll(".modes button").forEach(button => {
     button.classList.add("active");
     state.mode = button.dataset.mode;
     const growthDates = state.mode === "growth" && state.datesLoaded;
-    const generalDate = ["general", "stats"].includes(state.mode) && state.datesLoaded;
+    const generalDate = ["general", "stats", "clans", "brotherhoods"].includes(state.mode) && state.datesLoaded;
     $("fromWrap").classList.toggle("hidden", !growthDates);
     $("toWrap").classList.toggle("hidden", !(growthDates || generalDate));
     $("toLabel").textContent = state.mode === "growth" ? "До" : "Снимок данных";
-    $("sort").closest("label").classList.toggle("hidden", state.mode === "stats");
+    const organizations = isOrganizationMode();
+    $("sort").closest("label").classList.toggle("hidden", state.mode === "stats" || organizations);
+    $("level").closest("label").classList.toggle("hidden", organizations);
+    $("query").closest("label").classList.toggle("hidden", organizations);
+    $("find").classList.toggle("hidden", organizations);
     state.page = 1;
     loadPlayers();
   };
@@ -213,6 +280,16 @@ $("filterToggle").onclick = () => {
   $("filterToggle").classList.toggle("active");
 };
 document.addEventListener("click", event => {
+  const organizationToggle = event.target.closest(".organization-toggle");
+  if (organizationToggle) {
+    const row = organizationToggle.closest(".organization-row");
+    const membersRow = document.querySelector(`[data-members-index="${row.dataset.orgIndex}"]`);
+    const willOpen = membersRow.classList.contains("hidden");
+    membersRow.classList.toggle("hidden", !willOpen);
+    organizationToggle.setAttribute("aria-expanded", String(willOpen));
+    organizationToggle.querySelector("span").textContent = willOpen ? "▼" : "▶";
+    return;
+  }
   const copyButton = event.target.closest(".copy-nick");
   if (copyButton) {
     event.preventDefault();
