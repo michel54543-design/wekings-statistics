@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import os
 import re
+import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from urllib.parse import urljoin
 
@@ -13,7 +15,9 @@ from bs4 import BeautifulSoup
 BASE_URL = os.getenv("WEKINGS_BASE_URL", "https://wekings.online").rstrip("/")
 DELAY = max(0.3, float(os.getenv("REQUEST_DELAY", "0.7")))
 TIMEOUT = int(os.getenv("REQUEST_TIMEOUT", "25"))
-SAVE_EVERY = int(os.getenv("SAVE_EVERY", "1"))
+SAVE_EVERY = max(3, int(os.getenv("SAVE_EVERY", "20")))
+SCAN_WORKERS = min(4, max(1, int(os.getenv("SCAN_WORKERS", "3"))))
+_worker_context = threading.local()
 
 
 def commit_with_retry(db):
@@ -227,9 +231,56 @@ def parse_profile(player_id: int, html: str):
     }
 
 
+def reset_worker_session():
+    session = getattr(_worker_context, "session", None)
+    if session is not None:
+        session.close()
+    _worker_context.session = None
+    _worker_context.base_url = None
+
+
+def worker_session():
+    session = getattr(_worker_context, "session", None)
+    base_url = getattr(_worker_context, "base_url", None)
+    if session is None or base_url is None:
+        session, _, base_url = create_guest_session()
+        _worker_context.session = session
+        _worker_context.base_url = base_url
+    return session, base_url
+
+
+def fetch_profile(player_id: int):
+    """Загружает один профиль в рабочем потоке, не обращаясь к базе."""
+    last_error = None
+    for attempt in range(3):
+        try:
+            session, base_url = worker_session()
+            response = session.get(
+                f"{base_url}/hero/detail",
+                params={"player": player_id},
+                timeout=TIMEOUT,
+            )
+            if response.status_code == 404:
+                time.sleep(DELAY)
+                return None
+            response.raise_for_status()
+            data = parse_profile(player_id, response.text)
+            time.sleep(DELAY)
+            return data
+        except (PermissionError, requests.RequestException, RuntimeError) as exc:
+            last_error = exc
+            reset_worker_session()
+            if attempt < 2:
+                time.sleep(min(8, DELAY * (attempt + 2)))
+    raise RuntimeError(
+        f"Не удалось загрузить профиль игрока №{player_id} после 3 попыток: {last_error}"
+    )
+
+
 def scan_all_players(db, Player, PlayerSnapshot, ScanState):
-    session, home_html, active_base_url = create_guest_session()
+    session, home_html, _ = create_guest_session()
     max_id = discover_max_id(home_html)
+    session.close()
     state = db.session.get(ScanState, 1)
     if db.session.query(PlayerSnapshot.id).first() is None:
         start_id = 1
@@ -251,68 +302,76 @@ def scan_all_players(db, Player, PlayerSnapshot, ScanState):
     state.max_player_id = max_id
     state.found_players = 0
     commit_with_retry(db)
-    consecutive_auth_errors = 0
-    for player_id in range(start_id, max_id + 1):
-        try:
-            response = session.get(
-                f"{active_base_url}/hero/detail",
-                params={"player": player_id},
-                timeout=TIMEOUT,
+    pending_since_commit = 0
+    with ThreadPoolExecutor(
+        max_workers=SCAN_WORKERS,
+        thread_name_prefix="wekings-profile",
+    ) as executor:
+        for batch_start in range(start_id, max_id + 1, SCAN_WORKERS):
+            player_ids = list(
+                range(batch_start, min(batch_start + SCAN_WORKERS, max_id + 1))
             )
-            if response.status_code == 404:
-                state.current_player_id = player_id + 1
-                continue
-            response.raise_for_status()
-            data = parse_profile(player_id, response.text)
-            consecutive_auth_errors = 0
-        except PermissionError:
-            consecutive_auth_errors += 1
-            if consecutive_auth_errors > 2:
-                session, _, active_base_url = create_guest_session()
-                consecutive_auth_errors = 0
-            continue
-        except requests.RequestException:
-            time.sleep(min(15, DELAY * 5))
-            continue
-
-        if data and not data.get("_skip_low_level"):
-            player = db.session.get(Player, player_id)
-            if player is None:
-                player = Player(id=player_id, nickname=data["nickname"], scanned_at=datetime.now(timezone.utc))
-                db.session.add(player)
-            else:
-                player.previous_glory = player.glory
-                player.previous_stat_sum = player.stat_sum
-            player_fields = {
-                "nickname", "level", "glory", "power", "defense", "agility",
-                "mastery", "vitality", "stat_sum", "wins", "losses",
-                "dragon_wins", "serpent_wins", "clan", "brotherhood",
-                "last_activity",
+            futures = {
+                player_id: executor.submit(fetch_profile, player_id)
+                for player_id in player_ids
             }
-            for field, value in data.items():
-                if field in player_fields:
-                    setattr(player, field, value)
-            player.scanned_at = datetime.now(timezone.utc)
-            with db.session.no_autoflush:
-                snapshot = PlayerSnapshot.query.filter_by(
-                    player_id=player_id, batch_at=batch_at
-                ).first()
-            if snapshot is None:
-                snapshot = PlayerSnapshot(
-                    player_id=player_id,
-                    batch_at=batch_at,
-                    nickname=data["nickname"],
-                )
-                db.session.add(snapshot)
-            for field, value in data.items():
-                if field not in {"id", "last_activity"}:
-                    setattr(snapshot, field, value)
-            state.found_players += 1
+            try:
+                # Получаем результаты в порядке ID. В базу пишет только главный
+                # поток, поэтому SQLAlchemy-сессия остаётся безопасной.
+                results = [
+                    (player_id, futures[player_id].result())
+                    for player_id in player_ids
+                ]
+            except Exception:
+                state.current_player_id = batch_start
+                commit_with_retry(db)
+                raise
 
-        state.current_player_id = player_id + 1
-        if player_id % SAVE_EVERY == 0:
-            commit_with_retry(db)
-        time.sleep(DELAY)
+            for player_id, data in results:
+                if data and not data.get("_skip_low_level"):
+                    player = db.session.get(Player, player_id)
+                    if player is None:
+                        player = Player(
+                            id=player_id,
+                            nickname=data["nickname"],
+                            scanned_at=datetime.now(timezone.utc),
+                        )
+                        db.session.add(player)
+                    else:
+                        player.previous_glory = player.glory
+                        player.previous_stat_sum = player.stat_sum
+                    player_fields = {
+                        "nickname", "level", "glory", "power", "defense",
+                        "agility", "mastery", "vitality", "stat_sum", "wins",
+                        "losses", "dragon_wins", "serpent_wins", "clan",
+                        "brotherhood", "last_activity",
+                    }
+                    for field, value in data.items():
+                        if field in player_fields:
+                            setattr(player, field, value)
+                    player.scanned_at = datetime.now(timezone.utc)
+                    with db.session.no_autoflush:
+                        snapshot = PlayerSnapshot.query.filter_by(
+                            player_id=player_id,
+                            batch_at=batch_at,
+                        ).first()
+                    if snapshot is None:
+                        snapshot = PlayerSnapshot(
+                            player_id=player_id,
+                            batch_at=batch_at,
+                            nickname=data["nickname"],
+                        )
+                        db.session.add(snapshot)
+                    for field, value in data.items():
+                        if field not in {"id", "last_activity", "_skip_low_level"}:
+                            setattr(snapshot, field, value)
+                    state.found_players += 1
+
+            state.current_player_id = player_ids[-1] + 1
+            pending_since_commit += len(player_ids)
+            if pending_since_commit >= SAVE_EVERY:
+                commit_with_retry(db)
+                pending_since_commit = 0
 
     state.current_player_id = 1
     commit_with_retry(db)
