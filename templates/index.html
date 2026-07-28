@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <meta name="theme-color" content="#0d1627">
+  <meta name="theme-color" content="#090908">
   <title>Wekings — статистика игроков</title>
   <link rel="icon" href="/static/favicon.ico" sizes="any">
   <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
@@ -12,24 +12,25 @@
 </head>
 <body class="dark">
   <main class="page">
-    <header>
-      <div>
-        <p class="brand">WEKINGS.ONLINE</p>
-        <h1>Статистика игроков</h1>
+    <header class="site-header">
+      <img class="site-mark" src="/static/wekings-gold.svg" alt="">
+      <div class="site-heading">
+        <p class="brand">WEKINGS</p>
+        <h1>Wekings Статистика</h1>
         <p class="status"><i></i><span id="statusText">Проверяем состояние базы…</span></p>
       </div>
+      <time id="todayBadge" class="today-badge"></time>
     </header>
 
     <nav class="modes" aria-label="Режим статистики">
-      <button data-mode="general" class="active">Общий</button>
-      <button data-mode="growth">Прирост</button>
-      <button data-mode="best">Лучшие приросты <small>за 30 дней</small></button>
-      <button data-mode="stats">Искать едину</button>
-      <button data-mode="clans">Кланы</button>
-      <button data-mode="brotherhoods">Братства</button>
+      <button data-mode="general" class="active"><span class="mode-icon">▥</span>Общий</button>
+      <button data-mode="growth"><span class="mode-icon">↗</span>Прирост</button>
+      <button data-mode="best"><span class="mode-icon">★</span>Лучшие <small>за 30 дней</small></button>
+      <button data-mode="stats"><span class="mode-icon">≡</span>Едина</button>
+      <button data-mode="clans"><span class="mode-icon">♜</span>Кланы</button>
+      <button data-mode="brotherhoods"><span class="mode-icon">♛</span>Братства</button>
     </nav>
 
-    <button id="filterToggle" class="filter-toggle">⚙ Фильтры</button>
     <section id="filters" class="controls">
       <label id="fromWrap" class="date-control hidden"><span>От</span><select id="dateFrom"></select></label>
       <label id="toWrap" class="date-control hidden"><span id="toLabel">Снимок данных</span><select id="dateTo"></select></label>
@@ -56,6 +57,7 @@
       <label><span>Уровень</span><input id="level" type="number" min="1" placeholder="Все"></label>
       <label class="search"><span>Поиск по нику</span><input id="query" placeholder="Введите ник игрока…"></label>
       <button id="find">Найти</button>
+      <button id="filterToggle" class="filter-toggle" title="Дополнительные фильтры" aria-label="Дополнительные фильтры">☷</button>
     </section>
 
     <section id="playerDetail" class="player-detail hidden">
@@ -97,9 +99,10 @@
     </section>
   </main>
   <nav class="mobile-nav" aria-label="Основные разделы">
-    <button data-mobile-mode="general" class="active"><span>🏆</span>Рейтинг</button>
-    <button data-mobile-mode="growth"><span>📈</span>Прирост</button>
-    <button id="mobilePlayer"><span>👤</span>Игрок</button>
+    <button data-mobile-mode="general" class="active"><span class="nav-icon">♜</span>Топ</button>
+    <button data-mobile-mode="growth"><span class="nav-icon">↗</span>Прирост</button>
+    <button id="mobileGroups"><span class="nav-icon">♛</span>Группы</button>
+    <button id="mobilePlayer"><span class="nav-icon">♙</span>Игрок</button>
   </nav>
   <div id="copyToast" class="copy-toast" role="status">Ник скопирован</div>
   <script src="/static/app.js"></script>
