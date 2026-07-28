@@ -597,7 +597,6 @@ def run_scan():
             state.finished_at = datetime.now(timezone.utc)
             state.last_error = None
             db.session.commit()
-            next_scan_delay = 10
         except Exception as exc:
             db.session.rollback()
             app.logger.exception("Wekings scan failed")
@@ -628,12 +627,38 @@ def start_scan_thread():
     threading.Thread(target=run_scan, daemon=True, name="wekings-scan").start()
 
 
+def start_scan_on_boot_if_needed():
+    """На старте возобновляет прерванный сбор или запускает самый первый."""
+    with app.app_context():
+        state = db.session.get(ScanState, 1)
+        has_snapshots = db.session.query(PlayerSnapshot.id).first() is not None
+        should_start = not has_snapshots or state.current_player_id > 1
+    if should_start:
+        start_scan_thread()
+
+
 if os.getenv("SCAN_ENABLED", "true").lower() == "true":
     scheduler = BackgroundScheduler(timezone="Europe/Chisinau")
     scheduler.start()
-    if os.getenv("START_SCAN_ON_BOOT", "true").lower() == "true":
+    for job_id, hour, minute in (
+        ("wekings-night-scan", 0, 15),
+        ("wekings-day-scan", 8, 15),
+        ("wekings-evening-scan", 18, 0),
+    ):
         scheduler.add_job(
             start_scan_thread,
+            "cron",
+            hour=hour,
+            minute=minute,
+            id=job_id,
+            replace_existing=True,
+            coalesce=True,
+            max_instances=1,
+            misfire_grace_time=900,
+        )
+    if os.getenv("START_SCAN_ON_BOOT", "true").lower() == "true":
+        scheduler.add_job(
+            start_scan_on_boot_if_needed,
             "date",
             run_date=datetime.now(timezone.utc) + timedelta(seconds=20),
             id="wekings-first-scan",
