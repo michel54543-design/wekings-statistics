@@ -97,13 +97,6 @@ async function loadStatus() {
     : data.last_error ? "Обновление временно приостановлено — продолжится автоматически" : data.finished_at
       ? `Последнее обновление: ${new Date(data.finished_at).toLocaleString("ru-RU")}`
       : "Первый сбор данных ещё не запущен";
-  const percent = data.max_player_id ? Math.min(100, data.current_player_id / data.max_player_id * 100) : 0;
-  $("scanProgress").classList.toggle("hidden", !data.running);
-  $("progressPercent").textContent = `${percent.toFixed(1)}%`;
-  $("progressBar").style.width = `${percent}%`;
-  $("progressEta").textContent = data.finished_at
-    ? `Последнее обновление: ${new Date(data.finished_at).toLocaleString("ru-RU")}`
-    : "Первое обновление готовится…";
   if (state.finishedAt !== undefined && state.finishedAt !== data.finished_at && data.finished_at) {
     state.datesLoaded = false;
     await loadPlayers();
@@ -113,11 +106,31 @@ async function loadStatus() {
 
 function fillDates(dates, selectedFrom, selectedTo) {
   if (!dates?.length) return;
-  const options = dates.map(value => `<option value="${value}">${dateText(value)}</option>`).join("");
+  const dayKey = value => {
+    const date = new Date(value);
+    return `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
+  };
+  const seenDays = new Set();
+  const dailyDates = dates.filter(value => {
+    const key = dayKey(value);
+    if (seenDays.has(key)) return false;
+    seenDays.add(key);
+    return true;
+  });
+  const snapshotDateText = value => new Date(value).toLocaleDateString("ru-RU", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric"
+  });
+  const options = dailyDates.map(value =>
+    `<option value="${value}">${snapshotDateText(value)}</option>`
+  ).join("");
   $("dateFrom").innerHTML = options;
   $("dateTo").innerHTML = options;
-  $("dateFrom").value = selectedFrom || dates[Math.min(1, dates.length - 1)];
-  $("dateTo").value = selectedTo || dates[0];
+  $("dateFrom").value = dailyDates.includes(selectedFrom)
+    ? selectedFrom
+    : dailyDates[Math.min(1, dailyDates.length - 1)];
+  $("dateTo").value = dailyDates.includes(selectedTo) ? selectedTo : dailyDates[0];
   state.datesLoaded = true;
   if (["general", "stats", "clans", "brotherhoods"].includes(state.mode)) {
     $("toWrap").classList.remove("hidden");
