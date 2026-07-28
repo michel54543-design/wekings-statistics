@@ -155,11 +155,16 @@ async function loadOrganizations() {
   $("rows").innerHTML = data.organizations.length ? data.organizations.map((group, i) => {
     const rank = (state.page - 1) * 50 + i + 1;
     const medal = rank < 4 ? ["🥇","🥈","🥉"][rank - 1] : rank;
-    const members = group.members.map(member =>
+    const members = group.members.map((member, memberIndex) => {
+      const memberPlace = memberIndex < 3 ? ["🥇", "🥈", "🥉"][memberIndex] : memberIndex + 1;
+      return (
       `<button class="org-player internal-player" data-player-id="${member.id}">
-        <span>${escapeHtml(member.nickname)}</span><small>ур. ${member.level ?? "—"} · ${fmt(member.stat_sum)}</small>
+        <b class="org-player-place">${memberPlace}</b>
+        <span>${escapeHtml(member.nickname)}</span>
+        <small>ур. ${member.level ?? "—"} · ${fmt(member.stat_sum)}</small>
       </button>`
-    ).join("");
+      );
+    }).join("");
     const joined = group.joined.length
       ? `<div class="membership-list joined"><strong>Пришли:</strong> ${group.joined.map(member => escapeHtml(member.nickname)).join(", ")}</div>`
       : "";
