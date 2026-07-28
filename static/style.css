@@ -153,7 +153,7 @@ body.dark .card-head>span{border:1px solid #4e432c;background:#1d1a14;color:var(
   footer{padding:9px 10px}footer button{padding:7px 10px;background:#1c1913;color:var(--gold)}
   .filter-toggle+.controls{margin-top:0}
   .scan-progress{margin-bottom:10px;border-color:var(--gold-line);border-radius:10px;padding:10px 12px}
-  .mobile-nav{grid-template-columns:repeat(4,1fr);padding:6px 8px max(6px,env(safe-area-inset-bottom));border-top:1px solid #5d4926;background:#0b0b09f7;box-shadow:0 -8px 28px #000b}
+  .mobile-nav{grid-template-columns:repeat(3,1fr);padding:6px 8px max(6px,env(safe-area-inset-bottom));border-top:1px solid #5d4926;background:#0b0b09f7;box-shadow:0 -8px 28px #000b}
   .mobile-nav button{padding:2px 0;color:#817b71;font-family:Georgia,"Times New Roman",serif;font-size:9px}
   .mobile-nav .nav-icon{display:block;margin:0 0 2px;color:#817b71;font-size:19px;line-height:1}
   .mobile-nav button.active{color:var(--gold-bright)}.mobile-nav button.active .nav-icon{color:var(--gold)}

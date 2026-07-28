@@ -20,8 +20,6 @@ function syncMobileNav() {
   document.querySelectorAll(".mobile-nav button").forEach(item => item.classList.remove("active"));
   if (["growth", "best"].includes(state.mode)) {
     document.querySelector('[data-mobile-mode="growth"]')?.classList.add("active");
-  } else if (["clans", "brotherhoods"].includes(state.mode)) {
-    $("mobileGroups")?.classList.add("active");
   } else if (state.mode === "stats") {
     $("mobilePlayer")?.classList.add("active");
   } else {
@@ -360,10 +358,6 @@ document.querySelectorAll("[data-mobile-mode]").forEach(button => {
     document.querySelector(".modes").scrollIntoView({ behavior: "smooth" });
   };
 });
-$("mobileGroups").onclick = () => {
-  document.querySelector('.modes button[data-mode="clans"]')?.click();
-  document.querySelector(".modes").scrollIntoView({ behavior: "smooth" });
-};
 $("mobilePlayer").onclick = () => {
   document.querySelector('.modes button[data-mode="stats"]')?.click();
   if (!$("playerDetail").classList.contains("hidden")) {
