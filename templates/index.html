@@ -54,7 +54,11 @@
           <option value="crystals_lost">Потерял (кристаллы)</option>
         </select>
       </label>
-      <label><span>Уровень</span><input id="level" type="number" min="1" placeholder="Введите уровень"></label>
+      <label><span>Уровень</span>
+        <select id="level">
+          <option value="">Введите уровень</option>
+        </select>
+      </label>
       <label class="search"><span>Поиск по нику</span><input id="query" placeholder="Введите ник игрока…"></label>
       <button id="find">Найти</button>
       <button id="filterToggle" class="filter-toggle" title="Дополнительные фильтры" aria-label="Дополнительные фильтры">☷</button>
@@ -72,10 +76,6 @@
       <div class="detail-dates">
         <label><span>Сравнить от</span><select id="detailFrom"></select></label>
         <label><span>до</span><select id="detailTo"></select></label>
-      </div>
-      <div class="detail-chart">
-        <div><strong id="chartTitle">Изменение показателя</strong><small>История по сохранённым снимкам</small></div>
-        <svg id="historyChart" viewBox="0 0 700 190" role="img" aria-label="График изменения статистики"></svg>
       </div>
       <div id="detailMetrics" class="metric-grid"></div>
     </section>
