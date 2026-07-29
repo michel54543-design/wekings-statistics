@@ -27,6 +27,16 @@ function syncMobileNav() {
   }
 }
 
+function fillLevels(maxLevel) {
+  const maximum = Math.max(1, Number(maxLevel) || 44);
+  const selected = $("level").value;
+  $("level").innerHTML = '<option value="">Введите уровень</option>' +
+    Array.from({ length: maximum }, (_, index) => maximum - index)
+      .map(level => `<option value="${level}">${level} уровень</option>`)
+      .join("");
+  if (selected && Number(selected) <= maximum) $("level").value = selected;
+}
+
 function hidePlayerDetail() {
   state.playerDetail = null;
   $("playerDetail").classList.add("hidden");
@@ -50,33 +60,6 @@ function renderPlayerDetail() {
       <small class="delta ${deltaClass}">${deltaText}</small>
     </article>`;
   }).join("");
-  renderHistoryChart();
-}
-
-function renderHistoryChart() {
-  const history = state.playerDetail?.history || [];
-  const key = $("sort").value;
-  const points = history.filter(item => item[key] != null);
-  $("chartTitle").textContent = `Динамика: ${metricNames[key]}`;
-  if (points.length < 2) {
-    $("historyChart").innerHTML = '<text x="350" y="98" text-anchor="middle" class="chart-empty">График появится после второго снимка</text>';
-    return;
-  }
-  const values = points.map(item => Number(item[key]));
-  const min = Math.min(...values);
-  const max = Math.max(...values);
-  const spread = max - min || 1;
-  const coords = values.map((value, index) => ({
-    x: 32 + index * (636 / Math.max(1, values.length - 1)),
-    y: 155 - ((value - min) / spread) * 115,
-    value
-  }));
-  $("historyChart").innerHTML = `
-    <line x1="32" y1="155" x2="668" y2="155" class="chart-axis"/>
-    <polyline points="${coords.map(point => `${point.x},${point.y}`).join(" ")}" class="chart-line"/>
-    ${coords.map(point => `<circle cx="${point.x}" cy="${point.y}" r="4" class="chart-dot"><title>${fmt(point.value)}</title></circle>`).join("")}
-    <text x="32" y="178" class="chart-label">${dateText(points[0].date)}</text>
-    <text x="668" y="178" text-anchor="end" class="chart-label">${dateText(points[points.length - 1].date)}</text>`;
 }
 
 async function loadPlayerDetail(playerId, scroll = true) {
@@ -227,6 +210,7 @@ async function loadPlayers() {
   }
   $("rows").innerHTML = '<tr><td colspan="7" class="loading">Загрузка…</td></tr>';
   const data = await fetch(`/api/players?${params}`).then(r => r.json());
+  fillLevels(data.max_level);
   if (!state.datesLoaded && data.dates?.length) fillDates(data.dates, data.date_from, data.date_to);
   state.pages = Math.max(1, data.pages);
   $("resultCount").textContent = `${fmt(data.total)} игроков`;
