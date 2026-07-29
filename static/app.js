@@ -288,6 +288,7 @@ document.querySelectorAll(".modes button").forEach(button => {
 $("find").onclick = () => { state.page = 1; loadPlayers(); };
 $("query").onkeydown = (e) => { if (e.key === "Enter") { state.page = 1; loadPlayers(); } };
 $("sort").onchange = () => { state.page = 1; loadPlayers(); };
+$("level").onchange = () => { state.page = 1; loadPlayers(); };
 $("dateFrom").onchange = () => { state.page = 1; loadPlayers(); };
 $("dateTo").onchange = () => { state.page = 1; loadPlayers(); };
 $("detailFrom").onchange = renderPlayerDetail;
