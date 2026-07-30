@@ -282,23 +282,41 @@ def scan_all_players(db, Player, PlayerSnapshot, ScanState):
     max_id = discover_max_id(home_html)
     session.close()
     state = db.session.get(ScanState, 1)
-    if db.session.query(PlayerSnapshot.id).first() is None:
-        start_id = 1
-        state.current_player_id = 1
-    else:
-        start_id = state.current_player_id if 1 <= state.current_player_id <= max_id else 1
-        # Старый парсер мог присоединить к славе цифры даты из соседней
-        # строки. Один раз возвращаемся к первой подозрительной записи.
-        suspicious_id = (
-            db.session.query(Player.id)
-            .filter(Player.glory > 300_000)
-            .order_by(Player.id.asc())
-            .scalar()
-        )
-        if suspicious_id is not None:
-            start_id = min(start_id, suspicious_id)
-            state.current_player_id = start_id
     batch_at = state.started_at or datetime.now(timezone.utc)
+    start_id = (
+        state.current_player_id
+        if 1 < state.current_player_id <= max_id
+        else max_id
+    )
+
+    # Переход со старого сканирования 1 → максимум на новое направление.
+    # Если текущий незавершённый снимок содержит только младшие ID, безопасно
+    # начинаем его заново с максимального ID. Уже записанные строки обновятся,
+    # поэтому дубликатов не появится.
+    highest_in_batch = (
+        db.session.query(db.func.max(PlayerSnapshot.player_id))
+        .filter(PlayerSnapshot.batch_at == batch_at)
+        .scalar()
+    )
+    if (
+        highest_in_batch is not None
+        and state.current_player_id > 1
+        and highest_in_batch <= state.current_player_id
+    ):
+        start_id = max_id
+
+    # Старый парсер мог присоединить к славе цифры даты. При необходимости
+    # захватываем подозрительную запись и все ID выше неё.
+    suspicious_id = (
+        db.session.query(Player.id)
+        .filter(Player.glory > 300_000)
+        .order_by(Player.id.desc())
+        .scalar()
+    )
+    if suspicious_id is not None:
+        start_id = max(start_id, suspicious_id)
+
+    state.current_player_id = start_id
     state.max_player_id = max_id
     state.found_players = 0
     commit_with_retry(db)
@@ -307,17 +325,17 @@ def scan_all_players(db, Player, PlayerSnapshot, ScanState):
         max_workers=SCAN_WORKERS,
         thread_name_prefix="wekings-profile",
     ) as executor:
-        for batch_start in range(start_id, max_id + 1, SCAN_WORKERS):
+        for batch_start in range(start_id, 0, -SCAN_WORKERS):
             player_ids = list(
-                range(batch_start, min(batch_start + SCAN_WORKERS, max_id + 1))
+                range(batch_start, max(batch_start - SCAN_WORKERS, 0), -1)
             )
             futures = {
                 player_id: executor.submit(fetch_profile, player_id)
                 for player_id in player_ids
             }
             try:
-                # Получаем результаты в порядке ID. В базу пишет только главный
-                # поток, поэтому SQLAlchemy-сессия остаётся безопасной.
+                # Получаем результаты в обратном порядке ID. В базу пишет
+                # только главный поток, поэтому сессия остаётся безопасной.
                 results = [
                     (player_id, futures[player_id].result())
                     for player_id in player_ids
@@ -367,11 +385,11 @@ def scan_all_players(db, Player, PlayerSnapshot, ScanState):
                             setattr(snapshot, field, value)
                     state.found_players += 1
 
-            state.current_player_id = player_ids[-1] + 1
+            state.current_player_id = player_ids[-1] - 1
             pending_since_commit += len(player_ids)
             if pending_since_commit >= SAVE_EVERY:
                 commit_with_retry(db)
                 pending_since_commit = 0
 
-    state.current_player_id = 1
+    state.current_player_id = 0
     commit_with_retry(db)
