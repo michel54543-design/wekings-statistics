@@ -8,7 +8,7 @@
   <link rel="icon" href="/static/favicon.ico?v=41" sizes="any">
   <link rel="icon" href="/static/favicon.svg?v=41" type="image/svg+xml">
   <link rel="apple-touch-icon" href="/static/apple-touch-icon.png?v=41">
-  <link rel="stylesheet" href="/static/style.css?v=47">
+  <link rel="stylesheet" href="/static/style.css?v=48">
 </head>
 <body class="dark">
   <main class="page">
@@ -64,7 +64,9 @@
       <button id="filterToggle" class="filter-toggle" title="Дополнительные фильтры" aria-label="Дополнительные фильтры">☷</button>
     </section>
 
-    <section id="playerDetail" class="player-detail hidden">
+    <section id="playerDetail" class="player-detail hidden" role="dialog" aria-modal="true" aria-labelledby="detailName">
+      <div class="player-detail-panel">
+      <button id="closePlayerDetail" class="close-player-detail" type="button" aria-label="Закрыть статистику">×</button>
       <div class="detail-head">
         <div>
           <p>Личная статистика</p>
@@ -78,6 +80,7 @@
         <label><span>до</span><select id="detailTo"></select></label>
       </div>
       <div id="detailMetrics" class="metric-grid"></div>
+      </div>
     </section>
 
     <section class="card">
@@ -103,7 +106,6 @@
     <button data-mobile-mode="growth"><span class="nav-icon">↗</span>Прирост</button>
     <button id="mobilePlayer"><span class="nav-icon">♙</span>Игрок</button>
   </nav>
-  <div id="copyToast" class="copy-toast" role="status">Ник скопирован</div>
-  <script src="/static/app.js?v=47"></script>
+  <script src="/static/app.js?v=48"></script>
 </body>
 </html>
