@@ -103,6 +103,42 @@ async function loadStatus() {
   state.finishedAt = data.finished_at;
 }
 
+function attackTimeText(value) {
+  if (!value) return "—";
+  const eventTime = new Date(value);
+  const minutes = Math.max(0, Math.round((eventTime - new Date()) / 60000));
+  const days = Math.floor(minutes / 1440);
+  const hours = Math.floor((minutes % 1440) / 60);
+  const restMinutes = minutes % 60;
+  const countdown = minutes <= 0
+    ? "время наступило"
+    : `через ${days ? `${days} д. ` : ""}${hours ? `${hours} ч. ` : ""}${restMinutes} мин.`;
+  const exact = eventTime.toLocaleString("ru-RU", {
+    day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit"
+  });
+  return `${countdown} · ${exact}`;
+}
+
+async function loadAttacks() {
+  const data = await fetch("/api/attacks").then(response => response.json());
+  if (!data.dragon_at && !data.serpent_at) {
+    $("attackSchedule").classList.add("waiting");
+    $("gameTime").textContent = "сбор после 00:01";
+    $("dragonTime").textContent = data.error ? "временно нет данных" : "уточняем…";
+    $("serpentTime").textContent = data.error ? "повторим автоматически" : "уточняем…";
+    return;
+  }
+  $("attackSchedule").classList.remove("waiting");
+  $("gameTime").textContent = data.game_time
+    ? new Date(data.game_time).toLocaleTimeString("ru-RU", {hour:"2-digit", minute:"2-digit"})
+    : "—";
+  $("dragonTime").textContent = attackTimeText(data.dragon_at);
+  $("serpentTime").textContent = attackTimeText(data.serpent_at);
+  $("attackUpdated").textContent = data.fetched_at
+    ? `проверено ${new Date(data.fetched_at).toLocaleString("ru-RU", {day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"})}`
+    : "";
+}
+
 function fillDates(dates, selectedFrom, selectedTo) {
   if (!dates?.length) return;
   const dayKey = value => {
@@ -361,5 +397,7 @@ $("todayBadge").textContent = new Date().toLocaleDateString("ru-RU", {
 }).replace(".", "").toUpperCase();
 syncMobileNav();
 loadStatus().catch(() => {});
+loadAttacks().catch(() => {});
 loadPlayers().catch(() => $("rows").innerHTML = '<tr><td colspan="7" class="loading">Не удалось загрузить данные</td></tr>');
 setInterval(() => loadStatus().catch(() => {}), 30000);
+setInterval(() => loadAttacks().catch(() => {}), 60000);
