@@ -753,18 +753,27 @@ if os.getenv("SCAN_ENABLED", "true").lower() == "true":
         max_instances=1,
         misfire_grace_time=21600,
     )
+    scheduler.add_job(
+        start_attack_on_boot_if_needed,
+        "interval",
+        minutes=15,
+        id="wekings-attack-retry",
+        replace_existing=True,
+        coalesce=True,
+        max_instances=1,
+    )
     if os.getenv("START_SCAN_ON_BOOT", "true").lower() == "true":
         scheduler.add_job(
             start_scan_on_boot_if_needed,
             "date",
-            run_date=datetime.now(timezone.utc) + timedelta(seconds=20),
+            run_date=datetime.now(timezone.utc) + timedelta(seconds=30),
             id="wekings-first-scan",
             replace_existing=True,
         )
         scheduler.add_job(
             start_attack_on_boot_if_needed,
             "date",
-            run_date=datetime.now(timezone.utc) + timedelta(seconds=35),
+            run_date=datetime.now(timezone.utc) + timedelta(seconds=5),
             id="wekings-first-attacks",
             replace_existing=True,
         )

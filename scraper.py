@@ -19,6 +19,13 @@ TIMEOUT = int(os.getenv("REQUEST_TIMEOUT", "25"))
 SAVE_EVERY = max(3, int(os.getenv("SAVE_EVERY", "20")))
 SCAN_WORKERS = min(4, max(1, int(os.getenv("SCAN_WORKERS", "3"))))
 _worker_context = threading.local()
+_guest_cookie_lock = threading.Lock()
+_guest_cookies: dict[str, requests.cookies.RequestsCookieJar] = {}
+
+
+def _remember_guest(base_url: str, session: requests.Session):
+    with _guest_cookie_lock:
+        _guest_cookies[base_url] = session.cookies.copy()
 
 
 def commit_with_retry(db):
@@ -69,10 +76,15 @@ def create_guest_session():
                 "Accept-Language": "ru-RU,ru;q=0.9",
             }
         )
+        with _guest_cookie_lock:
+            cached_cookies = _guest_cookies.get(base_url)
+            if cached_cookies is not None:
+                session.cookies.update(cached_cookies)
         try:
             first = session.get(f"{base_url}/", timeout=TIMEOUT)
             first.raise_for_status()
             if re.search(r"Викинг\s*#\d+", first.text):
+                _remember_guest(base_url, session)
                 return session, first.text, base_url
 
             soup = BeautifulSoup(first.text, "html.parser")
@@ -117,6 +129,7 @@ def create_guest_session():
             if response is not None:
                 response.raise_for_status()
             if response is not None and re.search(r"Викинг\s*#\d+", response.text):
+                _remember_guest(base_url, session)
                 return session, response.text, base_url
             raise RuntimeError("игровая страница после нажатия не открылась")
         except (requests.RequestException, RuntimeError) as exc:
