@@ -8,7 +8,7 @@
   <link rel="icon" href="/static/favicon.ico?v=41" sizes="any">
   <link rel="icon" href="/static/favicon.svg?v=41" type="image/svg+xml">
   <link rel="apple-touch-icon" href="/static/apple-touch-icon.png?v=41">
-  <link rel="stylesheet" href="/static/style.css?v=49">
+  <link rel="stylesheet" href="/static/style.css?v=50">
 </head>
 <body class="dark">
   <main class="page">
@@ -21,6 +21,13 @@
       </div>
       <time id="todayBadge" class="today-badge"></time>
     </header>
+
+    <section id="attackSchedule" class="attack-schedule" aria-live="polite">
+      <span class="attack-label">Время Wekings: <strong id="gameTime">—</strong></span>
+      <span class="attack-event dragon">🐉 <b>Дракон</b><strong id="dragonTime">уточняем…</strong></span>
+      <span class="attack-event serpent">🐍 <b>Змей</b><strong id="serpentTime">уточняем…</strong></span>
+      <small id="attackUpdated"></small>
+    </section>
 
     <nav class="modes" aria-label="Режим статистики">
       <button data-mode="general" class="active"><span class="mode-icon">▥</span>Общий</button>
@@ -106,6 +113,6 @@
     <button data-mobile-mode="growth"><span class="nav-icon">↗</span>Прирост</button>
     <button id="mobilePlayer"><span class="nav-icon">♙</span>Игрок</button>
   </nav>
-  <script src="/static/app.js?v=49"></script>
+  <script src="/static/app.js?v=50"></script>
 </body>
 </html>
