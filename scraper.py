@@ -176,14 +176,12 @@ def fetch_attack_schedule():
     """Заходит в гостевую игру и читает «Город» → «Монах»."""
     session, home_html, base_url = create_guest_session()
     try:
-        city_url = _link_by_text(home_html, "Город", base_url)
-        if not city_url:
-            raise RuntimeError("в игре не найдена ссылка «Город»")
+        # На главной Wekings кнопка города может быть картинкой без
+        # текста, поэтому оставляем проверенный адрес /town.
+        city_url = _link_by_text(home_html, "Город", base_url) or urljoin(base_url, "/town")
         city = session.get(city_url, timeout=TIMEOUT)
         city.raise_for_status()
-        monk_url = _link_by_text(city.text, "Монах", base_url)
-        if not monk_url:
-            raise RuntimeError("в городе не найдена ссылка «Монах»")
+        monk_url = _link_by_text(city.text, "Монах", base_url) or urljoin(base_url, "/monastic")
         monk = session.get(monk_url, timeout=TIMEOUT)
         monk.raise_for_status()
         text = BeautifulSoup(monk.text, "html.parser").get_text("\n", strip=True)
