@@ -5,8 +5,9 @@ import re
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from urllib.parse import urljoin
+from zoneinfo import ZoneInfo
 
 import requests
 from bs4 import BeautifulSoup
@@ -122,6 +123,95 @@ def create_guest_session():
             errors.append(f"{base_url}: {exc}")
 
     raise RuntimeError("Не удалось открыть гостевую игру Wekings. " + "; ".join(errors))
+
+
+def _link_by_text(html: str, label: str, base_url: str):
+    soup = BeautifulSoup(html, "html.parser")
+    wanted = label.casefold()
+    link = soup.find(
+        "a",
+        href=True,
+        string=lambda value: value and wanted in value.strip().casefold(),
+    )
+    if link is None:
+        link = next(
+            (
+                item for item in soup.find_all("a", href=True)
+                if wanted in item.get_text(" ", strip=True).casefold()
+            ),
+            None,
+        )
+    return urljoin(base_url, link["href"]) if link else None
+
+
+def _duration_near(text: str, labels: tuple[str, ...]):
+    """Извлекает обратный отсчёт рядом с названием события."""
+    for label in labels:
+        position = text.casefold().find(label.casefold())
+        if position < 0:
+            continue
+        fragment = text[position:position + 260]
+        days = re.search(r"(\d+)\s*(?:дн(?:ей|я|ь)?|d)", fragment, re.I)
+        hours = re.search(r"(\d+)\s*(?:час(?:а|ов)?|ч\.?|h)", fragment, re.I)
+        minutes = re.search(r"(\d+)\s*(?:мин(?:ут|ы)?|м\.?|min)", fragment, re.I)
+        seconds = re.search(r"(\d+)\s*(?:сек(?:унд)?|с\.?|sec)", fragment, re.I)
+        if any((days, hours, minutes, seconds)):
+            return timedelta(
+                days=int(days.group(1)) if days else 0,
+                hours=int(hours.group(1)) if hours else 0,
+                minutes=int(minutes.group(1)) if minutes else 0,
+                seconds=int(seconds.group(1)) if seconds else 0,
+            ), fragment.splitlines()[0][:180]
+        clock = re.search(r"(?:через|\b)\s*(\d{1,3}):(\d{2})(?::(\d{2}))?", fragment, re.I)
+        if clock:
+            return timedelta(
+                hours=int(clock.group(1)),
+                minutes=int(clock.group(2)),
+                seconds=int(clock.group(3) or 0),
+            ), fragment.splitlines()[0][:180]
+    return None, None
+
+
+def fetch_attack_schedule():
+    """Заходит в гостевую игру и читает «Город» → «Монах»."""
+    session, home_html, base_url = create_guest_session()
+    try:
+        city_url = _link_by_text(home_html, "Город", base_url)
+        if not city_url:
+            raise RuntimeError("в игре не найдена ссылка «Город»")
+        city = session.get(city_url, timeout=TIMEOUT)
+        city.raise_for_status()
+        monk_url = _link_by_text(city.text, "Монах", base_url)
+        if not monk_url:
+            raise RuntimeError("в городе не найдена ссылка «Монах»")
+        monk = session.get(monk_url, timeout=TIMEOUT)
+        monk.raise_for_status()
+        text = BeautifulSoup(monk.text, "html.parser").get_text("\n", strip=True)
+        dragon_delta, dragon_raw = _duration_near(text, ("Дракон",))
+        serpent_delta, serpent_raw = _duration_near(text, ("Змей", "Змея", "Змеем"))
+        if dragon_delta is None and serpent_delta is None:
+            raise RuntimeError("на странице монаха не найдено время Дракона или Змея")
+        game_now = datetime.now(ZoneInfo("Europe/Chisinau"))
+        game_clock = re.search(
+            r"(?:время\s+(?:игры|на\s+сервере)|серверное\s+время)[^0-9]{0,30}(\d{1,2}):(\d{2})",
+            text,
+            re.I,
+        )
+        if game_clock:
+            game_now = game_now.replace(
+                hour=int(game_clock.group(1)), minute=int(game_clock.group(2)),
+                second=0, microsecond=0,
+            )
+        return {
+            "fetched_at": datetime.now(timezone.utc),
+            "game_time": game_now,
+            "dragon_at": game_now + dragon_delta if dragon_delta else None,
+            "serpent_at": game_now + serpent_delta if serpent_delta else None,
+            "dragon_raw": dragon_raw,
+            "serpent_raw": serpent_raw,
+        }
+    finally:
+        session.close()
 
 
 def discover_max_id(home_html: str):

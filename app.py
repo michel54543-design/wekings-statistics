@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import threading
 from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 
 from apscheduler.schedulers.background import BackgroundScheduler
 from flask import Flask, jsonify, render_template, request
@@ -84,6 +85,17 @@ class ScanState(db.Model):
     last_error = db.Column(db.Text)
 
 
+class GameAttackState(db.Model):
+    id = db.Column(db.Integer, primary_key=True, default=1)
+    fetched_at = db.Column(db.DateTime(timezone=True))
+    game_time = db.Column(db.DateTime(timezone=True))
+    dragon_at = db.Column(db.DateTime(timezone=True))
+    serpent_at = db.Column(db.DateTime(timezone=True))
+    dragon_raw = db.Column(db.String(200))
+    serpent_raw = db.Column(db.String(200))
+    last_error = db.Column(db.Text)
+
+
 class PlayerSnapshot(db.Model):
     __table_args__ = (
         db.UniqueConstraint("player_id", "batch_at", name="uq_player_snapshot_batch"),
@@ -123,6 +135,8 @@ with app.app_context():
         # Render can stop the process during a scan. A database flag from that
         # dead process must not block the new worker from resuming.
         scan_state.running = False
+    if db.session.get(GameAttackState, 1) is None:
+        db.session.add(GameAttackState(id=1))
     db.session.commit()
     duplicate_groups = (
         db.session.query(
@@ -232,6 +246,7 @@ def api_players():
         .all()
     ]
     if not dates:
+        max_level = db.session.query(db.func.max(Player.level)).scalar() or 44
         legacy_fields = {
             "glory": Player.glory,
             "power": Player.power,
@@ -282,6 +297,7 @@ def api_players():
             pages=result.pages,
             total=result.total,
             dates=[],
+            max_level=max_level,
         )
 
     def parse_date(value, fallback):
@@ -293,6 +309,12 @@ def api_players():
             return fallback
 
     date_to = parse_date(request.args.get("to"), dates[0])
+    max_level = (
+        db.session.query(db.func.max(PlayerSnapshot.level))
+        .filter(PlayerSnapshot.batch_at == date_to)
+        .scalar()
+        or 44
+    )
     if mode == "best":
         cutoff = date_to - timedelta(days=30)
         eligible = [value for value in dates if cutoff <= value <= date_to]
@@ -373,6 +395,7 @@ def api_players():
         dates=[value.isoformat() for value in dates],
         date_from=date_from.isoformat(),
         date_to=date_to.isoformat(),
+        max_level=max_level,
     )
 
 
@@ -529,6 +552,18 @@ def api_status():
     )
 
 
+@app.get("/api/attacks")
+def api_attacks():
+    state = db.session.get(GameAttackState, 1)
+    return jsonify(
+        fetched_at=state.fetched_at.isoformat() if state and state.fetched_at else None,
+        game_time=state.game_time.isoformat() if state and state.game_time else None,
+        dragon_at=state.dragon_at.isoformat() if state and state.dragon_at else None,
+        serpent_at=state.serpent_at.isoformat() if state and state.serpent_at else None,
+        error=state.last_error if state else None,
+    )
+
+
 @app.get("/api/player/<int:player_id>")
 def api_player_detail(player_id):
     player = db.session.get(Player, player_id)
@@ -627,6 +662,57 @@ def start_scan_thread():
     threading.Thread(target=run_scan, daemon=True, name="wekings-scan").start()
 
 
+_attack_lock = threading.Lock()
+
+
+def update_attack_schedule():
+    if not _attack_lock.acquire(blocking=False):
+        return
+    try:
+        from scraper import fetch_attack_schedule
+
+        with app.app_context():
+            state = db.session.get(GameAttackState, 1)
+            try:
+                result = fetch_attack_schedule()
+                for field in (
+                    "fetched_at", "game_time", "dragon_at", "serpent_at",
+                    "dragon_raw", "serpent_raw",
+                ):
+                    setattr(state, field, result.get(field))
+                state.last_error = None
+                db.session.commit()
+            except Exception as exc:
+                db.session.rollback()
+                app.logger.exception("Wekings attack schedule update failed")
+                state = db.session.get(GameAttackState, 1)
+                state.last_error = str(exc)[:1000]
+                db.session.commit()
+    finally:
+        _attack_lock.release()
+
+
+def start_attack_thread():
+    threading.Thread(
+        target=update_attack_schedule,
+        daemon=True,
+        name="wekings-attacks",
+    ).start()
+
+
+def start_attack_on_boot_if_needed():
+    with app.app_context():
+        state = db.session.get(GameAttackState, 1)
+        local_zone = ZoneInfo("Europe/Chisinau")
+        today = datetime.now(local_zone).date()
+        needs_update = (
+            not state.fetched_at
+            or state.fetched_at.replace(tzinfo=timezone.utc).astimezone(local_zone).date() < today
+        )
+    if needs_update:
+        start_attack_thread()
+
+
 def start_scan_on_boot_if_needed():
     """На старте возобновляет прерванный сбор или запускает самый первый."""
     with app.app_context():
@@ -656,12 +742,30 @@ if os.getenv("SCAN_ENABLED", "true").lower() == "true":
             max_instances=1,
             misfire_grace_time=900,
         )
+    scheduler.add_job(
+        start_attack_thread,
+        "cron",
+        hour=0,
+        minute=5,
+        id="wekings-daily-attacks",
+        replace_existing=True,
+        coalesce=True,
+        max_instances=1,
+        misfire_grace_time=21600,
+    )
     if os.getenv("START_SCAN_ON_BOOT", "true").lower() == "true":
         scheduler.add_job(
             start_scan_on_boot_if_needed,
             "date",
             run_date=datetime.now(timezone.utc) + timedelta(seconds=20),
             id="wekings-first-scan",
+            replace_existing=True,
+        )
+        scheduler.add_job(
+            start_attack_on_boot_if_needed,
+            "date",
+            run_date=datetime.now(timezone.utc) + timedelta(seconds=35),
+            id="wekings-first-attacks",
             replace_existing=True,
         )
 
