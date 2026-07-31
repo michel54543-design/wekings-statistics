@@ -168,11 +168,11 @@ async function loadOrganizations() {
     const members = group.members.map((member, memberIndex) => {
       const memberPlace = rankBadge(memberIndex + 1);
       return (
-      `<button class="org-player internal-player" data-player-id="${member.id}">
+      `<a class="org-player game-profile-link" href="https://playwekings.mobi/hero/detail?player=${member.id}">
         <b class="org-player-place">${memberPlace}</b>
         <span>${escapeHtml(member.nickname)}</span>
         <small>ур. ${member.level ?? "—"} · ${fmt(member.stat_sum)}</small>
-      </button>`
+      </a>`
       );
     }).join("");
     const joined = group.joined.length
@@ -233,7 +233,7 @@ async function loadPlayers() {
     if (statsMode) {
       return `<tr class="stats-row">
         <td class="rank">${medal}</td>
-        <td class="player-name"><a href="#playerDetail" class="internal-player" data-player-id="${p.id}">${escapeHtml(p.nickname)}</a><button class="copy-nick" data-nickname="${escapeHtml(p.nickname)}" title="Скопировать ник" aria-label="Скопировать ник">⧉</button><small>${p.level ?? "—"}</small></td>
+        <td class="player-name"><a href="${escapeHtml(p.profile_url)}" class="game-profile-link">${escapeHtml(p.nickname)}</a><button class="copy-nick" data-nickname="${escapeHtml(p.nickname)}" title="Скопировать ник" aria-label="Скопировать ник">⧉</button><small>${p.level ?? "—"}</small></td>
         <td class="stat-number">${fmt(p.power)}</td>
         <td class="stat-number">${fmt(p.defense)}</td>
         <td class="stat-number">${fmt(p.agility)}</td>
@@ -245,7 +245,7 @@ async function loadPlayers() {
     const gain = p.gain;
     return `<tr>
       <td class="rank" data-label="Место">${medal}</td>
-      <td class="player-name" data-label="Игрок"><a href="#playerDetail" class="internal-player" data-player-id="${p.id}">${escapeHtml(p.nickname)}</a><button class="copy-nick" data-nickname="${escapeHtml(p.nickname)}" title="Скопировать ник" aria-label="Скопировать ник">⧉</button><b class="mobile-level">${p.level ?? "—"}</b></td>
+      <td class="player-name" data-label="Игрок"><a href="${escapeHtml(p.profile_url)}" class="game-profile-link">${escapeHtml(p.nickname)}</a><button class="copy-nick" data-nickname="${escapeHtml(p.nickname)}" title="Скопировать ник" aria-label="Скопировать ник">⧉</button><b class="mobile-level">${p.level ?? "—"}</b></td>
       <td data-label="Уровень"><b class="level">${p.level ?? "—"}</b></td>
       <td class="group" data-label="Братство">${escapeHtml(p.brotherhood || "—")}</td>
       <td class="group" data-label="Клан">${escapeHtml(p.clan || "—")}</td>
@@ -254,8 +254,12 @@ async function loadPlayers() {
     </tr>`;
   }).join("") : `<tr><td colspan="7" class="loading">${data.dates?.length < 2 && state.mode !== "general" ? "Прирост появится после второго снимка статистики" : "Игроки не найдены"}</td></tr>`;
   const query = $("query").value.trim();
-  if (query && data.players.length === 1) {
-    loadPlayerDetail(data.players[0].id, false).catch(hidePlayerDetail);
+  const exactPlayer = query
+    ? data.players.find(player => player.nickname.toLocaleLowerCase("ru-RU") === query.toLocaleLowerCase("ru-RU"))
+    : null;
+  const searchedPlayer = exactPlayer || (query && data.players.length === 1 ? data.players[0] : null);
+  if (searchedPlayer) {
+    loadPlayerDetail(searchedPlayer.id, false).catch(hidePlayerDetail);
   } else {
     hidePlayerDetail();
   }
@@ -300,6 +304,13 @@ $("filterToggle").onclick = () => {
   $("filterToggle").classList.toggle("active");
 };
 document.addEventListener("click", event => {
+  const gameProfileLink = event.target.closest(".game-profile-link");
+  if (gameProfileLink) {
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    window.location.assign(gameProfileLink.href);
+    return;
+  }
   const organizationToggle = event.target.closest(".organization-toggle");
   if (organizationToggle) {
     const row = organizationToggle.closest(".organization-row");
@@ -332,10 +343,6 @@ document.addEventListener("click", event => {
     });
     return;
   }
-  const link = event.target.closest(".internal-player");
-  if (!link) return;
-  event.preventDefault();
-  loadPlayerDetail(link.dataset.playerId).catch(hidePlayerDetail);
 });
 document.querySelectorAll("[data-mobile-mode]").forEach(button => {
   button.onclick = () => {
