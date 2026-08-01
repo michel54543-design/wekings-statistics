@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import json
 import threading
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
@@ -94,6 +95,12 @@ class GameAttackState(db.Model):
     dragon_raw = db.Column(db.String(200))
     serpent_raw = db.Column(db.String(200))
     last_error = db.Column(db.Text)
+
+
+class GuestSessionState(db.Model):
+    base_url = db.Column(db.String(255), primary_key=True)
+    cookies_json = db.Column(db.Text, nullable=False, default="[]")
+    updated_at = db.Column(db.DateTime(timezone=True), nullable=False)
 
 
 class PlayerSnapshot(db.Model):
@@ -192,6 +199,32 @@ with app.app_context():
             db.session.delete(duplicate)
     if legacy_duplicate_groups:
         db.session.commit()
+
+
+def load_guest_cookies(base_url):
+    with app.app_context():
+        saved = db.session.get(GuestSessionState, base_url)
+        if saved is None:
+            return []
+        try:
+            return json.loads(saved.cookies_json)
+        except (TypeError, ValueError):
+            return []
+
+
+def save_guest_cookies(base_url, records):
+    with app.app_context():
+        saved = db.session.get(GuestSessionState, base_url)
+        if saved is None:
+            saved = GuestSessionState(base_url=base_url)
+            db.session.add(saved)
+        saved.cookies_json = json.dumps(records, ensure_ascii=False)
+        saved.updated_at = datetime.now(timezone.utc)
+        db.session.commit()
+
+
+from scraper import configure_guest_cookie_storage
+configure_guest_cookie_storage(load_guest_cookies, save_guest_cookies)
 
 
 SORT_FIELDS = {

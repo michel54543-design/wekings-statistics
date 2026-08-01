@@ -21,11 +21,60 @@ SCAN_WORKERS = min(4, max(1, int(os.getenv("SCAN_WORKERS", "3"))))
 _worker_context = threading.local()
 _guest_cookie_lock = threading.Lock()
 _guest_cookies: dict[str, requests.cookies.RequestsCookieJar] = {}
+_guest_cookie_loader = None
+_guest_cookie_saver = None
+
+
+def configure_guest_cookie_storage(loader, saver):
+    """Подключает постоянное хранилище cookies (на Render — PostgreSQL)."""
+    global _guest_cookie_loader, _guest_cookie_saver
+    _guest_cookie_loader = loader
+    _guest_cookie_saver = saver
+
+
+def _cookie_records(jar):
+    return [
+        {
+            "name": cookie.name,
+            "value": cookie.value,
+            "domain": cookie.domain,
+            "path": cookie.path or "/",
+            "secure": bool(cookie.secure),
+            "expires": cookie.expires,
+        }
+        for cookie in jar
+    ]
+
+
+def _restore_guest(base_url: str):
+    if _guest_cookie_loader is None:
+        return None
+    try:
+        records = _guest_cookie_loader(base_url) or []
+        jar = requests.cookies.RequestsCookieJar()
+        for item in records:
+            options = {
+                "path": item.get("path") or "/",
+                "secure": bool(item.get("secure")),
+                "expires": item.get("expires"),
+            }
+            if item.get("domain"):
+                options["domain"] = item["domain"]
+            jar.set(item["name"], item["value"], **options)
+        return jar if records else None
+    except Exception:
+        return None
 
 
 def _remember_guest(base_url: str, session: requests.Session):
     with _guest_cookie_lock:
         _guest_cookies[base_url] = session.cookies.copy()
+    if _guest_cookie_saver is not None:
+        try:
+            _guest_cookie_saver(base_url, _cookie_records(session.cookies))
+        except Exception:
+            # Неудачная запись cookies не должна останавливать сканирование.
+            pass
 
 
 def commit_with_retry(db):
@@ -78,6 +127,12 @@ def create_guest_session():
         )
         with _guest_cookie_lock:
             cached_cookies = _guest_cookies.get(base_url)
+        if cached_cookies is None:
+            cached_cookies = _restore_guest(base_url)
+            if cached_cookies is not None:
+                with _guest_cookie_lock:
+                    _guest_cookies[base_url] = cached_cookies.copy()
+        with _guest_cookie_lock:
             if cached_cookies is not None:
                 session.cookies.update(cached_cookies)
         try:
