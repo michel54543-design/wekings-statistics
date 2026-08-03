@@ -16,9 +16,13 @@ services:
       - key: SCAN_ENABLED
         value: "true"
       - key: REQUEST_DELAY
-        value: "0.3"
+        value: "0.8"
       - key: SCAN_WORKERS
-        value: "3"
+        value: "1"
+      - key: TRANSIENT_RETRIES
+        value: "12"
+      - key: RATE_LIMIT_DELAY
+        value: "60"
       - key: SAVE_EVERY
         value: "20"
       - key: START_SCAN_ON_BOOT

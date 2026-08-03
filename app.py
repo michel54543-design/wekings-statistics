@@ -795,6 +795,17 @@ if os.getenv("SCAN_ENABLED", "true").lower() == "true":
         coalesce=True,
         max_instances=1,
     )
+    # Страховочная проверка: если таймер повтора потерялся после сна или
+    # перезапуска бесплатного Render, незавершённый снимок возобновится сам.
+    scheduler.add_job(
+        start_scan_on_boot_if_needed,
+        "interval",
+        minutes=10,
+        id="wekings-scan-recovery",
+        replace_existing=True,
+        coalesce=True,
+        max_instances=1,
+    )
     if os.getenv("START_SCAN_ON_BOOT", "true").lower() == "true":
         scheduler.add_job(
             start_scan_on_boot_if_needed,

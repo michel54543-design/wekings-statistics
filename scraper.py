@@ -14,15 +14,20 @@ from bs4 import BeautifulSoup
 
 
 BASE_URL = os.getenv("WEKINGS_BASE_URL", "https://wekings.online").rstrip("/")
-DELAY = max(0.3, float(os.getenv("REQUEST_DELAY", "0.7")))
+DELAY = max(0.5, float(os.getenv("REQUEST_DELAY", "0.8")))
 TIMEOUT = int(os.getenv("REQUEST_TIMEOUT", "25"))
 SAVE_EVERY = max(3, int(os.getenv("SAVE_EVERY", "20")))
-SCAN_WORKERS = min(4, max(1, int(os.getenv("SCAN_WORKERS", "3"))))
+SCAN_WORKERS = min(2, max(1, int(os.getenv("SCAN_WORKERS", "1"))))
+TRANSIENT_RETRIES = max(3, int(os.getenv("TRANSIENT_RETRIES", "12")))
+RATE_LIMIT_DELAY = max(15, int(os.getenv("RATE_LIMIT_DELAY", "60")))
+MAX_RETRY_DELAY = max(RATE_LIMIT_DELAY, int(os.getenv("MAX_RETRY_DELAY", "600")))
 _worker_context = threading.local()
 _guest_cookie_lock = threading.Lock()
 _guest_cookies: dict[str, requests.cookies.RequestsCookieJar] = {}
 _guest_cookie_loader = None
 _guest_cookie_saver = None
+_rate_limit_lock = threading.Lock()
+_rate_limit_until = 0.0
 
 
 def configure_guest_cookie_storage(loader, saver):
@@ -114,6 +119,58 @@ def text_value(text: str, label: str):
     return match.group(1).strip() if match else None
 
 
+def _wait_for_shared_cooldown():
+    """Все потоки вместе соблюдают паузу, назначенную Wekings."""
+    with _rate_limit_lock:
+        remaining = _rate_limit_until - time.monotonic()
+    if remaining > 0:
+        time.sleep(remaining)
+
+
+def _set_shared_cooldown(seconds: float):
+    global _rate_limit_until
+    with _rate_limit_lock:
+        _rate_limit_until = max(_rate_limit_until, time.monotonic() + seconds)
+
+
+def request_with_backoff(session, method: str, url: str, **kwargs):
+    """Повторяет временно заблокированный запрос, не обрывая весь снимок."""
+    last_error = None
+    for attempt in range(TRANSIENT_RETRIES):
+        _wait_for_shared_cooldown()
+        try:
+            response = session.request(method, url, **kwargs)
+            if response.status_code == 429:
+                retry_after = response.headers.get("Retry-After", "")
+                try:
+                    delay = float(retry_after)
+                except (TypeError, ValueError):
+                    delay = RATE_LIMIT_DELAY * (2 ** min(attempt, 4))
+                delay = min(MAX_RETRY_DELAY, max(RATE_LIMIT_DELAY, delay))
+                _set_shared_cooldown(delay)
+                last_error = requests.HTTPError(
+                    f"429 Too Many Requests; повтор через {int(delay)} сек.",
+                    response=response,
+                )
+                continue
+            if response.status_code >= 500:
+                delay = min(MAX_RETRY_DELAY, max(10, RATE_LIMIT_DELAY * (attempt + 1)))
+                _set_shared_cooldown(delay)
+                last_error = requests.HTTPError(
+                    f"Wekings временно вернул ошибку {response.status_code}",
+                    response=response,
+                )
+                continue
+            return response
+        except (requests.Timeout, requests.ConnectionError) as exc:
+            last_error = exc
+            delay = min(MAX_RETRY_DELAY, max(10, RATE_LIMIT_DELAY * (attempt + 1)))
+            _set_shared_cooldown(delay)
+    raise RuntimeError(
+        f"Wekings не ответил после {TRANSIENT_RETRIES} повторов: {last_error}"
+    )
+
+
 def create_guest_session():
     candidates = list(dict.fromkeys([BASE_URL, "https://wekings.online"]))
     errors = []
@@ -136,7 +193,7 @@ def create_guest_session():
             if cached_cookies is not None:
                 session.cookies.update(cached_cookies)
         try:
-            first = session.get(f"{base_url}/", timeout=TIMEOUT)
+            first = request_with_backoff(session, "GET", f"{base_url}/", timeout=TIMEOUT)
             first.raise_for_status()
             if re.search(r"Викинг\s*#\d+", first.text):
                 _remember_guest(base_url, session)
@@ -173,12 +230,14 @@ def create_guest_session():
                 }
                 method = (form.get("method") or "get").lower()
                 response = (
-                    session.post(action, data=payload, timeout=TIMEOUT)
+                    request_with_backoff(session, "POST", action, data=payload, timeout=TIMEOUT)
                     if method == "post"
-                    else session.get(action, params=payload, timeout=TIMEOUT)
+                    else request_with_backoff(session, "GET", action, params=payload, timeout=TIMEOUT)
                 )
             elif start_button.name == "a" and start_button.get("href"):
-                response = session.get(urljoin(base_url, start_button["href"]), timeout=TIMEOUT)
+                response = request_with_backoff(
+                    session, "GET", urljoin(base_url, start_button["href"]), timeout=TIMEOUT
+                )
             else:
                 response = None
             if response is not None:
@@ -411,7 +470,9 @@ def fetch_profile(player_id: int):
     for attempt in range(3):
         try:
             session, base_url = worker_session()
-            response = session.get(
+            response = request_with_backoff(
+                session,
+                "GET",
                 f"{base_url}/hero/detail",
                 params={"player": player_id},
                 timeout=TIMEOUT,
