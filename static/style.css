@@ -95,8 +95,7 @@ body.dark{--bg:#090908;--panel:#11110ff5;--text:#f5f1e8;--muted:#aaa59b;--line:#
 .site-heading .brand{margin-bottom:4px;color:var(--gold);font-size:10px}
 .site-heading .status{margin:8px 0 0;font-size:13px}
 .today-badge{align-self:start;margin-top:6px;padding:7px 10px;border:1px solid var(--gold-line);border-radius:8px;background:#171510;color:var(--gold-bright);font-family:Georgia,serif;font-size:12px;font-weight:700;letter-spacing:.06em}
-.attack-schedule{display:grid;grid-template-columns:auto minmax(260px,1fr) minmax(260px,1fr) auto;align-items:center;gap:10px;margin:4px 0 13px;padding:10px 13px;border:1px solid var(--gold-line);border-radius:10px;background:linear-gradient(90deg,#12110e,#0d0d0c);box-shadow:0 10px 32px #0005}
-.attack-label{color:#a9a296;font-size:11px}.attack-label strong{color:var(--gold-bright)}
+.attack-schedule{display:grid;grid-template-columns:minmax(260px,1fr) minmax(260px,1fr) auto;align-items:center;gap:10px;margin:4px 0 13px;padding:10px 13px;border:1px solid var(--gold-line);border-radius:10px;background:linear-gradient(90deg,#12110e,#0d0d0c);box-shadow:0 10px 32px #0005}
 .attack-event{display:flex;align-items:center;gap:7px;min-width:0;padding:7px 10px;border:1px solid #37322a;border-radius:8px;background:#181715;font-size:13px}
 .attack-event b{color:#f4eee3}.attack-event strong{margin-left:auto;color:var(--gold-bright);font-size:12px;white-space:nowrap}
 .attack-event.serpent strong{color:#a7dbb8}.attack-schedule>small{color:#817b71;font-size:9px;white-space:nowrap}.attack-schedule.waiting{opacity:.78}
@@ -125,7 +124,7 @@ body.dark .card-head>span{border:1px solid #4e432c;background:#1d1a14;color:var(
   .site-heading .status i{width:6px;height:6px;box-shadow:0 0 0 3px #22b66f20}
   .today-badge{margin-top:2px;padding:6px 7px;font-size:10px}
   .attack-schedule{grid-template-columns:1fr 1fr;gap:6px;margin:7px 0 10px;padding:8px;border-radius:9px}
-  .attack-label{grid-column:1/-1;font-size:9px}.attack-event{display:grid;grid-template-columns:auto 1fr;gap:2px 5px;padding:7px;font-size:11px}
+  .attack-event{display:grid;grid-template-columns:auto 1fr;gap:2px 5px;padding:7px;font-size:11px}
   .attack-event strong{grid-column:1/-1;margin:0;font-size:9px;white-space:normal;line-height:1.25}.attack-schedule>small{grid-column:1/-1;text-align:right;font-size:8px}
   .modes{grid-template-columns:repeat(6,minmax(0,1fr));margin:10px 0;border-radius:8px}
   .modes button{display:block;min-height:48px;padding:6px 1px;border-right:1px solid #3b321f;font-size:9px;line-height:1.05;white-space:normal}

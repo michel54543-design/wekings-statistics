@@ -123,15 +123,11 @@ async function loadAttacks() {
   const data = await fetch("/api/attacks").then(response => response.json());
   if (!data.dragon_at && !data.serpent_at) {
     $("attackSchedule").classList.add("waiting");
-    $("gameTime").textContent = "сбор после 00:01";
     $("dragonTime").textContent = data.error ? "временно нет данных" : "уточняем…";
     $("serpentTime").textContent = data.error ? "повторим автоматически" : "уточняем…";
     return;
   }
   $("attackSchedule").classList.remove("waiting");
-  $("gameTime").textContent = data.game_time
-    ? new Date(data.game_time).toLocaleTimeString("ru-RU", {hour:"2-digit", minute:"2-digit"})
-    : "—";
   $("dragonTime").textContent = attackTimeText(data.dragon_at);
   $("serpentTime").textContent = attackTimeText(data.serpent_at);
   $("attackUpdated").textContent = data.fetched_at
