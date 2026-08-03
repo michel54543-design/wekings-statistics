@@ -14,6 +14,15 @@ from bs4 import BeautifulSoup
 
 
 BASE_URL = os.getenv("WEKINGS_BASE_URL", "https://wekings.online").rstrip("/")
+FALLBACK_BASE_URLS = tuple(
+    value.rstrip("/")
+    for value in os.getenv(
+        "WEKINGS_FALLBACK_URLS",
+        "https://playwekings.mobi,https://playwekings.ru,"
+        "https://proxy.playwekings.ru,https://wekings.mobi",
+    ).split(",")
+    if value.strip()
+)
 DELAY = max(0.5, float(os.getenv("REQUEST_DELAY", "0.8")))
 TIMEOUT = int(os.getenv("REQUEST_TIMEOUT", "25"))
 SAVE_EVERY = max(3, int(os.getenv("SAVE_EVERY", "20")))
@@ -141,18 +150,9 @@ def request_with_backoff(session, method: str, url: str, **kwargs):
         try:
             response = session.request(method, url, **kwargs)
             if response.status_code == 429:
-                retry_after = response.headers.get("Retry-After", "")
-                try:
-                    delay = float(retry_after)
-                except (TypeError, ValueError):
-                    delay = RATE_LIMIT_DELAY * (2 ** min(attempt, 4))
-                delay = min(MAX_RETRY_DELAY, max(RATE_LIMIT_DELAY, delay))
-                _set_shared_cooldown(delay)
-                last_error = requests.HTTPError(
-                    f"429 Too Many Requests; повтор через {int(delay)} сек.",
-                    response=response,
-                )
-                continue
+                # Не ждём много минут на одном заблокированном домене.
+                # Вызывающий код пересоздаст гостя через резервный адрес.
+                raise RuntimeError(f"429 Too Many Requests: {url}")
             if response.status_code >= 500:
                 delay = min(MAX_RETRY_DELAY, max(10, RATE_LIMIT_DELAY * (attempt + 1)))
                 _set_shared_cooldown(delay)
@@ -172,7 +172,7 @@ def request_with_backoff(session, method: str, url: str, **kwargs):
 
 
 def create_guest_session():
-    candidates = list(dict.fromkeys([BASE_URL, "https://wekings.online"]))
+    candidates = list(dict.fromkeys([BASE_URL, *FALLBACK_BASE_URLS]))
     errors = []
     for base_url in candidates:
         session = requests.Session()

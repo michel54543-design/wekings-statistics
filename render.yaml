@@ -23,6 +23,8 @@ services:
         value: "12"
       - key: RATE_LIMIT_DELAY
         value: "60"
+      - key: WEKINGS_FALLBACK_URLS
+        value: "https://playwekings.mobi,https://playwekings.ru,https://proxy.playwekings.ru,https://wekings.mobi"
       - key: SAVE_EVERY
         value: "20"
       - key: START_SCAN_ON_BOOT
