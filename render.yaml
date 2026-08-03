@@ -18,11 +18,17 @@ services:
       - key: REQUEST_DELAY
         value: "0.8"
       - key: SCAN_WORKERS
-        value: "1"
+        value: "2"
       - key: TRANSIENT_RETRIES
+        value: "3"
+      - key: CONNECT_TIMEOUT
+        value: "5"
+      - key: REQUEST_TIMEOUT
         value: "12"
       - key: RATE_LIMIT_DELAY
         value: "60"
+      - key: MAX_RETRY_DELAY
+        value: "120"
       - key: WEKINGS_FALLBACK_URLS
         value: "https://playwekings.mobi,https://playwekings.ru,https://proxy.playwekings.ru,https://wekings.mobi"
       - key: SAVE_EVERY

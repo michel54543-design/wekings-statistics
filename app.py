@@ -646,6 +646,9 @@ def api_player_detail(player_id):
     )
 
 
+_scan_lock = threading.Lock()
+
+
 def run_scan():
     from scraper import scan_all_players
 
@@ -655,7 +658,7 @@ def run_scan():
         if state.running:
             return
         state.running = True
-        if state.current_player_id <= 1 or state.started_at is None:
+        if state.current_player_id == 0 or state.started_at is None:
             state.started_at = datetime.now(timezone.utc)
         state.last_error = None
         db.session.commit()
@@ -691,8 +694,19 @@ def run_scan():
                 threading.Timer(next_scan_delay, start_scan_thread).start()
 
 
+def _run_scan_guarded():
+    if not _scan_lock.acquire(blocking=False):
+        return
+    try:
+        run_scan()
+    finally:
+        _scan_lock.release()
+
+
 def start_scan_thread():
-    threading.Thread(target=run_scan, daemon=True, name="wekings-scan").start()
+    if _scan_lock.locked():
+        return
+    threading.Thread(target=_run_scan_guarded, daemon=True, name="wekings-scan").start()
 
 
 _attack_lock = threading.Lock()
@@ -751,7 +765,9 @@ def start_scan_on_boot_if_needed():
     with app.app_context():
         state = db.session.get(ScanState, 1)
         has_snapshots = db.session.query(PlayerSnapshot.id).first() is not None
-        should_start = not has_snapshots or state.current_player_id > 1
+        should_start = not has_snapshots or (
+            state.started_at is not None and state.current_player_id > 0
+        )
     if should_start:
         start_scan_thread()
 

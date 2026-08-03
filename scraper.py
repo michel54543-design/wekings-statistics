@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import random
 import re
 import threading
 import time
@@ -24,12 +25,14 @@ FALLBACK_BASE_URLS = tuple(
     if value.strip()
 )
 DELAY = max(0.5, float(os.getenv("REQUEST_DELAY", "0.8")))
-TIMEOUT = int(os.getenv("REQUEST_TIMEOUT", "25"))
+CONNECT_TIMEOUT = max(2, int(os.getenv("CONNECT_TIMEOUT", "5")))
+READ_TIMEOUT = max(5, int(os.getenv("REQUEST_TIMEOUT", "12")))
+TIMEOUT = (CONNECT_TIMEOUT, READ_TIMEOUT)
 SAVE_EVERY = max(3, int(os.getenv("SAVE_EVERY", "20")))
 SCAN_WORKERS = min(2, max(1, int(os.getenv("SCAN_WORKERS", "1"))))
-TRANSIENT_RETRIES = max(3, int(os.getenv("TRANSIENT_RETRIES", "12")))
+TRANSIENT_RETRIES = min(4, max(1, int(os.getenv("TRANSIENT_RETRIES", "3"))))
 RATE_LIMIT_DELAY = max(15, int(os.getenv("RATE_LIMIT_DELAY", "60")))
-MAX_RETRY_DELAY = max(RATE_LIMIT_DELAY, int(os.getenv("MAX_RETRY_DELAY", "600")))
+MAX_RETRY_DELAY = max(RATE_LIMIT_DELAY, int(os.getenv("MAX_RETRY_DELAY", "120")))
 _worker_context = threading.local()
 _guest_cookie_lock = threading.Lock()
 _guest_cookies: dict[str, requests.cookies.RequestsCookieJar] = {}
@@ -37,6 +40,8 @@ _guest_cookie_loader = None
 _guest_cookie_saver = None
 _rate_limit_lock = threading.Lock()
 _rate_limit_until = 0.0
+_request_pace_lock = threading.Lock()
+_next_request_at = 0.0
 
 
 def configure_guest_cookie_storage(loader, saver):
@@ -142,19 +147,43 @@ def _set_shared_cooldown(seconds: float):
         _rate_limit_until = max(_rate_limit_until, time.monotonic() + seconds)
 
 
-def request_with_backoff(session, method: str, url: str, **kwargs):
+def _wait_for_request_slot():
+    """Ограничивает суммарную частоту запросов всех рабочих потоков."""
+    global _next_request_at
+    with _request_pace_lock:
+        remaining = _next_request_at - time.monotonic()
+        if remaining > 0:
+            time.sleep(remaining)
+        jitter = random.uniform(-0.1, 0.1)
+        _next_request_at = time.monotonic() + max(0.5, DELAY + jitter)
+
+
+def _retry_after_seconds(response) -> float:
+    try:
+        return min(MAX_RETRY_DELAY, max(1, float(response.headers.get("Retry-After", ""))))
+    except (TypeError, ValueError):
+        return min(MAX_RETRY_DELAY, RATE_LIMIT_DELAY)
+
+
+def request_with_backoff(session, method: str, url: str, *, retries=None, **kwargs):
     """Повторяет временно заблокированный запрос, не обрывая весь снимок."""
     last_error = None
-    for attempt in range(TRANSIENT_RETRIES):
+    attempts = TRANSIENT_RETRIES if retries is None else max(1, retries)
+    retry_delays = (2, 5, 15)
+    for attempt in range(attempts):
         _wait_for_shared_cooldown()
+        _wait_for_request_slot()
         try:
             response = session.request(method, url, **kwargs)
             if response.status_code == 429:
-                # Не ждём много минут на одном заблокированном домене.
-                # Вызывающий код пересоздаст гостя через резервный адрес.
-                raise RuntimeError(f"429 Too Many Requests: {url}")
+                delay = _retry_after_seconds(response)
+                _set_shared_cooldown(delay)
+                last_error = requests.HTTPError(
+                    f"429 Too Many Requests: {url}", response=response
+                )
+                continue
             if response.status_code >= 500:
-                delay = min(MAX_RETRY_DELAY, max(10, RATE_LIMIT_DELAY * (attempt + 1)))
+                delay = min(MAX_RETRY_DELAY, retry_delays[min(attempt, 2)])
                 _set_shared_cooldown(delay)
                 last_error = requests.HTTPError(
                     f"Wekings временно вернул ошибку {response.status_code}",
@@ -164,10 +193,10 @@ def request_with_backoff(session, method: str, url: str, **kwargs):
             return response
         except (requests.Timeout, requests.ConnectionError) as exc:
             last_error = exc
-            delay = min(MAX_RETRY_DELAY, max(10, RATE_LIMIT_DELAY * (attempt + 1)))
+            delay = min(MAX_RETRY_DELAY, retry_delays[min(attempt, 2)])
             _set_shared_cooldown(delay)
     raise RuntimeError(
-        f"Wekings не ответил после {TRANSIENT_RETRIES} повторов: {last_error}"
+        f"Wekings не ответил после {attempts} попыток: {last_error}"
     )
 
 
@@ -193,7 +222,9 @@ def create_guest_session():
             if cached_cookies is not None:
                 session.cookies.update(cached_cookies)
         try:
-            first = request_with_backoff(session, "GET", f"{base_url}/", timeout=TIMEOUT)
+            first = request_with_backoff(
+                session, "GET", f"{base_url}/", retries=1, timeout=TIMEOUT
+            )
             first.raise_for_status()
             if re.search(r"Викинг\s*#\d+", first.text):
                 _remember_guest(base_url, session)
@@ -467,7 +498,7 @@ def worker_session():
 def fetch_profile(player_id: int):
     """Загружает один профиль в рабочем потоке, не обращаясь к базе."""
     last_error = None
-    for attempt in range(3):
+    for attempt in range(2):
         try:
             session, base_url = worker_session()
             response = request_with_backoff(
@@ -484,13 +515,23 @@ def fetch_profile(player_id: int):
             data = parse_profile(player_id, response.text)
             time.sleep(DELAY)
             return data
-        except (PermissionError, requests.RequestException, RuntimeError) as exc:
+        except PermissionError as exc:
             last_error = exc
             reset_worker_session()
-            if attempt < 2:
-                time.sleep(min(8, DELAY * (attempt + 2)))
+            if attempt == 0:
+                time.sleep(min(2, DELAY * 2))
+        except requests.HTTPError as exc:
+            if exc.response is None or exc.response.status_code not in {401, 403}:
+                raise
+            last_error = exc
+            reset_worker_session()
+            if attempt == 0:
+                time.sleep(min(2, DELAY * 2))
+        except (requests.RequestException, RuntimeError):
+            reset_worker_session()
+            raise
     raise RuntimeError(
-        f"Не удалось загрузить профиль игрока №{player_id} после 3 попыток: {last_error}"
+        f"Не удалось обновить гостевую сессию для игрока №{player_id}: {last_error}"
     )
 
 
@@ -502,7 +543,7 @@ def scan_all_players(db, Player, PlayerSnapshot, ScanState):
     batch_at = state.started_at or datetime.now(timezone.utc)
     start_id = (
         state.current_player_id
-        if 1 < state.current_player_id <= max_id
+        if state.max_player_id > 0 and 1 <= state.current_player_id <= max_id
         else max_id
     )
 
@@ -538,6 +579,7 @@ def scan_all_players(db, Player, PlayerSnapshot, ScanState):
     state.found_players = 0
     commit_with_retry(db)
     pending_since_commit = 0
+    failed_players = {}
     with ThreadPoolExecutor(
         max_workers=SCAN_WORKERS,
         thread_name_prefix="wekings-profile",
@@ -550,17 +592,12 @@ def scan_all_players(db, Player, PlayerSnapshot, ScanState):
                 player_id: executor.submit(fetch_profile, player_id)
                 for player_id in player_ids
             }
-            try:
-                # Получаем результаты в обратном порядке ID. В базу пишет
-                # только главный поток, поэтому сессия остаётся безопасной.
-                results = [
-                    (player_id, futures[player_id].result())
-                    for player_id in player_ids
-                ]
-            except Exception:
-                state.current_player_id = batch_start
-                commit_with_retry(db)
-                raise
+            results = []
+            for player_id in player_ids:
+                try:
+                    results.append((player_id, futures[player_id].result()))
+                except Exception as exc:
+                    failed_players[player_id] = str(exc)
 
             for player_id, data in results:
                 if data and not data.get("_skip_low_level"):
@@ -607,6 +644,65 @@ def scan_all_players(db, Player, PlayerSnapshot, ScanState):
             if pending_since_commit >= SAVE_EVERY:
                 commit_with_retry(db)
                 pending_since_commit = 0
+
+    # Один медленный профиль не блокирует основной проход. После него повторяем
+    # только неудачные ID. Если источник всё ещё недоступен, оставляем снимок
+    # незавершённым с тем же batch_at, чтобы восстановление продолжило его позже.
+    remaining_failures = {}
+    for player_id in sorted(failed_players, reverse=True):
+        try:
+            data = fetch_profile(player_id)
+        except Exception as exc:
+            remaining_failures[player_id] = str(exc)
+            continue
+        if data and not data.get("_skip_low_level"):
+            player = db.session.get(Player, player_id)
+            if player is None:
+                player = Player(
+                    id=player_id,
+                    nickname=data["nickname"],
+                    scanned_at=datetime.now(timezone.utc),
+                )
+                db.session.add(player)
+            else:
+                player.previous_glory = player.glory
+                player.previous_stat_sum = player.stat_sum
+            player_fields = {
+                "nickname", "level", "glory", "power", "defense", "agility",
+                "mastery", "vitality", "stat_sum", "wins", "losses",
+                "dragon_wins", "serpent_wins", "clan", "brotherhood",
+                "last_activity",
+            }
+            for field, value in data.items():
+                if field in player_fields:
+                    setattr(player, field, value)
+            player.scanned_at = datetime.now(timezone.utc)
+            with db.session.no_autoflush:
+                snapshot = PlayerSnapshot.query.filter_by(
+                    player_id=player_id, batch_at=batch_at
+                ).first()
+            if snapshot is None:
+                snapshot = PlayerSnapshot(
+                    player_id=player_id,
+                    batch_at=batch_at,
+                    nickname=data["nickname"],
+                )
+                db.session.add(snapshot)
+            for field, value in data.items():
+                if field not in {"id", "last_activity", "_skip_low_level"}:
+                    setattr(snapshot, field, value)
+            state.found_players += 1
+
+    if remaining_failures:
+        state.current_player_id = max(remaining_failures)
+        commit_with_retry(db)
+        sample = "; ".join(
+            f"№{player_id}: {error}" for player_id, error in list(remaining_failures.items())[:3]
+        )
+        raise RuntimeError(
+            f"Не удалось загрузить {len(remaining_failures)} профилей; "
+            f"снимок будет продолжен позже. {sample}"
+        )
 
     state.current_player_id = 0
     commit_with_retry(db)
