@@ -19,6 +19,15 @@ def normalize_database_url(value: str) -> str:
     return value
 
 
+def moldova_date(value):
+    """Дата отчёта по времени Молдовы, даже если БД вернула naive UTC."""
+    if value is None:
+        return None
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=timezone.utc)
+    return value.astimezone(ZoneInfo("Europe/Chisinau")).date()
+
+
 app = Flask(__name__)
 database_url = normalize_database_url(os.getenv("DATABASE_URL", "sqlite:///wekings.db"))
 app.config["SQLALCHEMY_DATABASE_URI"] = database_url
@@ -137,7 +146,8 @@ with app.app_context():
     db.create_all()
     scan_state = db.session.get(ScanState, 1)
     if scan_state is None:
-        db.session.add(ScanState(id=1))
+        scan_state = ScanState(id=1)
+        db.session.add(scan_state)
     else:
         # Render can stop the process during a scan. A database flag from that
         # dead process must not block the new worker from resuming.
@@ -145,6 +155,25 @@ with app.app_context():
     if db.session.get(GameAttackState, 1) is None:
         db.session.add(GameAttackState(id=1))
     db.session.commit()
+
+    # Старые версии называли снимок днём начала долгого сканирования.
+    # Если сбор перешёл через полночь, переносим последний готовый снимок
+    # на фактическое время завершения: например 02.08 -> 03.08.
+    if scan_state.finished_at:
+        latest_completed_batch = (
+            db.session.query(db.func.max(PlayerSnapshot.batch_at))
+            .filter(PlayerSnapshot.batch_at <= scan_state.finished_at)
+            .scalar()
+        )
+        if (
+            latest_completed_batch
+            and moldova_date(latest_completed_batch) != moldova_date(scan_state.finished_at)
+        ):
+            PlayerSnapshot.query.filter_by(batch_at=latest_completed_batch).update(
+                {PlayerSnapshot.batch_at: scan_state.finished_at},
+                synchronize_session=False,
+            )
+            db.session.commit()
     duplicate_groups = (
         db.session.query(
             PlayerSnapshot.batch_at,
@@ -646,9 +675,6 @@ def api_player_detail(player_id):
     )
 
 
-_scan_lock = threading.Lock()
-
-
 def run_scan():
     from scraper import scan_all_players
 
@@ -658,14 +684,22 @@ def run_scan():
         if state.running:
             return
         state.running = True
-        if state.current_player_id == 0 or state.started_at is None:
+        if state.current_player_id <= 1 or state.started_at is None:
             state.started_at = datetime.now(timezone.utc)
         state.last_error = None
         db.session.commit()
+        batch_started_at = state.started_at
         try:
             scan_all_players(db, Player, PlayerSnapshot, ScanState)
             state = db.session.get(ScanState, 1)
-            state.finished_at = datetime.now(timezone.utc)
+            completed_at = datetime.now(timezone.utc)
+            # Название готового отчёта определяется днём завершения полного
+            # сбора, а не днём его запуска.
+            PlayerSnapshot.query.filter_by(batch_at=batch_started_at).update(
+                {PlayerSnapshot.batch_at: completed_at},
+                synchronize_session=False,
+            )
+            state.finished_at = completed_at
             state.last_error = None
             db.session.commit()
         except Exception as exc:
@@ -694,19 +728,8 @@ def run_scan():
                 threading.Timer(next_scan_delay, start_scan_thread).start()
 
 
-def _run_scan_guarded():
-    if not _scan_lock.acquire(blocking=False):
-        return
-    try:
-        run_scan()
-    finally:
-        _scan_lock.release()
-
-
 def start_scan_thread():
-    if _scan_lock.locked():
-        return
-    threading.Thread(target=_run_scan_guarded, daemon=True, name="wekings-scan").start()
+    threading.Thread(target=run_scan, daemon=True, name="wekings-scan").start()
 
 
 _attack_lock = threading.Lock()
@@ -765,9 +788,7 @@ def start_scan_on_boot_if_needed():
     with app.app_context():
         state = db.session.get(ScanState, 1)
         has_snapshots = db.session.query(PlayerSnapshot.id).first() is not None
-        should_start = not has_snapshots or (
-            state.started_at is not None and state.current_player_id > 0
-        )
+        should_start = not has_snapshots or state.current_player_id > 1
     if should_start:
         start_scan_thread()
 
