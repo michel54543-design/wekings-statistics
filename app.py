@@ -798,8 +798,7 @@ if os.getenv("SCAN_ENABLED", "true").lower() == "true":
     scheduler.start()
     for job_id, hour, minute in (
         ("wekings-night-scan", 0, 15),
-        ("wekings-day-scan", 8, 15),
-        ("wekings-evening-scan", 18, 0),
+        ("wekings-day-scan", 12, 15),
     ):
         scheduler.add_job(
             start_scan_thread,
