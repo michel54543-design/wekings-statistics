@@ -112,6 +112,13 @@ class GuestSessionState(db.Model):
     updated_at = db.Column(db.DateTime(timezone=True), nullable=False)
 
 
+class LowLevelPlayer(db.Model):
+    """ID игрока 1–4 уровня, который можно временно не перепроверять."""
+    player_id = db.Column(db.Integer, primary_key=True)
+    level = db.Column(db.Integer, nullable=False)
+    checked_at = db.Column(db.DateTime(timezone=True), nullable=False, index=True)
+
+
 class PlayerSnapshot(db.Model):
     __table_args__ = (
         db.UniqueConstraint("player_id", "batch_at", name="uq_player_snapshot_batch"),
@@ -464,9 +471,16 @@ def completed_snapshot_dates():
     rows = query.order_by(PlayerSnapshot.batch_at.desc()).limit(100).all()
     if not rows:
         return []
-    largest_count = max(row.player_count for row in rows)
-    minimum_count = max(1, int(largest_count * 0.80))
-    return [row.batch_at for row in rows if row.player_count >= minimum_count]
+    # Проверяем только самый новый снимок относительно непосредственно
+    # предыдущего. Старые снимки могли быть созданы другой версией сканера
+    # (например, 29 446 записей вместо более поздних 7 920), поэтому нельзя
+    # сравнивать всю историю с абсолютным максимумом.
+    if (
+        len(rows) >= 2
+        and rows[0].player_count < int(rows[1].player_count * 0.80)
+    ):
+        rows = rows[1:]
+    return [row.batch_at for row in rows]
 
 
 def valid_group_name(value):
@@ -692,7 +706,9 @@ def run_scan():
         db.session.commit()
         batch_started_at = state.started_at
         try:
-            scan_all_players(db, Player, PlayerSnapshot, ScanState)
+            scan_all_players(
+                db, Player, PlayerSnapshot, ScanState, LowLevelPlayer
+            )
             state = db.session.get(ScanState, 1)
             batch_count = PlayerSnapshot.query.filter_by(
                 batch_at=batch_started_at

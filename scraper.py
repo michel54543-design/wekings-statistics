@@ -535,7 +535,7 @@ def fetch_profile(player_id: int):
     )
 
 
-def scan_all_players(db, Player, PlayerSnapshot, ScanState):
+def scan_all_players(db, Player, PlayerSnapshot, ScanState, LowLevelPlayer):
     session, home_html, _ = create_guest_session()
     max_id = discover_max_id(home_html)
     session.close()
@@ -578,6 +578,27 @@ def scan_all_players(db, Player, PlayerSnapshot, ScanState):
     state.max_player_id = max_id
     state.found_players = 0
     commit_with_retry(db)
+    low_level_cutoff = datetime.now(timezone.utc) - timedelta(days=7)
+    cached_low_level_ids = {
+        row[0]
+        for row in db.session.query(LowLevelPlayer.player_id)
+        .filter(LowLevelPlayer.checked_at >= low_level_cutoff)
+        .all()
+    }
+
+    def remember_low_level(player_id, data):
+        cached = db.session.get(LowLevelPlayer, player_id)
+        if cached is None:
+            cached = LowLevelPlayer(player_id=player_id)
+            db.session.add(cached)
+        cached.level = data["level"]
+        cached.checked_at = datetime.now(timezone.utc)
+
+    def forget_low_level(player_id):
+        cached = db.session.get(LowLevelPlayer, player_id)
+        if cached is not None:
+            db.session.delete(cached)
+
     pending_since_commit = 0
     failed_players = {}
     with ThreadPoolExecutor(
@@ -588,19 +609,27 @@ def scan_all_players(db, Player, PlayerSnapshot, ScanState):
             player_ids = list(
                 range(batch_start, max(batch_start - SCAN_WORKERS, 0), -1)
             )
+            ids_to_fetch = [
+                player_id for player_id in player_ids
+                if player_id not in cached_low_level_ids
+            ]
             futures = {
                 player_id: executor.submit(fetch_profile, player_id)
-                for player_id in player_ids
+                for player_id in ids_to_fetch
             }
             results = []
-            for player_id in player_ids:
+            for player_id in ids_to_fetch:
                 try:
                     results.append((player_id, futures[player_id].result()))
                 except Exception as exc:
                     failed_players[player_id] = str(exc)
 
             for player_id, data in results:
-                if data and not data.get("_skip_low_level"):
+                if data and data.get("_skip_low_level"):
+                    remember_low_level(player_id, data)
+                    cached_low_level_ids.add(player_id)
+                elif data:
+                    forget_low_level(player_id)
                     player = db.session.get(Player, player_id)
                     if player is None:
                         player = Player(
@@ -655,7 +684,11 @@ def scan_all_players(db, Player, PlayerSnapshot, ScanState):
         except Exception as exc:
             remaining_failures[player_id] = str(exc)
             continue
-        if data and not data.get("_skip_low_level"):
+        if data and data.get("_skip_low_level"):
+            remember_low_level(player_id, data)
+            cached_low_level_ids.add(player_id)
+        elif data:
+            forget_low_level(player_id)
             player = db.session.get(Player, player_id)
             if player is None:
                 player = Player(
