@@ -295,18 +295,10 @@ def api_players():
     query = request.args.get("q", "").strip()
     level = request.args.get("level", type=int)
     field_name = SORT_FIELDS.get(metric, "power")
-    scan_state = db.session.get(ScanState, 1)
-    dates_query = db.session.query(PlayerSnapshot.batch_at).distinct()
-    if scan_state.finished_at:
-        # Публикуем только полностью завершённые снимки. Текущий частичный
-        # сбор станет доступен сразу после проверки последнего игрока.
-        dates_query = dates_query.filter(PlayerSnapshot.batch_at <= scan_state.finished_at)
-    dates = [
-        row[0]
-        for row in dates_query.order_by(PlayerSnapshot.batch_at.desc())
-        .limit(100)
-        .all()
-    ]
+    # В список попадают только завершённые и достаточно полные снимки.
+    # Это не позволяет ошибочному сбору из 2 000 игроков заменить обычный
+    # отчёт примерно на 8 000 игроков.
+    dates = completed_snapshot_dates()
     if not dates:
         max_level = db.session.query(db.func.max(Player.level)).scalar() or 44
         legacy_fields = {
@@ -463,10 +455,18 @@ def api_players():
 
 def completed_snapshot_dates():
     scan_state = db.session.get(ScanState, 1)
-    query = db.session.query(PlayerSnapshot.batch_at).distinct()
+    query = db.session.query(
+        PlayerSnapshot.batch_at,
+        db.func.count(PlayerSnapshot.id).label("player_count"),
+    ).group_by(PlayerSnapshot.batch_at)
     if scan_state and scan_state.finished_at:
         query = query.filter(PlayerSnapshot.batch_at <= scan_state.finished_at)
-    return [row[0] for row in query.order_by(PlayerSnapshot.batch_at.desc()).limit(100).all()]
+    rows = query.order_by(PlayerSnapshot.batch_at.desc()).limit(100).all()
+    if not rows:
+        return []
+    largest_count = max(row.player_count for row in rows)
+    minimum_count = max(1, int(largest_count * 0.80))
+    return [row.batch_at for row in rows if row.player_count >= minimum_count]
 
 
 def valid_group_name(value):
@@ -602,13 +602,15 @@ def api_status():
         db.engine.dispose()
         state = db.session.get(ScanState, 1)
         total_players = Player.query.count()
+    trusted_dates = completed_snapshot_dates()
+    published_at = trusted_dates[0] if trusted_dates else state.finished_at
     return jsonify(
         running=state.running,
         current_player_id=state.current_player_id,
         max_player_id=state.max_player_id,
         found_players=state.found_players,
         started_at=state.started_at.isoformat() if state.started_at else None,
-        finished_at=state.finished_at.isoformat() if state.finished_at else None,
+        finished_at=published_at.isoformat() if published_at else None,
         last_error=state.last_error,
         total_players=total_players,
     )
@@ -639,10 +641,10 @@ def api_player_detail(player_id):
         "crystals_stolen", "crystals_lost",
     ]
     snapshots_query = PlayerSnapshot.query.filter_by(player_id=player_id)
-    scan_state = db.session.get(ScanState, 1)
-    if scan_state.finished_at:
+    trusted_dates = completed_snapshot_dates()
+    if trusted_dates:
         snapshots_query = snapshots_query.filter(
-            PlayerSnapshot.batch_at <= scan_state.finished_at
+            PlayerSnapshot.batch_at.in_(trusted_dates)
         )
     snapshots = snapshots_query.order_by(PlayerSnapshot.batch_at.asc()).all()
     history = [
@@ -692,6 +694,33 @@ def run_scan():
         try:
             scan_all_players(db, Player, PlayerSnapshot, ScanState)
             state = db.session.get(ScanState, 1)
+            batch_count = PlayerSnapshot.query.filter_by(
+                batch_at=batch_started_at
+            ).count()
+            previous_counts = (
+                db.session.query(
+                    PlayerSnapshot.batch_at,
+                    db.func.count(PlayerSnapshot.id).label("player_count"),
+                )
+                .filter(PlayerSnapshot.batch_at != batch_started_at)
+                .group_by(PlayerSnapshot.batch_at)
+                .all()
+            )
+            previous_max = max(
+                (row.player_count for row in previous_counts),
+                default=0,
+            )
+            minimum_count = int(previous_max * 0.80)
+            if previous_max and batch_count < minimum_count:
+                # Не публикуем подозрительно маленький снимок. Оставляем тот
+                # же batch_at и запускаем полный повтор с максимального ID.
+                state.current_player_id = state.max_player_id
+                state.last_error = (
+                    f"Неполный снимок: найдено {batch_count} игроков, "
+                    f"нужно не менее {minimum_count}. Сканирование повторится."
+                )
+                db.session.commit()
+                raise RuntimeError(state.last_error)
             completed_at = datetime.now(timezone.utc)
             # Название готового отчёта определяется днём завершения полного
             # сбора, а не днём его запуска.
