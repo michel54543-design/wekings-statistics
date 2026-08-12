@@ -121,10 +121,15 @@ function attackTimeText(value) {
 
 async function loadAttacks() {
   const data = await fetch("/api/attacks").then(response => response.json());
-  if (!data.dragon_at && !data.serpent_at) {
+  const fetchedAt = data.fetched_at ? new Date(data.fetched_at) : null;
+  const stale = !fetchedAt || Date.now() - fetchedAt.getTime() > 24 * 60 * 60 * 1000;
+  if (data.error || stale || (!data.dragon_at && !data.serpent_at)) {
     $("attackSchedule").classList.add("waiting");
-    $("dragonTime").textContent = data.error ? "временно нет данных" : "уточняем…";
-    $("serpentTime").textContent = data.error ? "повторим автоматически" : "уточняем…";
+    $("dragonTime").textContent = "нет актуальных данных";
+    $("serpentTime").textContent = "повторим автоматически";
+    $("attackUpdated").textContent = fetchedAt
+      ? `последняя успешная проверка ${fetchedAt.toLocaleString("ru-RU", {day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"})}`
+      : "";
     return;
   }
   $("attackSchedule").classList.remove("waiting");
