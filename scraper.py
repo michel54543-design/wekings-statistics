@@ -308,7 +308,8 @@ def _duration_near(text: str, labels: tuple[str, ...]):
         position = text.casefold().find(label.casefold())
         if position < 0:
             continue
-        fragment = text[position:position + 260]
+        # Между названием события и таймером может быть несколько строк.
+        fragment = text[position:position + 600]
         days = re.search(r"(\d+)\s*(?:дн(?:ей|я|ь)?|d)", fragment, re.I)
         hours = re.search(r"(\d+)\s*(?:час(?:а|ов)?|ч\.?|h)", fragment, re.I)
         minutes = re.search(r"(\d+)\s*(?:мин(?:ут|ы)?|м\.?|min)", fragment, re.I)
@@ -320,7 +321,12 @@ def _duration_near(text: str, labels: tuple[str, ...]):
                 minutes=int(minutes.group(1)) if minutes else 0,
                 seconds=int(seconds.group(1)) if seconds else 0,
             ), fragment.splitlines()[0][:180]
-        clock = re.search(r"(?:через|\b)\s*(\d{1,3}):(\d{2})(?::(\d{2}))?", fragment, re.I)
+        clock = re.search(
+            r"(?:через|осталось|до\s+(?:нападения|атаки|начала))?\s*"
+            r"(\d{1,3}):(\d{2})(?::(\d{2}))?",
+            fragment,
+            re.I,
+        )
         if clock:
             return timedelta(
                 hours=int(clock.group(1)),
@@ -343,8 +349,12 @@ def fetch_attack_schedule():
         monk = session.get(monk_url, timeout=TIMEOUT)
         monk.raise_for_status()
         text = BeautifulSoup(monk.text, "html.parser").get_text("\n", strip=True)
-        dragon_delta, dragon_raw = _duration_near(text, ("Дракон",))
-        serpent_delta, serpent_raw = _duration_near(text, ("Змей", "Змея", "Змеем"))
+        dragon_delta, dragon_raw = _duration_near(
+            text, ("Дракон", "Дракона", "Драконом")
+        )
+        serpent_delta, serpent_raw = _duration_near(
+            text, ("Змей", "Змея", "Змеем", "Змею")
+        )
         if dragon_delta is None and serpent_delta is None:
             raise RuntimeError("на странице монаха не найдено время Дракона или Змея")
         game_now = datetime.now(ZoneInfo("Europe/Chisinau"))

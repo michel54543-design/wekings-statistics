@@ -801,6 +801,11 @@ def update_attack_schedule():
                 db.session.rollback()
                 app.logger.exception("Wekings attack schedule update failed")
                 state = db.session.get(GameAttackState, 1)
+                # Никогда не показываем вчерашнее время как актуальное.
+                state.dragon_at = None
+                state.serpent_at = None
+                state.dragon_raw = None
+                state.serpent_raw = None
                 state.last_error = str(exc)[:1000]
                 db.session.commit()
     finally:
