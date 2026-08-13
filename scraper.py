@@ -586,22 +586,6 @@ def scan_all_players(db, Player, PlayerSnapshot, ScanState, LowLevelPlayer):
         else max_id
     )
 
-    # Переход со старого сканирования 1 → максимум на новое направление.
-    # Если текущий незавершённый снимок содержит только младшие ID, безопасно
-    # начинаем его заново с максимального ID. Уже записанные строки обновятся,
-    # поэтому дубликатов не появится.
-    highest_in_batch = (
-        db.session.query(db.func.max(PlayerSnapshot.player_id))
-        .filter(PlayerSnapshot.batch_at == batch_at)
-        .scalar()
-    )
-    if (
-        highest_in_batch is not None
-        and state.current_player_id > 1
-        and highest_in_batch <= state.current_player_id
-    ):
-        start_id = max_id
-
     # Старый парсер мог присоединить к славе цифры даты. При необходимости
     # захватываем подозрительную запись и все ID выше неё.
     suspicious_id = (
