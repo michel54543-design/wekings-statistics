@@ -200,7 +200,7 @@ def request_with_backoff(session, method: str, url: str, *, retries=None, **kwar
     )
 
 
-def create_guest_session():
+def create_guest_session(force_new: bool = False):
     candidates = list(dict.fromkeys([BASE_URL, *FALLBACK_BASE_URLS]))
     errors = []
     for base_url in candidates:
@@ -212,8 +212,8 @@ def create_guest_session():
             }
         )
         with _guest_cookie_lock:
-            cached_cookies = _guest_cookies.get(base_url)
-        if cached_cookies is None:
+            cached_cookies = None if force_new else _guest_cookies.get(base_url)
+        if cached_cookies is None and not force_new:
             cached_cookies = _restore_guest(base_url)
             if cached_cookies is not None:
                 with _guest_cookie_lock:
@@ -336,9 +336,9 @@ def _duration_near(text: str, labels: tuple[str, ...]):
     return None, None
 
 
-def fetch_attack_schedule():
+def _fetch_attack_schedule_once(force_new: bool = False):
     """Заходит в гостевую игру и читает «Город» → «Монах»."""
-    session, home_html, base_url = create_guest_session()
+    session, home_html, base_url = create_guest_session(force_new=force_new)
     try:
         # На главной Wekings кнопка города может быть картинкой без
         # текста, поэтому оставляем проверенный адрес /town.
@@ -389,6 +389,16 @@ def fetch_attack_schedule():
         }
     finally:
         session.close()
+
+
+def fetch_attack_schedule():
+    """Читает таймеры; при проблеме старого гостя повторяет с новым."""
+    try:
+        return _fetch_attack_schedule_once(force_new=False)
+    except RuntimeError as exc:
+        if "не найдено время" not in str(exc):
+            raise
+        return _fetch_attack_schedule_once(force_new=True)
 
 
 def discover_max_id(home_html: str):

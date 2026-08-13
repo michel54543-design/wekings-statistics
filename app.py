@@ -831,6 +831,8 @@ def update_attack_schedule():
                 db.session.rollback()
                 app.logger.exception("Wekings attack schedule update failed")
                 state = db.session.get(GameAttackState, 1)
+                # Показываем время именно последней попытки, а не старую дату.
+                state.fetched_at = datetime.now(timezone.utc)
                 # Никогда не показываем вчерашнее время как актуальное.
                 state.dragon_at = None
                 state.serpent_at = None
