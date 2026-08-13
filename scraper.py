@@ -304,12 +304,19 @@ def _link_by_text(html: str, label: str, base_url: str):
 
 def _duration_near(text: str, labels: tuple[str, ...]):
     """Извлекает обратный отсчёт рядом с названием события."""
+    text_lines = [line.strip() for line in text.splitlines() if line.strip()]
     for label in labels:
-        position = text.casefold().find(label.casefold())
-        if position < 0:
+        # На странице монаха каждое событие находится в отдельной строке.
+        # Нельзя брать большой фрагмент после слова «Дракон»: когда Дракон
+        # уже напал, следующим идёт таймер Змея и он ошибочно присваивался
+        # обоим событиям.
+        event_line = next(
+            (line for line in text_lines if label.casefold() in line.casefold()),
+            None,
+        )
+        if event_line is None:
             continue
-        # Между названием события и таймером может быть несколько строк.
-        fragment = text[position:position + 600]
+        fragment = event_line
         days = re.search(r"(\d+)\s*(?:дн(?:ей|я|ь)?|d)", fragment, re.I)
         hours = re.search(r"(\d+)\s*(?:час(?:а|ов)?|ч\.?|h)", fragment, re.I)
         minutes = re.search(r"(\d+)\s*(?:мин(?:ут|ы)?|м\.?|min)", fragment, re.I)
@@ -320,7 +327,7 @@ def _duration_near(text: str, labels: tuple[str, ...]):
                 hours=int(hours.group(1)) if hours else 0,
                 minutes=int(minutes.group(1)) if minutes else 0,
                 seconds=int(seconds.group(1)) if seconds else 0,
-            ), fragment.splitlines()[0][:180]
+            ), event_line[:180]
         clock = re.search(
             r"(?:через|осталось|до\s+(?:нападения|атаки|начала))?\s*"
             r"(\d{1,3}):(\d{2})(?::(\d{2}))?",
@@ -340,7 +347,7 @@ def _duration_near(text: str, labels: tuple[str, ...]):
                 duration = timedelta(
                     hours=first, minutes=second, seconds=int(third)
                 )
-            return duration, fragment.splitlines()[0][:180]
+            return duration, event_line[:180]
     return None, None
 
 
@@ -364,7 +371,20 @@ def _fetch_attack_schedule_once(force_new: bool = False):
         serpent_delta, serpent_raw = _duration_near(
             text, ("Змей", "Змея", "Змеем", "Змею")
         )
-        if dragon_delta is None and serpent_delta is None:
+        dragon_active = bool(re.search(
+            r"Дракон\s+напал|нападение\s+Дракона\s+(?:уже\s+)?началось",
+            text,
+            re.I,
+        ))
+        serpent_active = bool(re.search(
+            r"(?:Морской\s+)?Змей\s+напал|нападение\s+(?:Морского\s+)?Змея\s+(?:уже\s+)?началось",
+            text,
+            re.I,
+        ))
+        if (
+            dragon_delta is None and serpent_delta is None
+            and not dragon_active and not serpent_active
+        ):
             raise RuntimeError("на странице монаха не найдено время Дракона или Змея")
         game_now = datetime.now(ZoneInfo("Europe/Chisinau"))
         # Сначала используем точное серверное время из meta, которое Wekings
@@ -394,8 +414,8 @@ def _fetch_attack_schedule_once(force_new: bool = False):
             "game_time": game_now,
             "dragon_at": game_now + dragon_delta if dragon_delta else None,
             "serpent_at": game_now + serpent_delta if serpent_delta else None,
-            "dragon_raw": dragon_raw,
-            "serpent_raw": serpent_raw,
+            "dragon_raw": "Дракон уже напал — сражайся!" if dragon_active else dragon_raw,
+            "serpent_raw": "Морской Змей уже напал — сражайся!" if serpent_active else serpent_raw,
         }
     finally:
         session.close()

@@ -649,6 +649,8 @@ def api_attacks():
         game_time=state.game_time.isoformat() if state and state.game_time else None,
         dragon_at=state.dragon_at.isoformat() if state and state.dragon_at else None,
         serpent_at=state.serpent_at.isoformat() if state and state.serpent_at else None,
+        dragon_status=state.dragon_raw if state and not state.dragon_at else None,
+        serpent_status=state.serpent_raw if state and not state.serpent_at else None,
         error=state.last_error if state else None,
     )
 
