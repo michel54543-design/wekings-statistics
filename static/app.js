@@ -123,7 +123,7 @@ async function loadAttacks() {
   const data = await fetch("/api/attacks").then(response => response.json());
   const fetchedAt = data.fetched_at ? new Date(data.fetched_at) : null;
   const stale = !fetchedAt || Date.now() - fetchedAt.getTime() > 24 * 60 * 60 * 1000;
-  if (data.error || stale || (!data.dragon_at && !data.serpent_at)) {
+  if (data.error || stale || (!data.dragon_at && !data.serpent_at && !data.dragon_status && !data.serpent_status)) {
     $("attackSchedule").classList.add("waiting");
     $("dragonTime").textContent = "нет актуальных данных";
     $("serpentTime").textContent = "повторим автоматически";
@@ -133,8 +133,8 @@ async function loadAttacks() {
     return;
   }
   $("attackSchedule").classList.remove("waiting");
-  $("dragonTime").textContent = attackTimeText(data.dragon_at);
-  $("serpentTime").textContent = attackTimeText(data.serpent_at);
+  $("dragonTime").textContent = data.dragon_status || attackTimeText(data.dragon_at);
+  $("serpentTime").textContent = data.serpent_status || attackTimeText(data.serpent_at);
   $("attackUpdated").textContent = data.fetched_at
     ? `проверено ${new Date(data.fetched_at).toLocaleString("ru-RU", {day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"})}`
     : "";
