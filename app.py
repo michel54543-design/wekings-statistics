@@ -719,6 +719,55 @@ def run_scan():
         db.session.commit()
         batch_started_at = state.started_at
         try:
+            existing_batch = (
+                db.session.query(
+                    db.func.count(PlayerSnapshot.id),
+                    db.func.min(PlayerSnapshot.player_id),
+                    db.func.max(PlayerSnapshot.player_id),
+                )
+                .filter(PlayerSnapshot.batch_at == batch_started_at)
+                .one()
+            )
+            recent_rows = (
+                db.session.query(
+                    PlayerSnapshot.batch_at,
+                    db.func.count(PlayerSnapshot.id).label("player_count"),
+                )
+                .filter(PlayerSnapshot.batch_at != batch_started_at)
+                .group_by(PlayerSnapshot.batch_at)
+                .order_by(PlayerSnapshot.batch_at.desc())
+                .limit(7)
+                .all()
+            )
+            recent_counts = sorted(
+                row.player_count for row in recent_rows if row.player_count > 0
+            )
+            baseline = recent_counts[len(recent_counts) // 2] if recent_counts else 0
+            existing_count, lowest_id, highest_id = existing_batch
+            recovered_complete_batch = bool(
+                baseline
+                and existing_count >= int(baseline * 0.80)
+                and lowest_id is not None and lowest_id <= 100
+                and highest_id is not None
+                and highest_id >= int(state.max_player_id * 0.90)
+            )
+            if recovered_complete_batch:
+                completed_at = datetime.now(timezone.utc)
+                PlayerSnapshot.query.filter_by(batch_at=batch_started_at).update(
+                    {PlayerSnapshot.batch_at: completed_at},
+                    synchronize_session=False,
+                )
+                state.current_player_id = 0
+                state.found_players = existing_count
+                state.finished_at = completed_at
+                state.last_error = None
+                db.session.commit()
+                logger_message = (
+                    "Recovered completed snapshot: %s players; "
+                    "publishing without a redundant full rescan"
+                )
+                app.logger.info(logger_message, existing_count)
+                return
             scan_all_players(
                 db, Player, PlayerSnapshot, ScanState, LowLevelPlayer
             )
@@ -726,27 +775,37 @@ def run_scan():
             batch_count = PlayerSnapshot.query.filter_by(
                 batch_at=batch_started_at
             ).count()
-            previous_counts = (
+            recent_previous_counts = (
                 db.session.query(
                     PlayerSnapshot.batch_at,
                     db.func.count(PlayerSnapshot.id).label("player_count"),
                 )
                 .filter(PlayerSnapshot.batch_at != batch_started_at)
                 .group_by(PlayerSnapshot.batch_at)
+                .order_by(PlayerSnapshot.batch_at.desc())
+                .limit(7)
                 .all()
             )
-            previous_max = max(
-                (row.player_count for row in previous_counts),
-                default=0,
+            # Используем медиану последних отчётов. Старые снимки содержали
+            # все ~29 тысяч ID, а новые — только активных игроков 5+ уровня
+            # (~7920). Сравнение с историческим максимумом делало любой
+            # нормальный новый отчёт «неполным» и запускало бесконечный повтор.
+            recent_counts = sorted(
+                row.player_count for row in recent_previous_counts
+                if row.player_count > 0
             )
-            minimum_count = int(previous_max * 0.80)
-            if previous_max and batch_count < minimum_count:
+            baseline_count = (
+                recent_counts[len(recent_counts) // 2] if recent_counts else 0
+            )
+            minimum_count = int(baseline_count * 0.80)
+            if baseline_count and batch_count < minimum_count:
                 # Не публикуем подозрительно маленький снимок. Оставляем тот
                 # же batch_at и запускаем полный повтор с максимального ID.
                 state.current_player_id = state.max_player_id
                 state.last_error = (
                     f"Неполный снимок: найдено {batch_count} игроков, "
-                    f"нужно не менее {minimum_count}. Сканирование повторится."
+                    f"нужно не менее {minimum_count} относительно последних "
+                    "отчётов. Сканирование повторится."
                 )
                 db.session.commit()
                 raise RuntimeError(state.last_error)
