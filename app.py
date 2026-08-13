@@ -28,6 +28,13 @@ def moldova_date(value):
     return value.astimezone(ZoneInfo("Europe/Chisinau")).date()
 
 
+def _as_utc(value):
+    """PostgreSQL/SQLite могут вернуть дату без информации о часовом поясе."""
+    if value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc)
+
+
 app = Flask(__name__)
 database_url = normalize_database_url(os.getenv("DATABASE_URL", "sqlite:///wekings.db"))
 app.config["SQLALCHEMY_DATABASE_URI"] = database_url
@@ -793,10 +800,17 @@ def request_attack_refresh_if_needed(state):
     fetched_at = state.fetched_at if state else None
     if fetched_at and fetched_at.tzinfo is None:
         fetched_at = fetched_at.replace(tzinfo=timezone.utc)
-    stale = not fetched_at or now - fetched_at > timedelta(hours=6)
+    stale = not fetched_at or now - fetched_at > timedelta(minutes=15)
     missing = not state or not state.dragon_at or not state.serpent_at
     failed = bool(state and state.last_error)
-    if not (stale or missing or failed):
+    event_expired = bool(
+        state
+        and (
+            (state.dragon_at and _as_utc(state.dragon_at) <= now)
+            or (state.serpent_at and _as_utc(state.serpent_at) <= now)
+        )
+    )
+    if not (stale or missing or failed or event_expired):
         return
 
     # Не чаще одного принудительного запроса в 5 минут на один процесс.
@@ -855,11 +869,15 @@ def start_attack_thread():
 def start_attack_on_boot_if_needed():
     with app.app_context():
         state = db.session.get(GameAttackState, 1)
-        local_zone = ZoneInfo("Europe/Chisinau")
-        today = datetime.now(local_zone).date()
+        now = datetime.now(timezone.utc)
+        fetched_at = _as_utc(state.fetched_at) if state and state.fetched_at else None
         needs_update = (
-            not state.fetched_at
-            or state.fetched_at.replace(tzinfo=timezone.utc).astimezone(local_zone).date() < today
+            not fetched_at
+            or now - fetched_at >= timedelta(minutes=15)
+            or not state.dragon_at
+            or not state.serpent_at
+            or _as_utc(state.dragon_at) <= now
+            or _as_utc(state.serpent_at) <= now
         )
     if needs_update:
         start_attack_thread()
