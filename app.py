@@ -506,10 +506,33 @@ def completed_snapshot_dates():
     if scan_state and scan_state.finished_at:
         query = query.filter(PlayerSnapshot.batch_at <= scan_state.finished_at)
     rows = query.order_by(PlayerSnapshot.batch_at.desc()).limit(100).all()
-    # Незавершённые снимки не получают finished_at и не переименовываются во
-    # время завершения. Проверка полноты выполняется один раз при публикации,
-    # поэтому здесь не нужен дорогой COUNT/GROUP BY всей истории.
-    return [row.batch_at for row in rows]
+    candidates = [row.batch_at for row in rows]
+
+    # В старой базе за один день иногда остались два снимка: полный и
+    # повреждённый незавершённый. Для каждого дня выбираем самый полный.
+    # COUNT выполняется только для дней-дубликатов (обычно это 1–2 коротких
+    # индексных запроса), а не группирует всю историческую таблицу.
+    by_day = {}
+    for value in candidates:
+        by_day.setdefault(moldova_date(value), []).append(value)
+
+    trusted = []
+    for day in sorted(by_day, reverse=True):
+        day_candidates = by_day[day]
+        if len(day_candidates) == 1:
+            trusted.append(day_candidates[0])
+            continue
+        counts = dict(
+            db.session.query(
+                PlayerSnapshot.batch_at,
+                db.func.count(PlayerSnapshot.id),
+            )
+            .filter(PlayerSnapshot.batch_at.in_(day_candidates))
+            .group_by(PlayerSnapshot.batch_at)
+            .all()
+        )
+        trusted.append(max(day_candidates, key=lambda value: counts.get(value, 0)))
+    return trusted
 
 
 def valid_group_name(value):
