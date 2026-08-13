@@ -328,11 +328,19 @@ def _duration_near(text: str, labels: tuple[str, ...]):
             re.I,
         )
         if clock:
-            return timedelta(
-                hours=int(clock.group(1)),
-                minutes=int(clock.group(2)),
-                seconds=int(clock.group(3) or 0),
-            ), fragment.splitlines()[0][:180]
+            first = int(clock.group(1))
+            second = int(clock.group(2))
+            third = clock.group(3)
+            # Wekings показывает H:MM:SS, когда остаются часы, и MM:SS,
+            # когда остаётся меньше часа. Раньше 41:57 ошибочно считалось
+            # 41 часом 57 минутами вместо 41 минуты 57 секунд.
+            if third is None:
+                duration = timedelta(minutes=first, seconds=second)
+            else:
+                duration = timedelta(
+                    hours=first, minutes=second, seconds=int(third)
+                )
+            return duration, fragment.splitlines()[0][:180]
     return None, None
 
 
