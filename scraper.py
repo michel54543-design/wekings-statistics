@@ -366,7 +366,9 @@ def _fetch_attack_schedule_once(force_new: bool = False):
             try:
                 game_now = datetime.strptime(
                     server_time["content"].strip(), "%Y-%m-%d %H:%M:%S"
-                ).replace(tzinfo=ZoneInfo("Europe/Chisinau"))
+                ).replace(tzinfo=timezone.utc).astimezone(
+                    ZoneInfo("Europe/Chisinau")
+                )
             except ValueError:
                 pass
         game_clock = re.search(
