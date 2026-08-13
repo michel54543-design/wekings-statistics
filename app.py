@@ -343,6 +343,89 @@ def api_players():
             dates[1] if len(dates) > 1 else dates[0],
         )
 
+    # Для обычного рейтинга сначала выбираем только текущую страницу, затем
+    # получаем предыдущие значения лишь для этих 50 игроков. Старый запрос
+    # соединял целиком два снимка по ~8 тысяч строк и сортировал результат,
+    # из-за чего бесплатный PostgreSQL зависал на десятки секунд.
+    if mode not in {"growth", "best"}:
+        current_query = PlayerSnapshot.query.filter_by(batch_at=date_to)
+        if query:
+            current_query = current_query.filter(
+                PlayerSnapshot.nickname.ilike(f"%{query}%")
+            )
+        if level:
+            current_query = current_query.filter(PlayerSnapshot.level == level)
+        sort_column = getattr(PlayerSnapshot, field_name)
+        result = current_query.order_by(
+            sort_column.desc().nullslast()
+        ).paginate(page=page, per_page=per_page, error_out=False)
+
+        previous_date = dates[1] if len(dates) > 1 else dates[0]
+        player_ids = [player.player_id for player in result.items]
+        previous_values = {}
+        if player_ids:
+            previous_values = dict(
+                db.session.query(
+                    PlayerSnapshot.player_id,
+                    getattr(PlayerSnapshot, field_name),
+                )
+                .filter(
+                    PlayerSnapshot.batch_at == previous_date,
+                    PlayerSnapshot.player_id.in_(player_ids),
+                )
+                .all()
+            )
+
+        def player_payload(player):
+            current_value = getattr(player, field_name)
+            previous_value = previous_values.get(player.player_id)
+            gain = (
+                current_value - previous_value
+                if current_value is not None and previous_value is not None
+                else None
+            )
+            return {
+                "id": player.player_id,
+                "nickname": player.nickname,
+                "level": player.level,
+                "glory": player.glory,
+                "glory_gain": gain if metric == "glory" else None,
+                "power": player.power,
+                "defense": player.defense,
+                "agility": player.agility,
+                "mastery": player.mastery,
+                "vitality": player.vitality,
+                "stat_sum": player.stat_sum,
+                "stats_gain": gain if metric == "stat_sum" else None,
+                "wins": player.wins,
+                "losses": player.losses,
+                "dragon_wins": player.dragon_wins,
+                "serpent_wins": player.serpent_wins,
+                "beasts_killed": player.beasts_killed,
+                "silver_stolen": player.silver_stolen,
+                "silver_lost": player.silver_lost,
+                "crystals_stolen": player.crystals_stolen,
+                "crystals_lost": player.crystals_lost,
+                "gain": gain,
+                "clan": player.clan,
+                "brotherhood": player.brotherhood,
+                "profile_url": (
+                    "https://playwekings.mobi/hero/detail?player="
+                    f"{player.player_id}"
+                ),
+            }
+
+        return jsonify(
+            players=[player_payload(player) for player in result.items],
+            page=result.page,
+            pages=result.pages,
+            total=result.total,
+            dates=[value.isoformat() for value in dates],
+            date_from=previous_date.isoformat(),
+            date_to=date_to.isoformat(),
+            max_level=max_level,
+        )
+
     current = aliased(PlayerSnapshot)
     previous = aliased(PlayerSnapshot)
     value_column = getattr(current, field_name)
@@ -419,24 +502,13 @@ def api_players():
 
 def completed_snapshot_dates():
     scan_state = db.session.get(ScanState, 1)
-    query = db.session.query(
-        PlayerSnapshot.batch_at,
-        db.func.count(PlayerSnapshot.id).label("player_count"),
-    ).group_by(PlayerSnapshot.batch_at)
+    query = db.session.query(PlayerSnapshot.batch_at).distinct()
     if scan_state and scan_state.finished_at:
         query = query.filter(PlayerSnapshot.batch_at <= scan_state.finished_at)
     rows = query.order_by(PlayerSnapshot.batch_at.desc()).limit(100).all()
-    if not rows:
-        return []
-    # Проверяем только самый новый снимок относительно непосредственно
-    # предыдущего. Старые снимки могли быть созданы другой версией сканера
-    # (например, 29 446 записей вместо более поздних 7 920), поэтому нельзя
-    # сравнивать всю историю с абсолютным максимумом.
-    if (
-        len(rows) >= 2
-        and rows[0].player_count < int(rows[1].player_count * 0.80)
-    ):
-        rows = rows[1:]
+    # Незавершённые снимки не получают finished_at и не переименовываются во
+    # время завершения. Проверка полноты выполняется один раз при публикации,
+    # поэтому здесь не нужен дорогой COUNT/GROUP BY всей истории.
     return [row.batch_at for row in rows]
 
 
