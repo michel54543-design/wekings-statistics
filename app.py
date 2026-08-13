@@ -633,6 +633,10 @@ def api_status():
 @app.get("/api/attacks")
 def api_attacks():
     state = db.session.get(GameAttackState, 1)
+    # Бесплатный Render может пропустить задание планировщика после сна.
+    # Поэтому запрос с сайта сам просит обновление, если таймеры пустые,
+    # устарели или предыдущая попытка завершилась ошибкой.
+    request_attack_refresh_if_needed(state)
     return jsonify(
         fetched_at=state.fetched_at.isoformat() if state and state.fetched_at else None,
         game_time=state.game_time.isoformat() if state and state.game_time else None,
@@ -778,6 +782,32 @@ def start_scan_thread():
 
 
 _attack_lock = threading.Lock()
+_attack_refresh_lock = threading.Lock()
+_last_attack_refresh_request = None
+
+
+def request_attack_refresh_if_needed(state):
+    global _last_attack_refresh_request
+
+    now = datetime.now(timezone.utc)
+    fetched_at = state.fetched_at if state else None
+    if fetched_at and fetched_at.tzinfo is None:
+        fetched_at = fetched_at.replace(tzinfo=timezone.utc)
+    stale = not fetched_at or now - fetched_at > timedelta(hours=6)
+    missing = not state or not state.dragon_at or not state.serpent_at
+    failed = bool(state and state.last_error)
+    if not (stale or missing or failed):
+        return
+
+    # Не чаще одного принудительного запроса в 5 минут на один процесс.
+    with _attack_refresh_lock:
+        if (
+            _last_attack_refresh_request is not None
+            and now - _last_attack_refresh_request < timedelta(minutes=5)
+        ):
+            return
+        _last_attack_refresh_request = now
+    start_attack_thread()
 
 
 def update_attack_schedule():

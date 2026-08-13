@@ -343,12 +343,13 @@ def fetch_attack_schedule():
         # На главной Wekings кнопка города может быть картинкой без
         # текста, поэтому оставляем проверенный адрес /town.
         city_url = _link_by_text(home_html, "Город", base_url) or urljoin(base_url, "/town")
-        city = session.get(city_url, timeout=TIMEOUT)
+        city = request_with_backoff(session, "GET", city_url, timeout=TIMEOUT)
         city.raise_for_status()
         monk_url = _link_by_text(city.text, "Монах", base_url) or urljoin(base_url, "/monastic")
-        monk = session.get(monk_url, timeout=TIMEOUT)
+        monk = request_with_backoff(session, "GET", monk_url, timeout=TIMEOUT)
         monk.raise_for_status()
-        text = BeautifulSoup(monk.text, "html.parser").get_text("\n", strip=True)
+        monk_soup = BeautifulSoup(monk.text, "html.parser")
+        text = monk_soup.get_text("\n", strip=True)
         dragon_delta, dragon_raw = _duration_near(
             text, ("Дракон", "Дракона", "Драконом")
         )
@@ -358,6 +359,16 @@ def fetch_attack_schedule():
         if dragon_delta is None and serpent_delta is None:
             raise RuntimeError("на странице монаха не найдено время Дракона или Змея")
         game_now = datetime.now(ZoneInfo("Europe/Chisinau"))
+        # Сначала используем точное серверное время из meta, которое Wekings
+        # сейчас отдаёт в формате YYYY-MM-DD HH:MM:SS.
+        server_time = monk_soup.find("meta", attrs={"name": "server-time"})
+        if server_time and server_time.get("content"):
+            try:
+                game_now = datetime.strptime(
+                    server_time["content"].strip(), "%Y-%m-%d %H:%M:%S"
+                ).replace(tzinfo=ZoneInfo("Europe/Chisinau"))
+            except ValueError:
+                pass
         game_clock = re.search(
             r"(?:время\s+(?:игры|на\s+сервере)|серверное\s+время)[^0-9]{0,30}(\d{1,2}):(\d{2})",
             text,
