@@ -188,60 +188,10 @@ with app.app_context():
                 synchronize_session=False,
             )
             db.session.commit()
-    duplicate_groups = (
-        db.session.query(
-            PlayerSnapshot.batch_at,
-            PlayerSnapshot.nickname,
-            PlayerSnapshot.level,
-            db.func.count(PlayerSnapshot.id),
-        )
-        .group_by(
-            PlayerSnapshot.batch_at,
-            PlayerSnapshot.nickname,
-            PlayerSnapshot.level,
-        )
-        .having(db.func.count(PlayerSnapshot.id) > 1)
-        .all()
-    )
-    for batch_at, nickname, level, _ in duplicate_groups:
-        duplicates = (
-            PlayerSnapshot.query.filter_by(
-                batch_at=batch_at,
-                nickname=nickname,
-                level=level,
-            )
-            .order_by(PlayerSnapshot.player_id.asc())
-            .all()
-        )
-        for duplicate in duplicates[1:]:
-            db.session.delete(duplicate)
-    if duplicate_groups:
-        db.session.commit()
-    legacy_duplicate_groups = (
-        db.session.query(
-            Player.nickname,
-            Player.level,
-            Player.glory,
-            db.func.count(Player.id),
-        )
-        .group_by(Player.nickname, Player.level, Player.glory)
-        .having(db.func.count(Player.id) > 1)
-        .all()
-    )
-    for nickname, level, glory, _ in legacy_duplicate_groups:
-        duplicates = (
-            Player.query.filter_by(
-                nickname=nickname,
-                level=level,
-                glory=glory,
-            )
-            .order_by(Player.id.asc())
-            .all()
-        )
-        for duplicate in duplicates[1:]:
-            db.session.delete(duplicate)
-    if legacy_duplicate_groups:
-        db.session.commit()
+    # Не запускаем полное GROUP BY по всей истории при каждом старте Render.
+    # Старые дубликаты уже были очищены, а уникальный индекс не позволяет
+    # сканеру создавать новые. Такой проход блокировал бесплатный PostgreSQL
+    # и сайт несколько минут показывал только «Загрузка…».
 
 
 def load_guest_cookies(base_url):
