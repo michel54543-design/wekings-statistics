@@ -29,7 +29,7 @@ CONNECT_TIMEOUT = max(2, int(os.getenv("CONNECT_TIMEOUT", "5")))
 READ_TIMEOUT = max(5, int(os.getenv("REQUEST_TIMEOUT", "12")))
 TIMEOUT = (CONNECT_TIMEOUT, READ_TIMEOUT)
 SAVE_EVERY = max(3, int(os.getenv("SAVE_EVERY", "20")))
-SCAN_WORKERS = min(2, max(1, int(os.getenv("SCAN_WORKERS", "1"))))
+SCAN_WORKERS = min(4, max(1, int(os.getenv("SCAN_WORKERS", "4"))))
 TRANSIENT_RETRIES = min(4, max(1, int(os.getenv("TRANSIENT_RETRIES", "3"))))
 RATE_LIMIT_DELAY = max(15, int(os.getenv("RATE_LIMIT_DELAY", "60")))
 MAX_RETRY_DELAY = max(RATE_LIMIT_DELAY, int(os.getenv("MAX_RETRY_DELAY", "120")))
@@ -540,11 +540,9 @@ def fetch_profile(player_id: int):
                 timeout=TIMEOUT,
             )
             if response.status_code == 404:
-                time.sleep(DELAY)
                 return None
             response.raise_for_status()
             data = parse_profile(player_id, response.text)
-            time.sleep(DELAY)
             return data
         except PermissionError as exc:
             last_error = exc
