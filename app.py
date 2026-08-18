@@ -72,6 +72,27 @@ class Player(db.Model):
     losses = db.Column(db.BigInteger)
     dragon_wins = db.Column(db.BigInteger)
     serpent_wins = db.Column(db.BigInteger)
+    beasts_killed = db.Column(db.BigInteger)
+    silver_stolen = db.Column(db.BigInteger)
+    silver_lost = db.Column(db.BigInteger)
+    crystals_stolen = db.Column(db.BigInteger)
+    crystals_lost = db.Column(db.BigInteger)
+    bandit_wins = db.Column(db.BigInteger)
+    mine = db.Column(db.BigInteger)
+    crusade = db.Column(db.BigInteger)
+    quests = db.Column(db.BigInteger)
+    pet_fights = db.Column(db.BigInteger)
+    pet_kills = db.Column(db.BigInteger)
+    garden = db.Column(db.BigInteger)
+    goblins = db.Column(db.BigInteger)
+    lord_wins = db.Column(db.BigInteger)
+    undead_wins = db.Column(db.BigInteger)
+    heroes_wins = db.Column(db.BigInteger)
+    serpent_fights = db.Column(db.BigInteger)
+    sent_gifts = db.Column(db.BigInteger)
+    fishing = db.Column(db.BigInteger)
+    dragon_kills = db.Column(db.BigInteger)
+    serpent_kills = db.Column(db.BigInteger)
     clan = db.Column(db.String(160))
     brotherhood = db.Column(db.String(160))
     last_activity = db.Column(db.String(80))
@@ -153,12 +174,49 @@ class PlayerSnapshot(db.Model):
     silver_lost = db.Column(db.BigInteger)
     crystals_stolen = db.Column(db.BigInteger)
     crystals_lost = db.Column(db.BigInteger)
+    bandit_wins = db.Column(db.BigInteger)
+    mine = db.Column(db.BigInteger)
+    crusade = db.Column(db.BigInteger)
+    quests = db.Column(db.BigInteger)
+    pet_fights = db.Column(db.BigInteger)
+    pet_kills = db.Column(db.BigInteger)
+    garden = db.Column(db.BigInteger)
+    goblins = db.Column(db.BigInteger)
+    lord_wins = db.Column(db.BigInteger)
+    undead_wins = db.Column(db.BigInteger)
+    heroes_wins = db.Column(db.BigInteger)
+    serpent_fights = db.Column(db.BigInteger)
+    sent_gifts = db.Column(db.BigInteger)
+    fishing = db.Column(db.BigInteger)
+    dragon_kills = db.Column(db.BigInteger)
+    serpent_kills = db.Column(db.BigInteger)
     clan = db.Column(db.String(160))
     brotherhood = db.Column(db.String(160))
 
 
 with app.app_context():
     db.create_all()
+    # Добавляем новые поля API в существующую БД без удаления истории.
+    api_metric_columns = [
+        "beasts_killed", "silver_stolen", "silver_lost", "crystals_stolen", "crystals_lost",
+        "bandit_wins", "mine", "crusade", "quests", "pet_fights", "pet_kills",
+        "garden", "goblins", "lord_wins", "undead_wins", "heroes_wins",
+        "serpent_fights", "sent_gifts", "fishing", "dragon_kills", "serpent_kills",
+    ]
+    try:
+        inspector = db.inspect(db.engine)
+        for table_name in ("player", "player_snapshot"):
+            existing = {col["name"] for col in inspector.get_columns(table_name)}
+            for column_name in api_metric_columns:
+                if column_name not in existing:
+                    db.session.execute(db.text(
+                        f'ALTER TABLE {table_name} ADD COLUMN {column_name} BIGINT'
+                    ))
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+        app.logger.exception("Could not add ForGlory API metric columns")
+
     # Индексы для самых частых запросов главной страницы. Они не меняют
     # данные и безопасно создаются повторно при каждом deploy.
     try:
@@ -253,6 +311,22 @@ SORT_FIELDS = {
     "silver_lost": "silver_lost",
     "crystals_stolen": "crystals_stolen",
     "crystals_lost": "crystals_lost",
+    "bandit_wins": "bandit_wins",
+    "mine": "mine",
+    "crusade": "crusade",
+    "quests": "quests",
+    "pet_fights": "pet_fights",
+    "pet_kills": "pet_kills",
+    "garden": "garden",
+    "goblins": "goblins",
+    "lord_wins": "lord_wins",
+    "undead_wins": "undead_wins",
+    "heroes_wins": "heroes_wins",
+    "serpent_fights": "serpent_fights",
+    "sent_gifts": "sent_gifts",
+    "fishing": "fishing",
+    "dragon_kills": "dragon_kills",
+    "serpent_kills": "serpent_kills",
 }
 
 
@@ -458,6 +532,22 @@ def api_players():
                 "silver_lost": player.silver_lost,
                 "crystals_stolen": player.crystals_stolen,
                 "crystals_lost": player.crystals_lost,
+                "bandit_wins": player.bandit_wins,
+                "mine": player.mine,
+                "crusade": player.crusade,
+                "quests": player.quests,
+                "pet_fights": player.pet_fights,
+                "pet_kills": player.pet_kills,
+                "garden": player.garden,
+                "goblins": player.goblins,
+                "lord_wins": player.lord_wins,
+                "undead_wins": player.undead_wins,
+                "heroes_wins": player.heroes_wins,
+                "serpent_fights": player.serpent_fights,
+                "sent_gifts": player.sent_gifts,
+                "fishing": player.fishing,
+                "dragon_kills": player.dragon_kills,
+                "serpent_kills": player.serpent_kills,
                 "gain": gain,
                 "clan": player.clan,
                 "brotherhood": player.brotherhood,
@@ -535,6 +625,22 @@ def api_players():
                 "silver_lost": p.silver_lost,
                 "crystals_stolen": p.crystals_stolen,
                 "crystals_lost": p.crystals_lost,
+                "bandit_wins": p.bandit_wins,
+                "mine": p.mine,
+                "crusade": p.crusade,
+                "quests": p.quests,
+                "pet_fights": p.pet_fights,
+                "pet_kills": p.pet_kills,
+                "garden": p.garden,
+                "goblins": p.goblins,
+                "lord_wins": p.lord_wins,
+                "undead_wins": p.undead_wins,
+                "heroes_wins": p.heroes_wins,
+                "serpent_fights": p.serpent_fights,
+                "sent_gifts": p.sent_gifts,
+                "fishing": p.fishing,
+                "dragon_kills": p.dragon_kills,
+                "serpent_kills": p.serpent_kills,
                 "gain": gain,
                 "clan": p.clan,
                 "brotherhood": p.brotherhood,
@@ -779,6 +885,9 @@ def api_player_detail(player_id):
         "stat_sum", "wins", "losses", "dragon_wins", "serpent_wins",
         "beasts_killed", "silver_stolen", "silver_lost",
         "crystals_stolen", "crystals_lost",
+        "bandit_wins", "mine", "crusade", "quests", "pet_fights", "pet_kills",
+        "garden", "goblins", "lord_wins", "undead_wins", "heroes_wins",
+        "serpent_fights", "sent_gifts", "fishing", "dragon_kills", "serpent_kills",
     ]
     snapshots_query = PlayerSnapshot.query.filter_by(player_id=player_id)
     trusted_dates = completed_snapshot_dates()
@@ -1070,23 +1179,47 @@ def start_scan_on_boot_if_needed():
 if os.getenv("SCAN_ENABLED", "true").lower() == "true":
     scheduler = BackgroundScheduler(timezone="Europe/Chisinau")
     scheduler.start()
-    for job_id, hour, minute in (
-        ("wekings-night-scan", 0, 15),
-        ("wekings-day-scan", 12, 15),
+
+    def start_daily_scan_if_needed():
+        """Один отчёт в сутки: API ForGlory после 00:02 по времени Молдовы.
+
+        Повторные задания в 00:07/00:12/00:22 безопасны: если сегодняшний
+        снимок уже готов или сбор идёт, второй снимок не создаётся.
+        """
+        with app.app_context():
+            state = db.session.get(ScanState, 1)
+            if state and state.running:
+                app.logger.info("ForGlory daily scan skipped: scan already running")
+                return
+            latest = db.session.query(db.func.max(PlayerSnapshot.batch_at)).scalar()
+            today = datetime.now(ZoneInfo("Europe/Chisinau")).date()
+            if latest and moldova_date(latest) == today:
+                app.logger.info("ForGlory daily scan skipped: today's snapshot already exists")
+                return
+            app.logger.info("ForGlory daily scan starting for %s", today.isoformat())
+        start_scan_thread()
+
+    # Основной запуск + страховочные повторы. На бесплатном Render процесс
+    # может проснуться/перезапуститься с задержкой, поэтому даём grace period.
+    for job_id, minute in (
+        ("wekings-daily-0002", 2),
+        ("wekings-daily-0007", 7),
+        ("wekings-daily-0012", 12),
+        ("wekings-daily-0022", 22),
     ):
         scheduler.add_job(
-            start_scan_thread,
+            start_daily_scan_if_needed,
             "cron",
-            hour=hour,
+            hour=0,
             minute=minute,
             id=job_id,
             replace_existing=True,
             coalesce=True,
             max_instances=1,
-            misfire_grace_time=900,
+            misfire_grace_time=1800,
         )
-    # Страховочная проверка: если таймер повтора потерялся после сна или
-    # перезапуска бесплатного Render, незавершённый снимок возобновится сам.
+
+    # Если API оборвался во время сохранения, recovery продолжит попытки.
     scheduler.add_job(
         start_scan_on_boot_if_needed,
         "interval",
@@ -1102,6 +1235,15 @@ if os.getenv("SCAN_ENABLED", "true").lower() == "true":
             "date",
             run_date=datetime.now(timezone.utc) + timedelta(seconds=30),
             id="wekings-first-scan",
+            replace_existing=True,
+        )
+        # После deploy/перезапуска проверяем, есть ли отчёт за сегодняшний
+        # день. Это позволяет догнать пропущенные 00:02 без ручного запуска.
+        scheduler.add_job(
+            start_daily_scan_if_needed,
+            "date",
+            run_date=datetime.now(timezone.utc) + timedelta(seconds=45),
+            id="wekings-daily-catchup-on-boot",
             replace_existing=True,
         )
 
