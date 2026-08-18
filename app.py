@@ -7,7 +7,7 @@ from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 from apscheduler.schedulers.background import BackgroundScheduler
-from flask import Flask, jsonify, render_template, request
+from flask import Flask, jsonify, render_template, render_template_string, request, redirect
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy import and_
 from sqlalchemy.orm import aliased
@@ -248,6 +248,37 @@ def index():
 @app.get("/health")
 def health():
     return jsonify(ok=True)
+
+
+WEKINGS_LOGIN_HTML = r"""
+<!doctype html><html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Вход WEKINGS</title><style>body{font-family:Arial,sans-serif;max-width:430px;margin:40px auto;padding:0 18px;background:#111;color:#eee}input,button{width:100%;box-sizing:border-box;padding:12px;margin:7px 0;border-radius:8px;border:1px solid #555}button{font-weight:700;cursor:pointer}.ok{color:#78d878}.err{color:#ff7777}img{max-width:100%;background:white;border-radius:8px;margin:8px 0}</style></head>
+<body><h2>Авторизация WEKINGS</h2>
+{% if ok %}<p class="ok">Сессия активна. API ForGlory доступен.</p>{% else %}<p>Войдите аккаунтом WEKINGS, на котором разработчик открыл API.</p>{% endif %}
+{% if error %}<p class="err">{{ error }}</p>{% endif %}
+{% if captcha %}<form method="post"><input name="username" autocomplete="username" placeholder="Логин" required><input name="password" type="password" autocomplete="current-password" placeholder="Пароль" required><img src="{{ captcha }}" alt="CAPTCHA"><input name="captcha" autocomplete="off" placeholder="Введите капчу" required><button type="submit">Войти</button></form><p>Если капча плохо видна — обновите страницу.</p>{% endif %}
+<p><a href="/" style="color:#9cf">← На сайт статистики</a></p></body></html>
+"""
+
+
+@app.route("/wekings-login", methods=["GET", "POST"])
+def wekings_login():
+    from scraper import api_auth_status, prepare_login, submit_login
+    error = None
+    if request.method == "POST":
+        try:
+            submit_login(request.form.get("username", ""), request.form.get("password", ""), request.form.get("captcha", ""))
+            return redirect("/wekings-login?success=1")
+        except Exception as exc:
+            error = str(exc)
+    ok = api_auth_status()
+    captcha = None
+    if not ok:
+        try:
+            captcha = prepare_login()
+        except Exception as exc:
+            error = error or str(exc)
+    return render_template_string(WEKINGS_LOGIN_HTML, ok=ok, captcha=captcha, error=error)
 
 
 @app.get("/api/players")
@@ -1017,26 +1048,6 @@ if os.getenv("SCAN_ENABLED", "true").lower() == "true":
             max_instances=1,
             misfire_grace_time=900,
         )
-    scheduler.add_job(
-        start_attack_thread,
-        "cron",
-        hour=0,
-        minute=5,
-        id="wekings-daily-attacks",
-        replace_existing=True,
-        coalesce=True,
-        max_instances=1,
-        misfire_grace_time=21600,
-    )
-    scheduler.add_job(
-        start_attack_on_boot_if_needed,
-        "interval",
-        minutes=15,
-        id="wekings-attack-retry",
-        replace_existing=True,
-        coalesce=True,
-        max_instances=1,
-    )
     # Страховочная проверка: если таймер повтора потерялся после сна или
     # перезапуска бесплатного Render, незавершённый снимок возобновится сам.
     scheduler.add_job(
@@ -1054,13 +1065,6 @@ if os.getenv("SCAN_ENABLED", "true").lower() == "true":
             "date",
             run_date=datetime.now(timezone.utc) + timedelta(seconds=30),
             id="wekings-first-scan",
-            replace_existing=True,
-        )
-        scheduler.add_job(
-            start_attack_on_boot_if_needed,
-            "date",
-            run_date=datetime.now(timezone.utc) + timedelta(seconds=5),
-            id="wekings-first-attacks",
             replace_existing=True,
         )
 
