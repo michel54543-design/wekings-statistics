@@ -8,7 +8,7 @@ from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 from apscheduler.schedulers.background import BackgroundScheduler
-from flask import Flask, jsonify, render_template, render_template_string, request, redirect
+from flask import Flask, jsonify, render_template, render_template_string, request, redirect, Response
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy import and_
 from sqlalchemy.orm import aliased
@@ -342,38 +342,73 @@ def health():
 
 WEKINGS_LOGIN_HTML = r"""
 <!doctype html><html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Сессия WEKINGS</title><style>body{font-family:Arial,sans-serif;max-width:560px;margin:40px auto;padding:0 18px;background:#111;color:#eee}textarea,button{width:100%;box-sizing:border-box;padding:12px;margin:7px 0;border-radius:8px;border:1px solid #555}textarea{min-height:140px}button{font-weight:700;cursor:pointer}.ok{color:#78d878}.err{color:#ff7777}.hint{color:#bbb;line-height:1.45}code{word-break:break-all}</style></head>
-<body><h2>Сессия WEKINGS</h2>
-{% if ok %}<p class="ok">✓ Сессия активна. API ForGlory доступен.</p><form method="post" action="/wekings-scan-now"><button type="submit">Обновить статистику сейчас</button></form><p class="hint">После нажатия импорт запускается в фоне. Через несколько секунд вернитесь на главную страницу и обновите её.</p>{% else %}<p>Сначала войдите пользователем 106 в WEKINGS в обычном браузере и пройдите CAPTCHA.</p>{% endif %}
-{% if error %}<p class="err">{{ error }}</p>{% endif %}
-{% if saved %}<p class="ok">Сессия сохранена. API вернул игроков: {{ saved }}</p>{% endif %}
-{% if not ok %}<form method="post"><textarea name="cookie" placeholder="Вставьте сюда весь текст Copy as cURL" required></textarea><button type="submit">Сохранить и проверить API</button></form>
-<p class="hint">В DevTools откройте <b>Network → for-glory → Copy as cURL</b> и вставьте сюда весь скопированный текст. Сайт сам извлечёт Cookie. Также по-прежнему можно вставить только заголовок Cookie.</p>{% endif %}
+<title>Админ · WEKINGS</title><style>body{font-family:Arial,sans-serif;max-width:560px;margin:40px auto;padding:0 18px;background:#111;color:#eee}input,button{width:100%;box-sizing:border-box;padding:12px;margin:7px 0;border-radius:8px;border:1px solid #555}button{font-weight:700;cursor:pointer}.ok{color:#78d878}.err{color:#ff7777}.hint{color:#bbb;line-height:1.45}.captcha{display:block;max-width:100%;margin:15px auto;background:#fff;border-radius:8px}</style></head>
+<body><h2>Закрытая авторизация WEKINGS</h2>
+{% if ok %}<p class="ok">✓ Сессия активна. Ничего делать не нужно.</p><form method="post" action="/admin/wekings-scan-now"><button>Обновить статистику сейчас</button></form>{% else %}<p class="err">Сессия WEKINGS неактивна.</p><p class="hint">Логин и пароль берутся сервером из секретов Render и на эту страницу не передаются. Вам нужно только решить CAPTCHA.</p>{% endif %}
+{% if error %}<p class="err">{{ error }}</p>{% endif %}{% if saved %}<p class="ok">✓ Вход выполнен. API вернул игроков: {{ saved }}</p>{% endif %}
+{% if not ok %}{% if captcha %}<img class="captcha" src="{{ captcha }}" alt="CAPTCHA"><form method="post"><input type="hidden" name="action" value="login"><input name="captcha" autocomplete="off" placeholder="Введите код с картинки" required><button>Войти в WEKINGS</button></form>{% endif %}<form method="post"><input type="hidden" name="action" value="captcha"><button>Получить новую CAPTCHA</button></form>{% endif %}
 <p><a href="/" style="color:#9cf">← На сайт статистики</a></p></body></html>
 """
 
 
-@app.route("/wekings-login", methods=["GET", "POST"])
-def wekings_login():
-    from scraper import api_auth_status, save_browser_cookie
-    error = None
-    saved = None
-    if request.method == "POST":
+def _admin_allowed():
+    expected = os.getenv("ADMIN_PASSWORD", "")
+    if not expected:
+        return False
+    auth = request.authorization
+    expected_user = os.getenv("ADMIN_USERNAME", "admin")
+    import hmac
+    return bool(auth and hmac.compare_digest(auth.username or "", expected_user) and hmac.compare_digest(auth.password or "", expected))
+
+
+def _admin_required():
+    if _admin_allowed():
+        return None
+    return Response("Требуется авторизация администратора", 401, {"WWW-Authenticate": 'Basic realm="WEKINGS Admin"'})
+
+
+@app.route("/admin/wekings-login", methods=["GET", "POST"])
+def admin_wekings_login():
+    denied = _admin_required()
+    if denied: return denied
+    from scraper import api_auth_status, begin_password_login, finish_password_login
+    error = None; saved = None; captcha = None
+    ok = api_auth_status()
+    if request.method == "POST" and not ok:
         try:
-            saved = save_browser_cookie(request.form.get("cookie", ""))
+            if request.form.get("action") == "login":
+                saved = finish_password_login(request.form.get("captcha", ""))
+                ok = api_auth_status()
+            else:
+                captcha = begin_password_login()
         except Exception as exc:
             error = str(exc)
-    ok = api_auth_status()
-    return render_template_string(WEKINGS_LOGIN_HTML, ok=ok, error=error, saved=saved)
+    return render_template_string(WEKINGS_LOGIN_HTML, ok=ok, error=error, saved=saved, captcha=captcha)
 
 
-@app.post("/wekings-scan-now")
-def wekings_scan_now():
-    """Ручной запуск быстрого импорта ForGlory API."""
+@app.route("/wekings-login", methods=["GET", "POST"])
+def old_wekings_login():
+    # Старый публичный адрес больше не раскрывает форму работы с сессией.
+    denied = _admin_required()
+    if denied: return denied
+    return redirect("/admin/wekings-login")
+
+
+@app.post("/admin/wekings-scan-now")
+def admin_wekings_scan_now():
+    denied = _admin_required()
+    if denied: return denied
     state = db.session.get(ScanState, 1)
     if not state.running:
         start_scan_thread()
-    return redirect("/wekings-login")
+    return redirect("/admin/wekings-login")
+
+
+@app.post("/wekings-scan-now")
+def old_wekings_scan_now():
+    denied = _admin_required()
+    if denied: return denied
+    return redirect("/admin/wekings-login")
 
 
 @app.get("/api/players")

@@ -168,6 +168,58 @@ def api_auth_status():
         s.close()
 
 
+
+def begin_password_login():
+    """Prepare WEKINGS login using credentials stored only in Render env vars."""
+    global _pending_login
+    username = os.getenv("WEKINGS_USERNAME", "").strip()
+    password = os.getenv("WEKINGS_PASSWORD", "")
+    if not username or not password:
+        raise RuntimeError("На Render не заданы WEKINGS_USERNAME и WEKINGS_PASSWORD")
+    s = _session(saved=False)
+    r = s.get(LOGIN_URL, timeout=TIMEOUT, allow_redirects=True)
+    r.raise_for_status()
+    form = _login_form(r.text, r.url)
+    img = s.get(form["captcha_url"], timeout=TIMEOUT)
+    img.raise_for_status()
+    mime = img.headers.get("Content-Type", "image/png").split(";", 1)[0]
+    _pending_login = {"session": s, "form": form, "username": username, "password": password}
+    return f"data:{mime};base64,{base64.b64encode(img.content).decode('ascii')}"
+
+
+def finish_password_login(captcha_value):
+    """Submit manually solved CAPTCHA; login/password never leave the server."""
+    global _pending_login
+    if not _pending_login:
+        raise RuntimeError("Капча устарела. Нажмите «Получить новую капчу».")
+    pending, _pending_login = _pending_login, None
+    s = pending["session"]
+    form = pending["form"]
+    try:
+        payload = dict(form["hidden"])
+        payload[form["username"]] = pending["username"]
+        payload[form["password"]] = pending["password"]
+        payload[form["captcha"]] = (captcha_value or "").strip()
+        if not payload[form["captcha"]]:
+            raise RuntimeError("Введите код с картинки")
+        if form["method"] == "get":
+            r = s.get(form["action"], params=payload, timeout=TIMEOUT, allow_redirects=True)
+        else:
+            r = s.post(form["action"], data=payload, timeout=TIMEOUT, allow_redirects=True)
+        r.raise_for_status()
+        check = s.get(API_URL, timeout=TIMEOUT, allow_redirects=True)
+        if check.status_code in {401, 403} or "/login" in check.url or "/start" in check.url:
+            raise RuntimeError("Вход не выполнен. Проверьте капчу; при необходимости получите новую.")
+        body = check.json()
+        rows = body.get("data") if isinstance(body, dict) else body
+        if not isinstance(rows, list) or not rows:
+            raise RuntimeError("WEKINGS не подтвердил авторизацию")
+        _save(s)
+        return len(rows)
+    finally:
+        s.close()
+
+
 def _int(v):
     try:
         return int(v) if v is not None and v != "" else None
