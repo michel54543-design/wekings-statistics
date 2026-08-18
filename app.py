@@ -1247,6 +1247,35 @@ if os.getenv("SCAN_ENABLED", "true").lower() == "true":
             replace_existing=True,
         )
 
+    # Расписание Дракона/Змея через сохранённую сессию пользователя 106.
+    # Основная попытка после полуночи и страховочные повторы.
+    for job_id, minute in (
+        ("wekings-attacks-0002", 2),
+        ("wekings-attacks-0007", 7),
+        ("wekings-attacks-0012", 12),
+        ("wekings-attacks-0022", 22),
+    ):
+        scheduler.add_job(
+            start_attack_thread,
+            "cron",
+            hour=0,
+            minute=minute,
+            id=job_id,
+            replace_existing=True,
+            coalesce=True,
+            max_instances=1,
+            misfire_grace_time=1800,
+        )
+
+    # После deploy не ждём следующего дня: проверяем Монаха через минуту.
+    scheduler.add_job(
+        start_attack_on_boot_if_needed,
+        "date",
+        run_date=datetime.now(timezone.utc) + timedelta(seconds=60),
+        id="wekings-attacks-on-boot",
+        replace_existing=True,
+    )
+
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.getenv("PORT", "5000")), debug=True)
