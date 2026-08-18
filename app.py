@@ -711,33 +711,20 @@ def completed_snapshot_dates():
     query = db.session.query(PlayerSnapshot.batch_at).distinct()
     if scan_state and scan_state.finished_at:
         query = query.filter(PlayerSnapshot.batch_at <= scan_state.finished_at)
-    rows = query.order_by(PlayerSnapshot.batch_at.desc()).limit(100).all()
+    # Почасовые снимки текущего дня храним в БД, но в интерфейсе показываем
+    # только один снимок на календарный день — самый свежий завершённый.
+    # 1000 снимков = более 40 дней истории даже при 24 обновлениях в сутки.
+    rows = query.order_by(PlayerSnapshot.batch_at.desc()).limit(1000).all()
     candidates = [row.batch_at for row in rows]
 
-    # В старой базе за один день иногда остались два снимка: полный и
-    # повреждённый незавершённый. Для каждого дня выбираем самый полный.
-    # COUNT выполняется только для дней-дубликатов (обычно это 1–2 коротких
-    # индексных запроса), а не группирует всю историческую таблицу.
-    by_day = {}
-    for value in candidates:
-        by_day.setdefault(moldova_date(value), []).append(value)
-
     trusted = []
-    for day in sorted(by_day, reverse=True):
-        day_candidates = by_day[day]
-        if len(day_candidates) == 1:
-            trusted.append(day_candidates[0])
+    seen_days = set()
+    for value in candidates:
+        day = moldova_date(value)
+        if day in seen_days:
             continue
-        counts = dict(
-            db.session.query(
-                PlayerSnapshot.batch_at,
-                db.func.count(PlayerSnapshot.id),
-            )
-            .filter(PlayerSnapshot.batch_at.in_(day_candidates))
-            .group_by(PlayerSnapshot.batch_at)
-            .all()
-        )
-        trusted.append(max(day_candidates, key=lambda value: counts.get(value, 0)))
+        seen_days.add(day)
+        trusted.append(value)
     cached["at"] = now
     cached["finished_at"] = finished_at
     cached["dates"] = tuple(trusted)
@@ -1215,35 +1202,54 @@ if os.getenv("SCAN_ENABLED", "true").lower() == "true":
     scheduler = BackgroundScheduler(timezone="Europe/Chisinau")
     scheduler.start()
 
-    def start_daily_scan_if_needed():
-        """Один отчёт в сутки: API ForGlory после 00:02 по времени Молдовы.
+    def start_hourly_scan_if_needed():
+        """Обновляет сегодняшний снимок раз в час.
 
-        Повторные задания в 00:07/00:12/00:22 безопасны: если сегодняшний
-        снимок уже готов или сбор идёт, второй снимок не создаётся.
+        В БД сохраняются почасовые снимки, но API публикует только самый
+        свежий снимок каждого дня. Поэтому сегодня виден текущий прирост от
+        финального снимка вчера, а прошлые даты остаются целыми сутками.
         """
         with app.app_context():
             state = db.session.get(ScanState, 1)
             if state and state.running:
-                app.logger.info("ForGlory daily scan skipped: scan already running")
+                app.logger.info("ForGlory hourly scan skipped: scan already running")
                 return
             latest = db.session.query(db.func.max(PlayerSnapshot.batch_at)).scalar()
-            today = datetime.now(ZoneInfo("Europe/Chisinau")).date()
-            if latest and moldova_date(latest) == today:
-                app.logger.info("ForGlory daily scan skipped: today's snapshot already exists")
-                return
-            app.logger.info("ForGlory daily scan starting for %s", today.isoformat())
+            now_local = datetime.now(ZoneInfo("Europe/Chisinau"))
+            if latest:
+                latest_local = latest
+                if latest_local.tzinfo is None:
+                    latest_local = latest_local.replace(tzinfo=timezone.utc)
+                latest_local = latest_local.astimezone(ZoneInfo("Europe/Chisinau"))
+                if (
+                    latest_local.date() == now_local.date()
+                    and latest_local.hour == now_local.hour
+                ):
+                    app.logger.info("ForGlory hourly scan skipped: current hour already updated")
+                    return
+            app.logger.info("ForGlory hourly scan starting for %s", now_local.isoformat())
         start_scan_thread()
 
-    # Основной запуск + страховочные повторы. На бесплатном Render процесс
-    # может проснуться/перезапуститься с задержкой, поэтому даём grace period.
+    # Основной почасовой запуск на 02-й минуте каждого часа.
+    scheduler.add_job(
+        start_hourly_scan_if_needed,
+        "cron",
+        minute=2,
+        id="wekings-hourly-scan",
+        replace_existing=True,
+        coalesce=True,
+        max_instances=1,
+        misfire_grace_time=1800,
+    )
+
+    # После полуночи оставляем страховочные повторы первого снимка дня.
     for job_id, minute in (
-        ("wekings-daily-0002", 2),
-        ("wekings-daily-0007", 7),
-        ("wekings-daily-0012", 12),
-        ("wekings-daily-0022", 22),
+        ("wekings-daily-retry-0007", 7),
+        ("wekings-daily-retry-0012", 12),
+        ("wekings-daily-retry-0022", 22),
     ):
         scheduler.add_job(
-            start_daily_scan_if_needed,
+            start_hourly_scan_if_needed,
             "cron",
             hour=0,
             minute=minute,
@@ -1275,7 +1281,7 @@ if os.getenv("SCAN_ENABLED", "true").lower() == "true":
         # После deploy/перезапуска проверяем, есть ли отчёт за сегодняшний
         # день. Это позволяет догнать пропущенные 00:02 без ручного запуска.
         scheduler.add_job(
-            start_daily_scan_if_needed,
+            start_hourly_scan_if_needed,
             "date",
             run_date=datetime.now(timezone.utc) + timedelta(seconds=45),
             id="wekings-daily-catchup-on-boot",
