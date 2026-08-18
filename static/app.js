@@ -105,6 +105,38 @@ async function loadPlayerDetail(playerId, scroll = true) {
   $("closePlayerDetail").focus();
 }
 
+function attackTimeText(value, status) {
+  if (value) {
+    const date = new Date(value);
+    if (!Number.isNaN(date.getTime())) {
+      return date.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" });
+    }
+  }
+  return status || "уточняем…";
+}
+
+async function loadAttacks() {
+  const box = $("attackSchedule");
+  try {
+    const response = await fetch(`/api/attacks?_=${Date.now()}`, { cache: "no-store" });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const data = await response.json();
+    $("dragonTime").textContent = attackTimeText(data.dragon_at, data.dragon_status);
+    $("serpentTime").textContent = attackTimeText(data.serpent_at, data.serpent_status);
+    if (data.fetched_at) {
+      $("attackUpdated").textContent = `обновлено ${new Date(data.fetched_at).toLocaleTimeString("ru-RU", {hour:"2-digit", minute:"2-digit"})}`;
+    } else {
+      $("attackUpdated").textContent = "";
+    }
+    box?.classList.toggle("waiting", !data.dragon_at || !data.serpent_at);
+  } catch (error) {
+    $("dragonTime").textContent = "уточняем…";
+    $("serpentTime").textContent = "уточняем…";
+    $("attackUpdated").textContent = "нет связи";
+    box?.classList.add("waiting");
+  }
+}
+
 async function loadStatus() {
   const data = await fetch("/api/status").then(r => r.json());
   $("statusText").textContent = data.running
@@ -377,5 +409,7 @@ $("todayBadge").textContent = new Date().toLocaleDateString("ru-RU", {
 }).replace(".", "").toUpperCase();
 syncMobileNav();
 loadStatus().catch(() => {});
+loadAttacks().catch(() => {});
 loadPlayers().catch(() => $("rows").innerHTML = '<tr><td colspan="7" class="loading">Не удалось загрузить данные</td></tr>');
 setInterval(() => loadStatus().catch(() => {}), 30000);
+setInterval(() => loadAttacks().catch(() => {}), 60000);
