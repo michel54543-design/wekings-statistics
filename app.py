@@ -252,33 +252,29 @@ def health():
 
 WEKINGS_LOGIN_HTML = r"""
 <!doctype html><html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Вход WEKINGS</title><style>body{font-family:Arial,sans-serif;max-width:430px;margin:40px auto;padding:0 18px;background:#111;color:#eee}input,button{width:100%;box-sizing:border-box;padding:12px;margin:7px 0;border-radius:8px;border:1px solid #555}button{font-weight:700;cursor:pointer}.ok{color:#78d878}.err{color:#ff7777}img{max-width:100%;background:white;border-radius:8px;margin:8px 0}</style></head>
-<body><h2>Авторизация WEKINGS</h2>
-{% if ok %}<p class="ok">Сессия активна. API ForGlory доступен.</p>{% else %}<p>Войдите аккаунтом WEKINGS, на котором разработчик открыл API.</p>{% endif %}
+<title>Сессия WEKINGS</title><style>body{font-family:Arial,sans-serif;max-width:560px;margin:40px auto;padding:0 18px;background:#111;color:#eee}textarea,button{width:100%;box-sizing:border-box;padding:12px;margin:7px 0;border-radius:8px;border:1px solid #555}textarea{min-height:140px}button{font-weight:700;cursor:pointer}.ok{color:#78d878}.err{color:#ff7777}.hint{color:#bbb;line-height:1.45}code{word-break:break-all}</style></head>
+<body><h2>Сессия WEKINGS</h2>
+{% if ok %}<p class="ok">✓ Сессия активна. API ForGlory доступен.</p>{% else %}<p>Сначала войдите пользователем 106 в WEKINGS в обычном браузере и пройдите CAPTCHA.</p>{% endif %}
 {% if error %}<p class="err">{{ error }}</p>{% endif %}
-{% if captcha %}<form method="post"><input name="username" autocomplete="username" placeholder="Логин" required><input name="password" type="password" autocomplete="current-password" placeholder="Пароль" required><img src="{{ captcha }}" alt="CAPTCHA"><input name="captcha" autocomplete="off" placeholder="Введите капчу" required><button type="submit">Войти</button></form><p>Если капча плохо видна — обновите страницу.</p>{% endif %}
+{% if saved %}<p class="ok">Сессия сохранена. API вернул игроков: {{ saved }}</p>{% endif %}
+{% if not ok %}<form method="post"><textarea name="cookie" placeholder="Вставьте сюда значение заголовка Cookie" required></textarea><button type="submit">Сохранить и проверить API</button></form>
+<p class="hint">Нужен именно заголовок <b>Cookie</b> из авторизованного запроса к <code>playwekings.ru/heroes/for-glory</code>. Логин и пароль сюда вводить не нужно.</p>{% endif %}
 <p><a href="/" style="color:#9cf">← На сайт статистики</a></p></body></html>
 """
 
 
 @app.route("/wekings-login", methods=["GET", "POST"])
 def wekings_login():
-    from scraper import api_auth_status, prepare_login, submit_login
+    from scraper import api_auth_status, save_browser_cookie
     error = None
+    saved = None
     if request.method == "POST":
         try:
-            submit_login(request.form.get("username", ""), request.form.get("password", ""), request.form.get("captcha", ""))
-            return redirect("/wekings-login?success=1")
+            saved = save_browser_cookie(request.form.get("cookie", ""))
         except Exception as exc:
             error = str(exc)
     ok = api_auth_status()
-    captcha = None
-    if not ok:
-        try:
-            captcha = prepare_login()
-        except Exception as exc:
-            error = error or str(exc)
-    return render_template_string(WEKINGS_LOGIN_HTML, ok=ok, captcha=captcha, error=error)
+    return render_template_string(WEKINGS_LOGIN_HTML, ok=ok, error=error, saved=saved)
 
 
 @app.get("/api/players")

@@ -99,63 +99,43 @@ def _login_form(html, page_url):
     }
 
 
-def prepare_login():
-    """Создаёт одну ручную сессию входа и возвращает капчу как data URL."""
-    global _pending_login
+def save_browser_cookie(cookie_header):
+    """Сохраняет Cookie из уже авторизованного браузера и проверяет API."""
+    raw = (cookie_header or "").strip()
+    if raw.lower().startswith("cookie:"):
+        raw = raw.split(":", 1)[1].strip()
+    if not raw:
+        raise RuntimeError("Вставьте Cookie из авторизованного запроса WEKINGS.")
     s = _session(saved=False)
-    # WEKINGS ожидает, что посетитель сначала откроет стартовую страницу.
-    # Это создаёт начальные cookies; прямой запрос к /login с Render может получить 403.
-    start = s.get(f"{BASE_URL}/start", timeout=TIMEOUT, allow_redirects=True)
-    start.raise_for_status()
-    s.headers["Referer"] = start.url
-    r = s.get(LOGIN_URL, timeout=TIMEOUT, allow_redirects=True)
-    r.raise_for_status()
-    meta = _login_form(r.text, r.url)
-    img = s.get(meta["captcha_url"], timeout=TIMEOUT)
-    img.raise_for_status()
-    mime = img.headers.get("Content-Type", "image/png").split(";", 1)[0]
-    _pending_login = (s, meta)
-    return "data:%s;base64,%s" % (mime, base64.b64encode(img.content).decode("ascii"))
-
-
-def submit_login(username, password, captcha):
-    global _pending_login
-    if not _pending_login:
-        raise RuntimeError("Капча устарела. Обновите страницу входа и попробуйте снова.")
-    s, meta = _pending_login
-    payload = dict(meta["hidden"])
-    payload.update({meta["username"]: username, meta["password"]: password,
-                    meta["captcha"]: captcha})
-    if meta["method"] == "get":
-        r = s.get(meta["action"], params=payload, timeout=TIMEOUT, allow_redirects=True)
-    else:
-        r = s.post(meta["action"], data=payload, timeout=TIMEOUT, allow_redirects=True)
-    r.raise_for_status()
-    # Проверяем доступ именно к API — это надёжнее текста страницы входа.
-    test = s.get(API_URL, timeout=TIMEOUT, allow_redirects=True)
-    if test.status_code in {401, 403} or "/login" in test.url:
-        _pending_login = None
-        raise RuntimeError("Вход не выполнен. Проверьте логин, пароль и капчу.")
+    for part in raw.split(";"):
+        if "=" not in part:
+            continue
+        name, value = part.strip().split("=", 1)
+        if name:
+            s.cookies.set(name, value, domain="playwekings.ru", path="/")
+    r = s.get(API_URL, timeout=TIMEOUT, allow_redirects=True)
+    if r.status_code in {401, 403} or "/login" in r.url or "/start" in r.url:
+        raise RuntimeError(f"Эта сессия не дала доступ к API (HTTP {r.status_code}).")
     try:
-        body = test.json()
-    except ValueError:
-        _pending_login = None
-        raise RuntimeError("После входа API не вернул JSON. Возможно, капча введена неверно.")
-    if not isinstance(body, (dict, list)):
-        raise RuntimeError("API вернул неожиданный ответ")
+        body = r.json()
+    except ValueError as exc:
+        raise RuntimeError("API не вернул JSON с этой сессией.") from exc
+    rows = body.get("data") if isinstance(body, dict) else body
+    if not isinstance(rows, list) or not rows:
+        raise RuntimeError("API доступен, но список игроков пуст или имеет неожиданный формат.")
     _save(s)
-    _pending_login = None
-    return True
+    return len(rows)
 
 
 def api_auth_status():
     s = _session(saved=True)
     try:
         r = s.get(API_URL, timeout=TIMEOUT, allow_redirects=True)
-        if r.status_code in {401, 403} or "/login" in r.url:
+        if r.status_code in {401, 403} or "/login" in r.url or "/start" in r.url:
             return False
-        r.json()
-        return True
+        body = r.json()
+        rows = body.get("data") if isinstance(body, dict) else body
+        return isinstance(rows, list) and bool(rows)
     except Exception:
         return False
     finally:
