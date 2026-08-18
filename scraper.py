@@ -3,8 +3,9 @@ from __future__ import annotations
 import base64
 import os
 import re
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from urllib.parse import urljoin
+from zoneinfo import ZoneInfo
 
 import requests
 from bs4 import BeautifulSoup
@@ -285,6 +286,82 @@ def scan_all_players(db, Player, PlayerSnapshot, ScanState, LowLevelPlayer):
     db.session.commit()
 
 
+def _link_by_text(html: str, label: str, base_url: str):
+    soup = BeautifulSoup(html, "html.parser")
+    wanted = label.casefold()
+    link = next((a for a in soup.find_all("a", href=True)
+                 if wanted in a.get_text(" ", strip=True).casefold()), None)
+    return urljoin(base_url, link["href"]) if link else None
+
+
+def _duration_near(text: str, labels):
+    lines = [line.strip() for line in text.splitlines() if line.strip()]
+    for label in labels:
+        line = next((x for x in lines if label.casefold() in x.casefold()), None)
+        if not line:
+            continue
+        days = re.search(r"(\d+)\s*(?:дн(?:ей|я|ь)?|d)", line, re.I)
+        hours = re.search(r"(\d+)\s*(?:час(?:а|ов)?|ч\.?|h)", line, re.I)
+        minutes = re.search(r"(\d+)\s*(?:мин(?:ут|ы)?|м\.?|min)", line, re.I)
+        seconds = re.search(r"(\d+)\s*(?:сек(?:унд)?|с\.?|sec)", line, re.I)
+        if any((days, hours, minutes, seconds)):
+            return timedelta(days=int(days.group(1)) if days else 0,
+                             hours=int(hours.group(1)) if hours else 0,
+                             minutes=int(minutes.group(1)) if minutes else 0,
+                             seconds=int(seconds.group(1)) if seconds else 0), line[:180]
+        clock = re.search(r"(?:через|осталось|до\s+(?:нападения|атаки|начала))?\s*(\d{1,3}):(\d{2})(?::(\d{2}))?", line, re.I)
+        if clock:
+            a, b, c = int(clock.group(1)), int(clock.group(2)), clock.group(3)
+            delta = timedelta(minutes=a, seconds=b) if c is None else timedelta(hours=a, minutes=b, seconds=int(c))
+            return delta, line[:180]
+    return None, None
+
+
 def fetch_attack_schedule():
-    # Таймеры не относятся к API статистики. Не запускаем старый гостевой сканер.
-    raise RuntimeError("Обновление таймеров через старый гостевой сканер отключено")
+    """Читает Город -> Монах через уже сохранённую сессию пользователя 106."""
+    s = _session(saved=True)
+    try:
+        # Сначала убеждаемся, что сохранённая сессия всё ещё имеет доступ к ForGlory API.
+        check = s.get(API_URL, timeout=TIMEOUT, allow_redirects=True)
+        if check.status_code in {401, 403} or "/login" in check.url or "/start" in check.url:
+            raise PermissionError("Сессия пользователя 106 истекла. Обновите её через /wekings-login")
+
+        city_url = urljoin(BASE_URL + "/", "town")
+        city = s.get(city_url, timeout=TIMEOUT, allow_redirects=True)
+        city.raise_for_status()
+        if "/login" in city.url or "/start" in city.url:
+            raise PermissionError("Сессия пользователя 106 не открывает Город")
+
+        monk_url = _link_by_text(city.text, "Монах", BASE_URL) or urljoin(BASE_URL + "/", "monastic")
+        monk = s.get(monk_url, timeout=TIMEOUT, allow_redirects=True)
+        monk.raise_for_status()
+        if "/login" in monk.url or "/start" in monk.url:
+            raise PermissionError("Сессия пользователя 106 не открывает Монаха")
+
+        soup = BeautifulSoup(monk.text, "html.parser")
+        text = soup.get_text("\n", strip=True)
+        dragon_delta, dragon_raw = _duration_near(text, ("Дракон", "Дракона", "Драконом"))
+        serpent_delta, serpent_raw = _duration_near(text, ("Змей", "Змея", "Змеем", "Змею"))
+        dragon_active = bool(re.search(r"Дракон\s+напал|нападение\s+Дракона\s+(?:уже\s+)?началось", text, re.I))
+        serpent_active = bool(re.search(r"(?:Морской\s+)?Змей\s+напал|нападение\s+(?:Морского\s+)?Змея\s+(?:уже\s+)?началось", text, re.I))
+        if dragon_delta is None and serpent_delta is None and not dragon_active and not serpent_active:
+            raise RuntimeError("На странице Монаха не найдено время Дракона или Змея")
+
+        game_now = datetime.now(ZoneInfo("Europe/Chisinau"))
+        meta = soup.find("meta", attrs={"name": "server-time"})
+        if meta and meta.get("content"):
+            try:
+                game_now = datetime.strptime(meta["content"].strip(), "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc).astimezone(ZoneInfo("Europe/Chisinau"))
+            except ValueError:
+                pass
+        _save(s)
+        return {
+            "fetched_at": datetime.now(timezone.utc),
+            "game_time": game_now,
+            "dragon_at": game_now + dragon_delta if dragon_delta else None,
+            "serpent_at": game_now + serpent_delta if serpent_delta else None,
+            "dragon_raw": "Дракон уже напал — сражайся!" if dragon_active else dragon_raw,
+            "serpent_raw": "Морской Змей уже напал — сражайся!" if serpent_active else serpent_raw,
+        }
+    finally:
+        s.close()
