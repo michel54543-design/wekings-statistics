@@ -48,8 +48,16 @@ def _save(session):
 
 def _session(saved=True):
     s = requests.Session()
-    s.headers.update({"User-Agent": "Mozilla/5.0 (compatible; ForGlory/2.0)",
-                      "Accept-Language": "ru-RU,ru;q=0.9"})
+    s.headers.update({
+        "User-Agent": (
+            "Mozilla/5.0 (Linux; Android 13; Mobile) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) "
+            "Chrome/139.0.0.0 Mobile Safari/537.36"
+        ),
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+        "Accept-Language": "ru-RU,ru;q=0.9,en;q=0.8",
+        "Cache-Control": "no-cache",
+    })
     if saved:
         _restore(s)
     return s
@@ -95,7 +103,12 @@ def prepare_login():
     """Создаёт одну ручную сессию входа и возвращает капчу как data URL."""
     global _pending_login
     s = _session(saved=False)
-    r = s.get(LOGIN_URL, timeout=TIMEOUT)
+    # WEKINGS ожидает, что посетитель сначала откроет стартовую страницу.
+    # Это создаёт начальные cookies; прямой запрос к /login с Render может получить 403.
+    start = s.get(f"{BASE_URL}/start", timeout=TIMEOUT, allow_redirects=True)
+    start.raise_for_status()
+    s.headers["Referer"] = start.url
+    r = s.get(LOGIN_URL, timeout=TIMEOUT, allow_redirects=True)
     r.raise_for_status()
     meta = _login_form(r.text, r.url)
     img = s.get(meta["captcha_url"], timeout=TIMEOUT)
