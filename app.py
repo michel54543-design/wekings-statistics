@@ -254,7 +254,7 @@ WEKINGS_LOGIN_HTML = r"""
 <!doctype html><html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Сессия WEKINGS</title><style>body{font-family:Arial,sans-serif;max-width:560px;margin:40px auto;padding:0 18px;background:#111;color:#eee}textarea,button{width:100%;box-sizing:border-box;padding:12px;margin:7px 0;border-radius:8px;border:1px solid #555}textarea{min-height:140px}button{font-weight:700;cursor:pointer}.ok{color:#78d878}.err{color:#ff7777}.hint{color:#bbb;line-height:1.45}code{word-break:break-all}</style></head>
 <body><h2>Сессия WEKINGS</h2>
-{% if ok %}<p class="ok">✓ Сессия активна. API ForGlory доступен.</p>{% else %}<p>Сначала войдите пользователем 106 в WEKINGS в обычном браузере и пройдите CAPTCHA.</p>{% endif %}
+{% if ok %}<p class="ok">✓ Сессия активна. API ForGlory доступен.</p><form method="post" action="/wekings-scan-now"><button type="submit">Обновить статистику сейчас</button></form><p class="hint">После нажатия импорт запускается в фоне. Через несколько секунд вернитесь на главную страницу и обновите её.</p>{% else %}<p>Сначала войдите пользователем 106 в WEKINGS в обычном браузере и пройдите CAPTCHA.</p>{% endif %}
 {% if error %}<p class="err">{{ error }}</p>{% endif %}
 {% if saved %}<p class="ok">Сессия сохранена. API вернул игроков: {{ saved }}</p>{% endif %}
 {% if not ok %}<form method="post"><textarea name="cookie" placeholder="Вставьте сюда весь текст Copy as cURL" required></textarea><button type="submit">Сохранить и проверить API</button></form>
@@ -275,6 +275,15 @@ def wekings_login():
             error = str(exc)
     ok = api_auth_status()
     return render_template_string(WEKINGS_LOGIN_HTML, ok=ok, error=error, saved=saved)
+
+
+@app.post("/wekings-scan-now")
+def wekings_scan_now():
+    """Ручной запуск быстрого импорта ForGlory API."""
+    state = db.session.get(ScanState, 1)
+    if not state.running:
+        start_scan_thread()
+    return redirect("/wekings-login")
 
 
 @app.get("/api/players")
