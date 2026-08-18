@@ -257,8 +257,8 @@ WEKINGS_LOGIN_HTML = r"""
 {% if ok %}<p class="ok">✓ Сессия активна. API ForGlory доступен.</p>{% else %}<p>Сначала войдите пользователем 106 в WEKINGS в обычном браузере и пройдите CAPTCHA.</p>{% endif %}
 {% if error %}<p class="err">{{ error }}</p>{% endif %}
 {% if saved %}<p class="ok">Сессия сохранена. API вернул игроков: {{ saved }}</p>{% endif %}
-{% if not ok %}<form method="post"><textarea name="cookie" placeholder="Вставьте сюда значение заголовка Cookie" required></textarea><button type="submit">Сохранить и проверить API</button></form>
-<p class="hint">Нужен именно заголовок <b>Cookie</b> из авторизованного запроса к <code>playwekings.ru/heroes/for-glory</code>. Логин и пароль сюда вводить не нужно.</p>{% endif %}
+{% if not ok %}<form method="post"><textarea name="cookie" placeholder="Вставьте сюда весь текст Copy as cURL" required></textarea><button type="submit">Сохранить и проверить API</button></form>
+<p class="hint">В DevTools откройте <b>Network → for-glory → Copy as cURL</b> и вставьте сюда весь скопированный текст. Сайт сам извлечёт Cookie. Также по-прежнему можно вставить только заголовок Cookie.</p>{% endif %}
 <p><a href="/" style="color:#9cf">← На сайт статистики</a></p></body></html>
 """
 

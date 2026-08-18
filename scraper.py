@@ -99,13 +99,36 @@ def _login_form(html, page_url):
     }
 
 
-def save_browser_cookie(cookie_header):
-    """Сохраняет Cookie из уже авторизованного браузера и проверяет API."""
-    raw = (cookie_header or "").strip()
+def _extract_cookie_from_input(value):
+    """Принимает либо Cookie, либо целиком Copy as cURL из Chrome DevTools."""
+    raw = (value or "").strip()
+    if not raw:
+        return ""
+
+    # Chrome/Chromium: -H 'cookie: ...' или --header "cookie: ..."
+    if raw.lower().startswith("curl "):
+        patterns = [
+            r"(?:-H|--header)\s+'cookie:\s*([^']+)'",
+            r'(?:-H|--header)\s+"cookie:\s*([^"]+)"',
+            r"(?:-b|--cookie)\s+'([^']+)'",
+            r'(?:-b|--cookie)\s+"([^"]+)"',
+        ]
+        for pattern in patterns:
+            match = re.search(pattern, raw, flags=re.IGNORECASE | re.DOTALL)
+            if match:
+                return match.group(1).strip()
+        raise RuntimeError("В cURL не найден заголовок Cookie. Скопируйте именно запрос for-glory через Copy as cURL.")
+
     if raw.lower().startswith("cookie:"):
         raw = raw.split(":", 1)[1].strip()
+    return raw
+
+
+def save_browser_cookie(cookie_header):
+    """Сохраняет Cookie/cURL из уже авторизованного браузера и проверяет API."""
+    raw = _extract_cookie_from_input(cookie_header)
     if not raw:
-        raise RuntimeError("Вставьте Cookie из авторизованного запроса WEKINGS.")
+        raise RuntimeError("Вставьте Cookie или полный Copy as cURL запроса for-glory.")
     s = _session(saved=False)
     for part in raw.split(";"):
         if "=" not in part:
