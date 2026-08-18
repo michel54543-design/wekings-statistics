@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+import logging
 import os
 import re
 from datetime import datetime, timedelta, timezone
@@ -17,6 +18,7 @@ TIMEOUT = (5, 30)
 _cookie_loader = None
 _cookie_saver = None
 _pending_login = None
+logger = logging.getLogger(__name__)
 
 
 def configure_guest_cookie_storage(loader, saver):
@@ -320,20 +322,25 @@ def _duration_near(text: str, labels):
 def fetch_attack_schedule():
     """Читает Город -> Монах через уже сохранённую сессию пользователя 106."""
     s = _session(saved=True)
+    logger.warning("[ATTACKS] start base=%s api=%s", BASE_URL, API_URL)
     try:
-        # Сначала убеждаемся, что сохранённая сессия всё ещё имеет доступ к ForGlory API.
         check = s.get(API_URL, timeout=TIMEOUT, allow_redirects=True)
+        logger.warning("[ATTACKS] ForGlory status=%s url=%s bytes=%s", check.status_code, check.url, len(check.content))
         if check.status_code in {401, 403} or "/login" in check.url or "/start" in check.url:
             raise PermissionError("Сессия пользователя 106 истекла. Обновите её через /wekings-login")
 
         city_url = urljoin(BASE_URL + "/", "town")
         city = s.get(city_url, timeout=TIMEOUT, allow_redirects=True)
+        logger.warning("[ATTACKS] Town status=%s url=%s bytes=%s", city.status_code, city.url, len(city.content))
         city.raise_for_status()
         if "/login" in city.url or "/start" in city.url:
             raise PermissionError("Сессия пользователя 106 не открывает Город")
 
-        monk_url = _link_by_text(city.text, "Монах", BASE_URL) or urljoin(BASE_URL + "/", "monastic")
+        found_monk = _link_by_text(city.text, "Монах", BASE_URL)
+        monk_url = found_monk or urljoin(BASE_URL + "/", "monastic")
+        logger.warning("[ATTACKS] Monk link=%s source=%s", monk_url, "page" if found_monk else "fallback")
         monk = s.get(monk_url, timeout=TIMEOUT, allow_redirects=True)
+        logger.warning("[ATTACKS] Monk status=%s url=%s bytes=%s", monk.status_code, monk.url, len(monk.content))
         monk.raise_for_status()
         if "/login" in monk.url or "/start" in monk.url:
             raise PermissionError("Сессия пользователя 106 не открывает Монаха")
@@ -344,7 +351,10 @@ def fetch_attack_schedule():
         serpent_delta, serpent_raw = _duration_near(text, ("Змей", "Змея", "Змеем", "Змею"))
         dragon_active = bool(re.search(r"Дракон\s+напал|нападение\s+Дракона\s+(?:уже\s+)?началось", text, re.I))
         serpent_active = bool(re.search(r"(?:Морской\s+)?Змей\s+напал|нападение\s+(?:Морского\s+)?Змея\s+(?:уже\s+)?началось", text, re.I))
+        logger.warning("[ATTACKS] parsed dragon_delta=%r dragon_raw=%r active=%s serpent_delta=%r serpent_raw=%r active=%s", dragon_delta, dragon_raw, dragon_active, serpent_delta, serpent_raw, serpent_active)
         if dragon_delta is None and serpent_delta is None and not dragon_active and not serpent_active:
+            sample = re.sub(r"\s+", " ", text)[:700]
+            logger.error("[ATTACKS] Monk text sample: %s", sample)
             raise RuntimeError("На странице Монаха не найдено время Дракона или Змея")
 
         game_now = datetime.now(ZoneInfo("Europe/Chisinau"))
@@ -353,15 +363,19 @@ def fetch_attack_schedule():
             try:
                 game_now = datetime.strptime(meta["content"].strip(), "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc).astimezone(ZoneInfo("Europe/Chisinau"))
             except ValueError:
-                pass
+                logger.warning("[ATTACKS] bad server-time=%r", meta.get("content"))
         _save(s)
-        return {
-            "fetched_at": datetime.now(timezone.utc),
-            "game_time": game_now,
+        result = {
+            "fetched_at": datetime.now(timezone.utc), "game_time": game_now,
             "dragon_at": game_now + dragon_delta if dragon_delta else None,
             "serpent_at": game_now + serpent_delta if serpent_delta else None,
             "dragon_raw": "Дракон уже напал — сражайся!" if dragon_active else dragon_raw,
             "serpent_raw": "Морской Змей уже напал — сражайся!" if serpent_active else serpent_raw,
         }
+        logger.warning("[ATTACKS] success dragon_at=%s serpent_at=%s", result["dragon_at"], result["serpent_at"])
+        return result
+    except Exception:
+        logger.exception("[ATTACKS] fetch failed")
+        raise
     finally:
         s.close()
