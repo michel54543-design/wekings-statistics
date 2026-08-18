@@ -9,7 +9,7 @@ from urllib.parse import urljoin
 import requests
 from bs4 import BeautifulSoup
 
-BASE_URL = os.getenv("WEKINGS_BASE_URL", "https://playwekings.ru").rstrip("/")
+BASE_URL = os.getenv("WEKINGS_BASE_URL", "https://wekings.online").rstrip("/")
 LOGIN_URL = os.getenv("WEKINGS_LOGIN_URL", f"{BASE_URL}/login")
 API_URL = os.getenv("WEKINGS_FORGLORY_API", f"{BASE_URL}/heroes/for-glory")
 TIMEOUT = (5, 30)
@@ -135,7 +135,7 @@ def save_browser_cookie(cookie_header):
             continue
         name, value = part.strip().split("=", 1)
         if name:
-            s.cookies.set(name, value, domain="playwekings.ru", path="/")
+            s.cookies.set(name, value, domain="wekings.online", path="/")
     r = s.get(API_URL, timeout=TIMEOUT, allow_redirects=True)
     if r.status_code in {401, 403} or "/login" in r.url or "/start" in r.url:
         raise RuntimeError(f"Эта сессия не дала доступ к API (HTTP {r.status_code}).")
