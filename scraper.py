@@ -191,9 +191,29 @@ def _normalize(row):
         "wins": _int(row.get("wins")), "losses": _int(row.get("losses")),
         "dragon_wins": _int(row.get("dragon_wins") or row.get("dragons")),
         "serpent_wins": _int(row.get("serpent_wins") or row.get("serpents")),
-        "beasts_killed": _int(row.get("beasts_killed")), "silver_stolen": _int(row.get("silver_stolen")),
-        "silver_lost": _int(row.get("silver_lost")), "crystals_stolen": _int(row.get("crystals_stolen")),
-        "crystals_lost": _int(row.get("crystals_lost")), "clan": _org_name(row.get("clan")),
+        "beasts_killed": _int(row.get("beasts_killed")), "silver_stolen": _int(row.get("silver_looted") if row.get("silver_looted") is not None else row.get("silver_stolen")),
+        "silver_lost": _int(row.get("silver_lost")), "crystals_stolen": _int(row.get("crystals_looted") if row.get("crystals_looted") is not None else row.get("crystals_stolen")),
+        "crystals_lost": _int(row.get("crystals_lost")),
+
+        # Дополнительная статистика из ForGlory API. Часть значений может
+        # находиться внутри achievements, поэтому поддерживаем оба формата.
+        "bandit_wins": _int(row.get("bandit_wins") if row.get("bandit_wins") is not None else (row.get("achievements") or {}).get("bandit_wins")),
+        "mine": _int(row.get("mine") if row.get("mine") is not None else (row.get("achievements") or {}).get("mine")),
+        "crusade": _int(row.get("crusade") if row.get("crusade") is not None else (row.get("achievements") or {}).get("crusade")),
+        "quests": _int(row.get("quests") if row.get("quests") is not None else (row.get("achievements") or {}).get("quests")),
+        "pet_fights": _int(row.get("pet_fights") if row.get("pet_fights") is not None else (row.get("achievements") or {}).get("pet_fights")),
+        "pet_kills": _int(row.get("pet_kills") if row.get("pet_kills") is not None else (row.get("achievements") or {}).get("pet_kills")),
+        "garden": _int(row.get("garden") if row.get("garden") is not None else (row.get("achievements") or {}).get("garden")),
+        "goblins": _int(row.get("goblins") if row.get("goblins") is not None else (row.get("achievements") or {}).get("goblins")),
+        "lord_wins": _int(row.get("lord_wins") if row.get("lord_wins") is not None else (row.get("achievements") or {}).get("lord_wins")),
+        "undead_wins": _int(row.get("undead_wins") if row.get("undead_wins") is not None else (row.get("achievements") or {}).get("undead_wins")),
+        "heroes_wins": _int(row.get("heroes_wins") if row.get("heroes_wins") is not None else (row.get("achievements") or {}).get("heroes_wins")),
+        "serpent_fights": _int(row.get("serpent_fights") if row.get("serpent_fights") is not None else (row.get("achievements") or {}).get("serpent_fights")),
+        "sent_gifts": _int(row.get("sent_gifts") if row.get("sent_gifts") is not None else (row.get("achievements") or {}).get("sent_gifts")),
+        "fishing": _int(row.get("fishing") if row.get("fishing") is not None else (row.get("achievements") or {}).get("fishing")),
+        "dragon_kills": _int(row.get("dragon_kills") if row.get("dragon_kills") is not None else (row.get("achievements") or {}).get("dragon_kills")),
+        "serpent_kills": _int(row.get("serpent_kills") if row.get("serpent_kills") is not None else (row.get("achievements") or {}).get("serpent_kills")),
+        "clan": _org_name(row.get("clan")),
         "brotherhood": _org_name(row.get("brotherhood")), "last_activity": row.get("last_activity"),
     }
 
@@ -233,11 +253,13 @@ def scan_all_players(db, Player, PlayerSnapshot, ScanState, LowLevelPlayer):
     snapshot_fields = [
         "nickname", "level", "glory", "power", "defense", "agility", "mastery", "vitality",
         "stat_sum", "wins", "losses", "dragon_wins", "serpent_wins", "beasts_killed",
-        "silver_stolen", "silver_lost", "crystals_stolen", "crystals_lost", "clan", "brotherhood",
+        "silver_stolen", "silver_lost", "crystals_stolen", "crystals_lost",
+        "bandit_wins", "mine", "crusade", "quests", "pet_fights", "pet_kills", "garden", "goblins", "lord_wins", "undead_wins", "heroes_wins", "serpent_fights", "sent_gifts", "fishing", "dragon_kills", "serpent_kills", "clan", "brotherhood",
     ]
     player_fields = ["nickname", "level", "glory", "power", "defense", "agility", "mastery",
                      "vitality", "stat_sum", "wins", "losses", "dragon_wins", "serpent_wins",
-                     "clan", "brotherhood", "last_activity"]
+                     "beasts_killed", "silver_stolen", "silver_lost", "crystals_stolen", "crystals_lost",
+                     "bandit_wins", "mine", "crusade", "quests", "pet_fights", "pet_kills", "garden", "goblins", "lord_wins", "undead_wins", "heroes_wins", "serpent_fights", "sent_gifts", "fishing", "dragon_kills", "serpent_kills", "clan", "brotherhood", "last_activity"]
     now = datetime.now(timezone.utc)
     for n, data in enumerate(rows, 1):
         player = db.session.get(Player, data["id"])

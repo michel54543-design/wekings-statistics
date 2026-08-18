@@ -6,7 +6,23 @@ const metricNames = {
   dragon_wins: "Победы над Драконом", serpent_wins: "Победы над Змеем",
   beasts_killed: "Убито зверей", silver_stolen: "Награбил (серебро)",
   silver_lost: "Потерял (серебро)", crystals_stolen: "Награбил (кристаллы)",
-  crystals_lost: "Потерял (кристаллы)"
+  crystals_lost: "Потерял (кристаллы)",
+  bandit_wins: "Победы над бандитами",
+  mine: "Шахта",
+  crusade: "Походы",
+  quests: "Задания",
+  pet_fights: "Бои питомца",
+  pet_kills: "Убийства питомца",
+  garden: "Сад",
+  goblins: "Гоблины",
+  lord_wins: "Победы над Владыкой",
+  undead_wins: "Победы над нежитью",
+  heroes_wins: "Победы над героями",
+  serpent_fights: "Бои со Змеем",
+  sent_gifts: "Отправлено подарков",
+  fishing: "Рыбалка",
+  dragon_kills: "Убийства Дракона",
+  serpent_kills: "Убийства Змея"
 };
 const $ = (id) => document.getElementById(id);
 const fmt = (v) => v == null ? "—" : Number(v).toLocaleString("ru-RU");

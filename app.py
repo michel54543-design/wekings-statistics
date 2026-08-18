@@ -71,6 +71,22 @@ class Player(db.Model):
     losses = db.Column(db.BigInteger)
     dragon_wins = db.Column(db.BigInteger)
     serpent_wins = db.Column(db.BigInteger)
+    bandit_wins = db.Column(db.BigInteger)
+    mine = db.Column(db.BigInteger)
+    crusade = db.Column(db.BigInteger)
+    quests = db.Column(db.BigInteger)
+    pet_fights = db.Column(db.BigInteger)
+    pet_kills = db.Column(db.BigInteger)
+    garden = db.Column(db.BigInteger)
+    goblins = db.Column(db.BigInteger)
+    lord_wins = db.Column(db.BigInteger)
+    undead_wins = db.Column(db.BigInteger)
+    heroes_wins = db.Column(db.BigInteger)
+    serpent_fights = db.Column(db.BigInteger)
+    sent_gifts = db.Column(db.BigInteger)
+    fishing = db.Column(db.BigInteger)
+    dragon_kills = db.Column(db.BigInteger)
+    serpent_kills = db.Column(db.BigInteger)
     clan = db.Column(db.String(160))
     brotherhood = db.Column(db.String(160))
     last_activity = db.Column(db.String(80))
@@ -147,6 +163,22 @@ class PlayerSnapshot(db.Model):
     losses = db.Column(db.BigInteger)
     dragon_wins = db.Column(db.BigInteger)
     serpent_wins = db.Column(db.BigInteger)
+    bandit_wins = db.Column(db.BigInteger)
+    mine = db.Column(db.BigInteger)
+    crusade = db.Column(db.BigInteger)
+    quests = db.Column(db.BigInteger)
+    pet_fights = db.Column(db.BigInteger)
+    pet_kills = db.Column(db.BigInteger)
+    garden = db.Column(db.BigInteger)
+    goblins = db.Column(db.BigInteger)
+    lord_wins = db.Column(db.BigInteger)
+    undead_wins = db.Column(db.BigInteger)
+    heroes_wins = db.Column(db.BigInteger)
+    serpent_fights = db.Column(db.BigInteger)
+    sent_gifts = db.Column(db.BigInteger)
+    fishing = db.Column(db.BigInteger)
+    dragon_kills = db.Column(db.BigInteger)
+    serpent_kills = db.Column(db.BigInteger)
     beasts_killed = db.Column(db.BigInteger)
     silver_stolen = db.Column(db.BigInteger)
     silver_lost = db.Column(db.BigInteger)
@@ -158,6 +190,18 @@ class PlayerSnapshot(db.Model):
 
 with app.app_context():
     db.create_all()
+    # create_all не добавляет новые колонки в уже существующую БД.
+    # Добавляем новые показатели API безопасно, сохраняя всю старую историю.
+    extra_metric_columns = ['bandit_wins', 'mine', 'crusade', 'quests', 'pet_fights', 'pet_kills', 'garden', 'goblins', 'lord_wins', 'undead_wins', 'heroes_wins', 'serpent_fights', 'sent_gifts', 'fishing', 'dragon_kills', 'serpent_kills']
+    inspector = db.inspect(db.engine)
+    with db.engine.begin() as connection:
+        for table_name in ("player", "player_snapshot"):
+            existing = {c["name"] for c in inspector.get_columns(table_name)}
+            for column_name in extra_metric_columns:
+                if column_name not in existing:
+                    connection.execute(db.text(
+                        f'ALTER TABLE {table_name} ADD COLUMN {column_name} BIGINT'
+                    ))
     scan_state = db.session.get(ScanState, 1)
     if scan_state is None:
         scan_state = ScanState(id=1)
@@ -237,6 +281,22 @@ SORT_FIELDS = {
     "silver_lost": "silver_lost",
     "crystals_stolen": "crystals_stolen",
     "crystals_lost": "crystals_lost",
+    "bandit_wins": "bandit_wins",
+    "mine": "mine",
+    "crusade": "crusade",
+    "quests": "quests",
+    "pet_fights": "pet_fights",
+    "pet_kills": "pet_kills",
+    "garden": "garden",
+    "goblins": "goblins",
+    "lord_wins": "lord_wins",
+    "undead_wins": "undead_wins",
+    "heroes_wins": "heroes_wins",
+    "serpent_fights": "serpent_fights",
+    "sent_gifts": "sent_gifts",
+    "fishing": "fishing",
+    "dragon_kills": "dragon_kills",
+    "serpent_kills": "serpent_kills",
 }
 
 
@@ -747,6 +807,7 @@ def api_player_detail(player_id):
         "stat_sum", "wins", "losses", "dragon_wins", "serpent_wins",
         "beasts_killed", "silver_stolen", "silver_lost",
         "crystals_stolen", "crystals_lost",
+        'bandit_wins', 'mine', 'crusade', 'quests', 'pet_fights', 'pet_kills', 'garden', 'goblins', 'lord_wins', 'undead_wins', 'heroes_wins', 'serpent_fights', 'sent_gifts', 'fishing', 'dragon_kills', 'serpent_kills',
     ]
     snapshots_query = PlayerSnapshot.query.filter_by(player_id=player_id)
     trusted_dates = completed_snapshot_dates()
@@ -1038,21 +1099,17 @@ def start_scan_on_boot_if_needed():
 if os.getenv("SCAN_ENABLED", "true").lower() == "true":
     scheduler = BackgroundScheduler(timezone="Europe/Chisinau")
     scheduler.start()
-    for job_id, hour, minute in (
-        ("wekings-night-scan", 0, 15),
-        ("wekings-day-scan", 12, 15),
-    ):
-        scheduler.add_job(
-            start_scan_thread,
-            "cron",
-            hour=hour,
-            minute=minute,
-            id=job_id,
-            replace_existing=True,
-            coalesce=True,
-            max_instances=1,
-            misfire_grace_time=900,
-        )
+    scheduler.add_job(
+        start_scan_thread,
+        "cron",
+        hour=0,
+        minute=2,
+        id="wekings-daily-api-scan",
+        replace_existing=True,
+        coalesce=True,
+        max_instances=1,
+        misfire_grace_time=21600,
+    )
     # Страховочная проверка: если таймер повтора потерялся после сна или
     # перезапуска бесплатного Render, незавершённый снимок возобновится сам.
     scheduler.add_job(
