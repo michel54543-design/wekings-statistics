@@ -4,11 +4,13 @@ import os
 import json
 import threading
 import time
+import hashlib
+import hmac
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 from apscheduler.schedulers.background import BackgroundScheduler
-from flask import Flask, jsonify, render_template, render_template_string, request, redirect, Response
+from flask import Flask, jsonify, render_template, render_template_string, request, redirect, Response, session
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy import and_
 from sqlalchemy.orm import aliased
@@ -37,6 +39,9 @@ def _as_utc(value):
 
 
 app = Flask(__name__)
+# Секрет для подписанной служебной cookie выводится из WEKINGS_PASSWORD.
+# Сам пароль в cookie и HTML никогда не сохраняется.
+app.secret_key = hashlib.sha256((os.getenv("WEKINGS_PASSWORD", "") + "|wekings-admin-session").encode()).digest()
 database_url = normalize_database_url(os.getenv("DATABASE_URL", "sqlite:///wekings.db"))
 app.config["SQLALCHEMY_DATABASE_URI"] = database_url
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
@@ -352,19 +357,41 @@ WEKINGS_LOGIN_HTML = r"""
 
 
 def _admin_allowed():
-    expected = os.getenv("ADMIN_PASSWORD", "")
-    if not expected:
-        return False
-    auth = request.authorization
-    expected_user = os.getenv("ADMIN_USERNAME", "admin")
-    import hmac
-    return bool(auth and hmac.compare_digest(auth.username or "", expected_user) and hmac.compare_digest(auth.password or "", expected))
+    return session.get("wekings_admin") is True
+
+
+def _check_game_password(value: str) -> bool:
+    expected = os.getenv("WEKINGS_PASSWORD", "")
+    return bool(expected and hmac.compare_digest(value or "", expected))
+
+
+ADMIN_UNLOCK_HTML = r"""
+<!doctype html><html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Вход · WEKINGS</title><style>body{font-family:Arial,sans-serif;max-width:560px;margin:40px auto;padding:0 18px;background:#111;color:#eee}input,button{width:100%;box-sizing:border-box;padding:12px;margin:7px 0;border-radius:8px;border:1px solid #555}button{font-weight:700;cursor:pointer}.err{color:#ff7777}.hint{color:#bbb;line-height:1.45}</style></head>
+<body><h2>Закрытая страница WEKINGS</h2><p class="hint">Введите только пароль от вашего аккаунта WEKINGS.</p>
+{% if error %}<p class="err">{{ error }}</p>{% endif %}
+<form method="post"><input type="password" name="game_password" autocomplete="current-password" placeholder="Пароль WEKINGS" required><button>Войти</button></form>
+<p><a href="/" style="color:#9cf">← На сайт статистики</a></p></body></html>
+"""
 
 
 def _admin_required():
     if _admin_allowed():
         return None
-    return Response("Требуется авторизация администратора", 401, {"WWW-Authenticate": 'Basic realm="WEKINGS Admin"'})
+    return redirect("/wekings-login")
+
+
+@app.route("/wekings-login", methods=["GET", "POST"])
+def wekings_login():
+    if not _admin_allowed():
+        error = None
+        if request.method == "POST":
+            if _check_game_password(request.form.get("game_password", "")):
+                session["wekings_admin"] = True
+                return redirect("/admin/wekings-login")
+            error = "Неверный пароль WEKINGS"
+        return render_template_string(ADMIN_UNLOCK_HTML, error=error)
+    return redirect("/admin/wekings-login")
 
 
 @app.route("/admin/wekings-login", methods=["GET", "POST"])
@@ -384,14 +411,6 @@ def admin_wekings_login():
         except Exception as exc:
             error = str(exc)
     return render_template_string(WEKINGS_LOGIN_HTML, ok=ok, error=error, saved=saved, captcha=captcha)
-
-
-@app.route("/wekings-login", methods=["GET", "POST"])
-def old_wekings_login():
-    # Старый публичный адрес больше не раскрывает форму работы с сессией.
-    denied = _admin_required()
-    if denied: return denied
-    return redirect("/admin/wekings-login")
 
 
 @app.post("/admin/wekings-scan-now")
