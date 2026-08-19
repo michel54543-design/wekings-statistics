@@ -295,7 +295,9 @@ def _fetch_all():
 
 
 def scan_all_players(db, Player, PlayerSnapshot, ScanState, LowLevelPlayer):
-    """Новый сбор: один API-запрос вместо старого обхода профилей по ID."""
+    """Быстрый сбор через ForGlory API с короткими устойчивыми транзакциями."""
+    import time
+
     state = db.session.get(ScanState, 1)
     batch_at = state.started_at or datetime.now(timezone.utc)
     rows = _fetch_all()
@@ -309,47 +311,85 @@ def scan_all_players(db, Player, PlayerSnapshot, ScanState, LowLevelPlayer):
         "nickname", "level", "glory", "power", "defense", "agility", "mastery", "vitality",
         "stat_sum", "wins", "losses", "dragon_wins", "serpent_wins", "beasts_killed",
         "silver_stolen", "silver_lost", "crystals_stolen", "crystals_lost",
-        "bandit_wins", "mine", "crusade", "quests", "pet_fights", "pet_kills", "garden", "goblins", "lord_wins", "undead_wins", "heroes_wins", "serpent_fights", "sent_gifts", "fishing", "dragon_kills", "serpent_kills", "clan", "brotherhood",
+        "bandit_wins", "mine", "crusade", "quests", "pet_fights", "pet_kills", "garden", "goblins",
+        "lord_wins", "undead_wins", "heroes_wins", "serpent_fights", "sent_gifts", "fishing",
+        "dragon_kills", "serpent_kills", "clan", "brotherhood",
     ]
-    player_fields = ["nickname", "level", "glory", "power", "defense", "agility", "mastery",
-                     "vitality", "stat_sum", "wins", "losses", "dragon_wins", "serpent_wins",
-                     "beasts_killed", "silver_stolen", "silver_lost", "crystals_stolen", "crystals_lost",
-                     "bandit_wins", "mine", "crusade", "quests", "pet_fights", "pet_kills", "garden", "goblins", "lord_wins", "undead_wins", "heroes_wins", "serpent_fights", "sent_gifts", "fishing", "dragon_kills", "serpent_kills", "clan", "brotherhood", "last_activity"]
+    player_fields = snapshot_fields + ["last_activity"]
     now = datetime.now(timezone.utc)
 
-    # Повтор одного и того же batch после ошибки не должен упираться в
-    # uq_player_snapshot_batch. Частичный снимок пересобираем целиком.
+    # Если предыдущая попытка оборвалась, частичный снимок этого запуска
+    # удаляем и собираем заново. Исторические готовые отчёты не затрагиваются.
     PlayerSnapshot.query.filter_by(batch_at=batch_at).delete(synchronize_session=False)
     db.session.commit()
 
-    # Один запрос вместо ~8000 отдельных session.get(): быстрее и заметно
-    # надёжнее на Render/PostgreSQL.
-    row_ids = [x["id"] for x in rows]
-    existing_players = {p.id: p for p in Player.query.filter(Player.id.in_(row_ids)).all()}
+    # На Render/PostgreSQL длинная ORM-транзакция иногда обрывала соединение.
+    # Поэтому пишем короткими пакетами и каждый пакет можем безопасно повторить.
+    chunk_size = 100
+    for offset in range(0, len(rows), chunk_size):
+        chunk = rows[offset:offset + chunk_size]
+        chunk_ids = [x["id"] for x in chunk]
+        last_exc = None
 
-    for n, data in enumerate(rows, 1):
-        player = existing_players.get(data["id"])
-        if player is None:
-            player = Player(id=data["id"], nickname=data["nickname"], scanned_at=now)
-            db.session.add(player)
-        player.previous_glory = player.glory
-        player.previous_stat_sum = player.stat_sum
-        for field in player_fields:
-            if hasattr(player, field):
-                setattr(player, field, data.get(field))
-        player.scanned_at = now
-        snap = PlayerSnapshot(player_id=data["id"], batch_at=batch_at)
-        for field in snapshot_fields:
-            setattr(snap, field, data.get(field))
-        db.session.add(snap)
-        if n % 500 == 0:
-            state.found_players = n
-            state.current_player_id = data["id"]
-            db.session.commit()
+        for attempt in range(1, 4):
+            try:
+                existing = {
+                    p.id: p for p in Player.query.filter(Player.id.in_(chunk_ids)).all()
+                }
+                # При повторе пакета после разрыва удаляем только его снимки.
+                PlayerSnapshot.query.filter(
+                    PlayerSnapshot.batch_at == batch_at,
+                    PlayerSnapshot.player_id.in_(chunk_ids),
+                ).delete(synchronize_session=False)
+
+                for data in chunk:
+                    player = existing.get(data["id"])
+                    if player is None:
+                        player = Player(id=data["id"], nickname=data["nickname"], scanned_at=now)
+                        db.session.add(player)
+                    player.previous_glory = player.glory
+                    player.previous_stat_sum = player.stat_sum
+                    for field in player_fields:
+                        if hasattr(player, field):
+                            setattr(player, field, data.get(field))
+                    player.scanned_at = now
+
+                    snap = PlayerSnapshot(player_id=data["id"], batch_at=batch_at)
+                    for field in snapshot_fields:
+                        setattr(snap, field, data.get(field))
+                    db.session.add(snap)
+
+                state = db.session.get(ScanState, 1)
+                done = min(offset + len(chunk), len(rows))
+                state.found_players = done
+                state.current_player_id = chunk[-1]["id"]
+                db.session.commit()
+                last_exc = None
+                break
+            except Exception as exc:
+                last_exc = exc
+                db.session.rollback()
+                logger.exception(
+                    "Scan DB chunk failed offset=%s attempt=%s ids=%s..%s error=%r",
+                    offset, attempt, chunk_ids[0], chunk_ids[-1], exc,
+                )
+                try:
+                    db.engine.dispose()
+                except Exception:
+                    pass
+                if attempt < 3:
+                    time.sleep(attempt * 2)
+
+        if last_exc is not None:
+            raise RuntimeError(
+                f"Не удалось сохранить пакет игроков {chunk_ids[0]}..{chunk_ids[-1]} "
+                f"после 3 попыток: {type(last_exc).__name__}: {last_exc}"
+            ) from last_exc
+
+    state = db.session.get(ScanState, 1)
     state.found_players = len(rows)
     state.current_player_id = 0
     db.session.commit()
-
 
 def _link_by_text(html: str, label: str, base_url: str):
     soup = BeautifulSoup(html, "html.parser")
