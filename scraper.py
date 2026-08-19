@@ -316,8 +316,19 @@ def scan_all_players(db, Player, PlayerSnapshot, ScanState, LowLevelPlayer):
                      "beasts_killed", "silver_stolen", "silver_lost", "crystals_stolen", "crystals_lost",
                      "bandit_wins", "mine", "crusade", "quests", "pet_fights", "pet_kills", "garden", "goblins", "lord_wins", "undead_wins", "heroes_wins", "serpent_fights", "sent_gifts", "fishing", "dragon_kills", "serpent_kills", "clan", "brotherhood", "last_activity"]
     now = datetime.now(timezone.utc)
+
+    # Повтор одного и того же batch после ошибки не должен упираться в
+    # uq_player_snapshot_batch. Частичный снимок пересобираем целиком.
+    PlayerSnapshot.query.filter_by(batch_at=batch_at).delete(synchronize_session=False)
+    db.session.commit()
+
+    # Один запрос вместо ~8000 отдельных session.get(): быстрее и заметно
+    # надёжнее на Render/PostgreSQL.
+    row_ids = [x["id"] for x in rows]
+    existing_players = {p.id: p for p in Player.query.filter(Player.id.in_(row_ids)).all()}
+
     for n, data in enumerate(rows, 1):
-        player = db.session.get(Player, data["id"])
+        player = existing_players.get(data["id"])
         if player is None:
             player = Player(id=data["id"], nickname=data["nickname"], scanned_at=now)
             db.session.add(player)

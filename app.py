@@ -1092,9 +1092,9 @@ def run_scan():
                 db.session.commit()
             except Exception:
                 db.session.rollback()
-            # При временном обрыве базы продолжаем с последнего сохранённого
-            # игрока через 5 минут, не создавая частых повторов.
-            next_scan_delay = 300
+            # Не запускаем бесконечные повторы через 5 минут. Следующая
+            # автоматическая попытка будет по штатному часовому расписанию.
+            next_scan_delay = None
         finally:
             db.session.rollback()
             try:
@@ -1279,16 +1279,6 @@ if os.getenv("SCAN_ENABLED", "true").lower() == "true":
             misfire_grace_time=1800,
         )
 
-    # Если API оборвался во время сохранения, recovery продолжит попытки.
-    scheduler.add_job(
-        start_scan_on_boot_if_needed,
-        "interval",
-        minutes=10,
-        id="wekings-scan-recovery",
-        replace_existing=True,
-        coalesce=True,
-        max_instances=1,
-    )
     if os.getenv("START_SCAN_ON_BOOT", "true").lower() == "true":
         scheduler.add_job(
             start_scan_on_boot_if_needed,
