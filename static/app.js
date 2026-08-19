@@ -112,7 +112,7 @@ function attackTimeText(value, status) {
       return date.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" });
     }
   }
-  return status || "уточняем…";
+  return "Ожидаем новое время";
 }
 
 async function loadAttacks() {
@@ -130,8 +130,8 @@ async function loadAttacks() {
     }
     box?.classList.toggle("waiting", !data.dragon_at || !data.serpent_at);
   } catch (error) {
-    $("dragonTime").textContent = "уточняем…";
-    $("serpentTime").textContent = "уточняем…";
+    $("dragonTime").textContent = "Ожидаем новое время";
+    $("serpentTime").textContent = "Ожидаем новое время";
     $("attackUpdated").textContent = "нет связи";
     box?.classList.add("waiting");
   }
