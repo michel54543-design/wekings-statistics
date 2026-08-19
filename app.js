@@ -7,7 +7,7 @@ const metricNames = {
   beasts_killed: "Убито зверей", silver_stolen: "Награбил (серебро)",
   silver_lost: "Потерял (серебро)", crystals_stolen: "Награбил (кристаллы)",
   crystals_lost: "Потерял (кристаллы)",
-  bandit_wins: "Победы над бандитами",
+  bandit_wins: "Победы над наемниками",
   mine: "Шахта",
   crusade: "Походы",
   quests: "Задания",
