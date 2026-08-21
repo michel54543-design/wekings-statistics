@@ -713,6 +713,26 @@ def api_players():
 
 
 
+# Готовые результаты "Жизнь WEKINGS" держим в памяти до следующего снимка.
+# Поэтому посетители не заставляют сервер повторно пересчитывать тысячи игроков.
+_life_cache = {}
+_life_cache_lock = threading.Lock()
+
+def _life_cache_version():
+    state = db.session.get(ScanState, 1)
+    return state.finished_at.isoformat() if state and state.finished_at else "none"
+
+def _life_cache_get(key):
+    version = _life_cache_version()
+    with _life_cache_lock:
+        item = _life_cache.get(key)
+        return item["data"] if item and item["version"] == version else None
+
+def _life_cache_put(key, data):
+    with _life_cache_lock:
+        _life_cache[key] = {"version": _life_cache_version(), "data": data}
+    return data
+
 LIFE_METRICS = [
     ("power", "Сила", "⚡"), ("stat_sum", "Сумма характеристик", "💪"),
     ("glory", "Слава", "🏆"), ("bandit_wins", "Победы над наемниками", "⚔️"),
@@ -733,6 +753,10 @@ def _life_snapshot_dates():
 @app.get("/api/life")
 def api_life():
     period = request.args.get("period", "now")
+    cache_key = f"life:{period}"
+    cached = _life_cache_get(cache_key)
+    if cached is not None:
+        return jsonify(cached)
     dates = _life_snapshot_dates()
     if len(dates) < 2:
         return jsonify(ready=False, events=[], heroes=[], period=period)
@@ -793,12 +817,17 @@ def api_life():
         seen.add(k); event.pop("score",None); compact.append(event)
         if len(compact)>=40: break
     heroes.sort(key=lambda h:h["gain"], reverse=True)
-    return jsonify(ready=True, period=period, from_date=previous.isoformat(), to_date=latest.isoformat(),
+    payload = dict(ready=True, period=period, from_date=previous.isoformat(), to_date=latest.isoformat(),
                    events=compact, heroes=heroes[:8])
+    _life_cache_put(cache_key, payload)
+    return jsonify(payload)
 
 
 @app.get("/api/life-summary")
 def api_life_summary():
+    cached = _life_cache_get("life:summary")
+    if cached is not None:
+        return jsonify(cached)
     dates = _life_snapshot_dates()
     if len(dates) < 2:
         return jsonify(ready=False)
@@ -845,32 +874,14 @@ def api_life_summary():
                 "player_id": p.player_id, "nickname": p.nickname, "score": score,
                 "power_gain": power_gain, "stat_gain": stat_gain,
                 "wins_gain": wins_gain, "bandit_gain": bandit_gain,
-                "dragon_gain": dragon_gain, "serpent_gain": serpent_gain
+                "dragon_gain": dragon_gain, "serpent_gain": serpent_gain,
+                "quests_gain": quests_gain, "mine_gain": mine_gain
             })
 
     activity.sort(key=lambda x: x["score"], reverse=True)
     hero = activity[0] if activity else None
 
-    # Ranking movement by power: compare positions among players present in both snapshots.
-    current_sorted = sorted([p for p in current if p.player_id in old], key=lambda p: int(p.power or 0), reverse=True)
-    old_sorted = sorted([p for p in old_rows if any(c.player_id == p.player_id for c in current)], key=lambda p: int(p.power or 0), reverse=True)
-    current_rank = {p.player_id: i + 1 for i, p in enumerate(current_sorted)}
-    old_rank = {p.player_id: i + 1 for i, p in enumerate(old_sorted)}
-    movers = []
-    current_by_id = {p.player_id: p for p in current}
-    for pid, now_rank in current_rank.items():
-        if pid not in old_rank:
-            continue
-        move = old_rank[pid] - now_rank
-        if move:
-            p = current_by_id[pid]
-            movers.append({
-                "player_id": pid, "nickname": p.nickname,
-                "from_rank": old_rank[pid], "to_rank": now_rank, "move": move
-            })
-    movers.sort(key=lambda x: x["move"], reverse=True)
-
-    return jsonify(
+    payload = dict(
         ready=True,
         from_date=day_start.isoformat(), to_date=latest.isoformat(),
         summary={
@@ -882,9 +893,9 @@ def api_life_summary():
         },
         hero=hero,
         top_active=activity[:5],
-        risers=[m for m in movers if m["move"] > 0][:5],
-        fallers=sorted([m for m in movers if m["move"] < 0], key=lambda x: x["move"])[:5],
     )
+    _life_cache_put("life:summary", payload)
+    return jsonify(payload)
 
 _snapshot_dates_cache = {"at": 0.0, "finished_at": None, "dates": None}
 
@@ -1256,6 +1267,19 @@ def run_scan():
             state.finished_at = completed_at
             state.last_error = None
             db.session.commit()
+            with _life_cache_lock:
+                _life_cache.clear()
+            # Сразу после готового часового снимка считаем "Жизнь" один раз
+            # в фоновом потоке сканирования. Посетители затем получают готовый кэш.
+            try:
+                for _period in ("now", "today", "7d"):
+                    with app.test_request_context(f"/api/life?period={_period}"):
+                        api_life()
+                with app.test_request_context("/api/life-summary"):
+                    api_life_summary()
+                app.logger.info("Life WEKINGS cache warmed")
+            except Exception:
+                app.logger.exception("Life WEKINGS cache warm failed")
         except Exception as exc:
             db.session.rollback()
             app.logger.exception("Wekings scan failed")
