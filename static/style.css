@@ -210,29 +210,14 @@ body.modal-open{overflow:hidden}
 @media(max-width:760px){.modes{grid-template-columns:repeat(4,minmax(0,1fr))}.life-panel{padding:11px}.life-head h2{font-size:18px}.life-head button{padding:6px 8px;font-size:10px}.life-periods button{flex:1;padding:7px 5px;font-size:10px}.life-heroes{grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}.life-events{grid-template-columns:1fr}}
 
 
-/* V58 — polished Life WEKINGS */
-.life-panel{position:relative;overflow:hidden;background:linear-gradient(180deg,#17140e 0%,#0f0f0d 100%);border-color:#6f5529;box-shadow:0 12px 34px #0007,inset 0 1px 0 #ffffff08}
-.life-panel:before{content:"";position:absolute;inset:0 0 auto;height:3px;background:linear-gradient(90deg,transparent,#d7a83e,#fff0a0,#d7a83e,transparent);opacity:.8}
-.life-head{position:relative;align-items:center;padding-bottom:11px;border-bottom:1px solid #332b1d}
-.life-head h2{display:flex;align-items:center;gap:7px;color:#ffe39a;text-shadow:0 1px 12px #b87a1638}
-.life-head p{color:#8e887e;letter-spacing:.02em}
-.life-head button{transition:.18s ease}.life-head button:hover{border-color:#b98a38;background:#2a2114;color:#fff0bc}
-.life-periods{position:relative;padding:2px;border:1px solid #332b1d;border-radius:10px;background:#0c0c0b}
-.life-periods button{flex:1;border:0;border-radius:8px;background:transparent;transition:.18s ease}
-.life-periods button:hover{color:#ead18c}.life-periods button.active{box-shadow:inset 0 0 0 1px #6c5125,0 3px 10px #0006;background:linear-gradient(180deg,#3b2e18,#261e12);color:#ffe39a}
-.life-heroes{position:relative}
-.life-hero{position:relative;overflow:hidden;border-color:#423723;background:linear-gradient(145deg,#1b1811,#12110e);box-shadow:inset 0 1px 0 #ffffff07}
-.life-hero:after{content:"";position:absolute;left:0;top:0;bottom:0;width:2px;background:#a77b2d}
-.life-hero span{color:#aaa294;text-transform:uppercase;letter-spacing:.045em}.life-hero strong{font-family:Georgia,"Times New Roman",serif;color:#fff2cf}.life-hero b{font-variant-numeric:tabular-nums}
-.life-events{position:relative}.life-event{border:1px solid #2d291f;border-radius:9px;background:#12110e;transition:.15s ease}.life-event:hover{border-color:#504126;background:#17140f;transform:translateY(-1px)}
-.life-event-icon{filter:drop-shadow(0 2px 5px #0008)}.life-event a{font-family:Georgia,"Times New Roman",serif}.life-event p{line-height:1.35}
-.life-empty{border:1px dashed #3a3327;border-radius:9px;background:#100f0d}
-.life-toggle.active{background:linear-gradient(180deg,#3b2e18,#211a10)!important;color:#ffe39a!important;box-shadow:inset 0 -2px 0 #c89635}
-@media(max-width:760px){
- .modes{grid-template-columns:repeat(4,minmax(0,1fr))}.modes button{min-height:46px}.modes .life-toggle{grid-column:auto}
- .life-panel{margin-top:8px;padding:10px}.life-head{margin-bottom:9px;padding-bottom:9px}.life-head h2{font-size:17px}.life-head p{font-size:8px}
- .life-periods{gap:2px;margin-bottom:9px}.life-periods button{font-size:9px}
- .life-hero{padding:8px}.life-hero span{font-size:7px}.life-hero strong{font-size:11px}.life-hero b{font-size:13px}
- .life-event{grid-template-columns:27px minmax(0,1fr);gap:6px;padding:8px}.life-event-icon{font-size:17px}.life-event a{font-size:12px}.life-event p{font-size:9px}
-}
-@media(max-width:390px){.modes{grid-template-columns:repeat(4,1fr)!important}.modes button:nth-child(3){border-right:1px solid #3b321f}.modes button:nth-child(-n+3){border-bottom:0}}
+/* V59 — daily summary, Hero of the Day, ranking movers */
+.life-daily-summary{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:7px;margin:0 0 10px}
+.life-daily-summary>div{padding:9px 10px;border:1px solid #3b3428;border-radius:10px;background:linear-gradient(180deg,#191711,#12110e)}
+.life-daily-summary b{display:block;color:#f2d178;font-size:13px}.life-daily-summary span{display:block;margin-top:2px;color:#8f897f;font-size:9px}
+.life-feature-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px}
+.life-feature-card{padding:12px;border:1px solid #4a3b22;border-radius:12px;background:linear-gradient(145deg,#1d1911,#11110f);min-height:92px}
+.life-feature-card header{display:flex;align-items:center;gap:9px}.life-feature-card header>span{font-size:27px}
+.life-feature-card small{display:block;color:#a58a4b;font-size:8px;letter-spacing:1.1px}.life-feature-card strong{display:block;color:#f5efe2;font-size:14px;margin-top:2px}
+.life-feature-card p{margin:8px 0 0;color:#aaa39a;font-size:10px}.life-feature-card>a{display:inline-block;margin-top:7px;color:#e8c66b;font-size:9px;text-decoration:none}
+.rank-move-list{margin-top:7px}.rank-move-list>div{display:flex;justify-content:space-between;gap:8px;padding:3px 0;border-top:1px solid #2e2920;font-size:9px}.rank-move-list span{color:#d8d1c6;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.rank-move-list b{color:#b8b0a5;white-space:nowrap}.rank-move-list em{color:#68cf8f;font-style:normal}.rank-move-list p{margin:7px 0 0;color:#827c73}
+@media(max-width:760px){.life-daily-summary{grid-template-columns:repeat(2,minmax(0,1fr))}.life-feature-grid{grid-template-columns:1fr}.life-feature-card{min-height:0}}

@@ -332,7 +332,28 @@ async function loadLife(period=lifeState.period) {
   $("lifeEvents").innerHTML=data.events?.length?data.events.map(e=>`<article class="life-event"><span class="life-event-icon">${e.icon}</span><div><a class="game-profile-link" href="https://playwekings.mobi/hero/detail?player=${e.player_id}">${escapeHtml(e.nickname)}</a><p>${escapeHtml(e.text)}</p></div></article>`).join(""):'<p class="life-empty">За выбранный период заметных изменений нет.</p>';
   lifeState.loaded=true;
 }
-function openLife(){$("lifePanel").classList.remove("hidden");$("lifeToggle").classList.add("active");$("lifeToggle").setAttribute("aria-expanded","true");if(!lifeState.loaded)loadLife().catch(()=>{$("lifeEvents").innerHTML='<p class="life-empty">Не удалось загрузить события.</p>';});$("lifePanel").scrollIntoView({behavior:"smooth",block:"start"});}
+
+async function loadLifeSummary() {
+  const data = await fetch("/api/life-summary").then(r => r.json());
+  if (!data.ready) return;
+  const s = data.summary || {};
+  $("lifeDailySummary").innerHTML = `
+    <div><b>📊 ${fmt(s.active_players)}</b><span>активных игроков</span></div>
+    <div><b>🆙 ${fmt(s.levels)}</b><span>повысили уровень</span></div>
+    <div><b>🛡️ ${fmt(s.brotherhood_changes)}</b><span>смен братства</span></div>
+    <div><b>⚡ +${fmt(s.total_power_gain)}</b><span>общий прирост силы</span></div>`;
+  const h = data.hero;
+  $("lifeHeroDay").innerHTML = h ? `
+    <header><span>👑</span><div><small>ГЕРОЙ ДНЯ</small><strong>${escapeHtml(h.nickname)}</strong></div></header>
+    <p>${h.power_gain ? `⚡ +${fmt(h.power_gain)} силы` : ""} ${h.stat_gain ? ` · 💪 +${fmt(h.stat_gain)} статов` : ""}</p>
+    <a class="game-profile-link" href="https://playwekings.mobi/hero/detail?player=${h.player_id}">Открыть игрока →</a>`
+    : `<header><span>👑</span><div><small>ГЕРОЙ ДНЯ</small><strong>Пока определяется</strong></div></header>`;
+  const rises = data.risers || [];
+  $("lifeRankMoves").innerHTML = `<header><span>📈</span><div><small>ВЗЛЁТЫ РЕЙТИНГА</small><strong>Кто поднялся сегодня</strong></div></header>
+    <div class="rank-move-list">${rises.length ? rises.slice(0,3).map(m=>`<div><span>${escapeHtml(m.nickname)}</span><b>${m.from_rank} → ${m.to_rank} <em>▲${m.move}</em></b></div>`).join("") : '<p>Пока без изменений</p>'}</div>`;
+}
+
+function openLife(){$("lifePanel").classList.remove("hidden");$("lifeToggle").classList.add("active");$("lifeToggle").setAttribute("aria-expanded","true");if(!lifeState.loaded)loadLife().catch(()=>{$("lifeEvents").innerHTML='<p class="life-empty">Не удалось загрузить события.</p>';});loadLifeSummary().catch(()=>{});$("lifePanel").scrollIntoView({behavior:"smooth",block:"start"});}
 function closeLife(){$("lifePanel").classList.add("hidden");$("lifeToggle").classList.remove("active");$("lifeToggle").setAttribute("aria-expanded","false");}
 
 function escapeHtml(value) {
