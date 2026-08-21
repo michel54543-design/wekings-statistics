@@ -236,3 +236,6 @@ body.modal-open{overflow:hidden}
   .life-contributor-card{grid-template-columns:1fr}
   .life-contributor-section+ .life-contributor-section{border-left:0;border-top:1px solid rgba(202,157,63,.22);padding-left:0;padding-top:14px}
 }
+
+/* V64: hide Hero Day + organization contributor tops */
+.life-feature-hidden{display:none!important}
