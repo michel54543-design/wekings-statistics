@@ -338,8 +338,7 @@ async function loadLifeSummary() {
   if (!data.ready) return;
   const s = data.summary || {};
   $("lifeDailySummary").innerHTML = `
-    <div><b>📊 ${fmt(s.active_players)}</b><span>активных игроков</span></div>
-    <div><b>🆙 ${fmt(s.levels)}</b><span>повысили уровень</span></div>`;
+    <div><b>📊 ${fmt(s.active_players)}</b><span>активных игроков</span></div>`;
   const h = data.hero;
   if (h) {
     const achievements = [];
