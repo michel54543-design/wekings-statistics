@@ -778,9 +778,6 @@ def api_life():
     for p in current_rows:
         old = before.get(p.player_id)
         if not old: continue
-        if p.level is not None and old.level is not None and p.level > old.level:
-            events.append({"kind":"level","icon":"🆙","player_id":p.player_id,"nickname":p.nickname,
-                           "text":f"получил {p.level} уровень","score":10**15+p.level})
         if p.brotherhood != old.brotherhood:
             if p.brotherhood and not old.brotherhood: text=f"вступил в братство «{p.brotherhood}»"
             elif old.brotherhood and not p.brotherhood: text=f"покинул братство «{old.brotherhood}»"
