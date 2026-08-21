@@ -843,6 +843,8 @@ def api_life_summary():
     levels = brotherhood_changes = clan_changes = 0
     total_power_gain = 0
     activity = []
+    brotherhood_contributors = []
+    clan_contributors = []
 
     for p in current:
         b = old.get(p.player_id)
@@ -865,6 +867,22 @@ def api_life_summary():
         mine_gain = max(0, int(p.mine or 0) - int(b.mine or 0))
         total_power_gain += power_gain
 
+        # TOP вкладов: прирост суммы характеристик игрока, зачисленный его
+        # текущему братству/клану. Игрок должен состоять в этой организации
+        # и в начале периода, чтобы переход между организациями не выглядел
+        # как искусственный "вклад".
+        if stat_gain > 0:
+            if valid_group_name(p.brotherhood) and p.brotherhood == b.brotherhood:
+                brotherhood_contributors.append({
+                    "player_id": p.player_id, "nickname": p.nickname,
+                    "organization": p.brotherhood.strip(), "gain": stat_gain,
+                })
+            if valid_group_name(p.clan) and p.clan == b.clan:
+                clan_contributors.append({
+                    "player_id": p.player_id, "nickname": p.nickname,
+                    "organization": p.clan.strip(), "gain": stat_gain,
+                })
+
         # Weighted only to select an interesting "hero", not a game score.
         score = (power_gain + stat_gain * 5 + wins_gain * 5000 +
                  bandit_gain * 10000 + dragon_gain * 100000 +
@@ -879,6 +897,8 @@ def api_life_summary():
             })
 
     activity.sort(key=lambda x: x["score"], reverse=True)
+    brotherhood_contributors.sort(key=lambda x: (-x["gain"], x["nickname"].lower()))
+    clan_contributors.sort(key=lambda x: (-x["gain"], x["nickname"].lower()))
     hero = activity[0] if activity else None
 
     payload = dict(
@@ -893,6 +913,8 @@ def api_life_summary():
         },
         hero=hero,
         top_active=activity[:5],
+        top_brotherhood=brotherhood_contributors[:5],
+        top_clan=clan_contributors[:5],
     )
     _life_cache_put("life:summary", payload)
     return jsonify(payload)
