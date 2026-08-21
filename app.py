@@ -712,6 +712,90 @@ def api_players():
     )
 
 
+
+LIFE_METRICS = [
+    ("power", "Сила", "⚡"), ("stat_sum", "Сумма характеристик", "💪"),
+    ("glory", "Слава", "🏆"), ("bandit_wins", "Победы над наемниками", "⚔️"),
+    ("dragon_wins", "Победы над Драконом", "🐉"), ("serpent_wins", "Победы над Змеем", "🐍"),
+    ("silver_stolen", "Награблено серебра", "💰"), ("crystals_stolen", "Награблено кристаллов", "💎"),
+    ("mine", "Шахта", "⛏️"), ("crusade", "Походы", "🛡️"), ("quests", "Задания", "📜"),
+    ("goblins", "Гоблины", "👺"), ("lord_wins", "Победы над Владыкой", "👑"),
+    ("undead_wins", "Победы над нежитью", "☠️"), ("fishing", "Рыбалка", "🎣"),
+]
+
+def _life_snapshot_dates():
+    state = db.session.get(ScanState, 1)
+    query = db.session.query(PlayerSnapshot.batch_at).distinct()
+    if state and state.finished_at:
+        query = query.filter(PlayerSnapshot.batch_at <= state.finished_at)
+    return [row.batch_at for row in query.order_by(PlayerSnapshot.batch_at.desc()).limit(300).all()]
+
+@app.get("/api/life")
+def api_life():
+    period = request.args.get("period", "now")
+    dates = _life_snapshot_dates()
+    if len(dates) < 2:
+        return jsonify(ready=False, events=[], heroes=[], period=period)
+    latest = dates[0]
+    if period == "today":
+        same_day = [d for d in dates if moldova_date(d) == moldova_date(latest)]
+        previous = same_day[-1] if len(same_day) > 1 else dates[1]
+    elif period == "7d":
+        target = _as_utc(latest) - timedelta(days=7)
+        older = [d for d in dates[1:] if _as_utc(d) <= target]
+        previous = older[0] if older else dates[-1]
+    else:
+        previous = dates[1]
+
+    current_rows = PlayerSnapshot.query.filter_by(batch_at=latest).all()
+    before = {p.player_id: p for p in PlayerSnapshot.query.filter_by(batch_at=previous).all()}
+    events, heroes = [], []
+
+    for p in current_rows:
+        old = before.get(p.player_id)
+        if not old: continue
+        if p.level is not None and old.level is not None and p.level > old.level:
+            events.append({"kind":"level","icon":"🆙","player_id":p.player_id,"nickname":p.nickname,
+                           "text":f"получил {p.level} уровень","score":10**15+p.level})
+        if p.brotherhood != old.brotherhood:
+            if p.brotherhood and not old.brotherhood: text=f"вступил в братство «{p.brotherhood}»"
+            elif old.brotherhood and not p.brotherhood: text=f"покинул братство «{old.brotherhood}»"
+            else: text=f"перешёл из «{old.brotherhood}» в «{p.brotherhood}»"
+            events.append({"kind":"brotherhood","icon":"🛡️","player_id":p.player_id,"nickname":p.nickname,"text":text,"score":9*10**14})
+        if p.clan != old.clan:
+            if p.clan and not old.clan: text=f"вступил в клан «{p.clan}»"
+            elif old.clan and not p.clan: text=f"покинул клан «{old.clan}»"
+            else: text=f"сменил клан «{old.clan}» → «{p.clan}»"
+            events.append({"kind":"clan","icon":"♜","player_id":p.player_id,"nickname":p.nickname,"text":text,"score":8*10**14})
+
+    for key,label,icon in LIFE_METRICS:
+        changes=[]
+        for p in current_rows:
+            old=before.get(p.player_id)
+            if not old: continue
+            a=getattr(p,key,None); b=getattr(old,key,None)
+            if a is None or b is None: continue
+            delta=int(a)-int(b)
+            if delta>0: changes.append((delta,p))
+        changes.sort(key=lambda x:x[0], reverse=True)
+        if changes:
+            delta,p=changes[0]
+            heroes.append({"metric":key,"label":label,"icon":icon,"player_id":p.player_id,"nickname":p.nickname,"gain":delta})
+            for delta,p in changes[:3]:
+                events.append({"kind":key,"icon":icon,"player_id":p.player_id,"nickname":p.nickname,
+                               "text":f"{label}: +{delta:,}".replace(","," "),"score":delta})
+
+    events.sort(key=lambda e:e["score"], reverse=True)
+    compact=[]; seen=set()
+    for event in events:
+        k=(event["kind"],event["player_id"],event["text"])
+        if k in seen: continue
+        seen.add(k); event.pop("score",None); compact.append(event)
+        if len(compact)>=40: break
+    heroes.sort(key=lambda h:h["gain"], reverse=True)
+    return jsonify(ready=True, period=period, from_date=previous.isoformat(), to_date=latest.isoformat(),
+                   events=compact, heroes=heroes[:8])
+
 _snapshot_dates_cache = {"at": 0.0, "finished_at": None, "dates": None}
 
 def completed_snapshot_dates():
