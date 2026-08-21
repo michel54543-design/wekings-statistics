@@ -796,6 +796,96 @@ def api_life():
     return jsonify(ready=True, period=period, from_date=previous.isoformat(), to_date=latest.isoformat(),
                    events=compact, heroes=heroes[:8])
 
+
+@app.get("/api/life-summary")
+def api_life_summary():
+    dates = _life_snapshot_dates()
+    if len(dates) < 2:
+        return jsonify(ready=False)
+
+    latest = dates[0]
+    same_day = [d for d in dates if moldova_date(d) == moldova_date(latest)]
+    day_start = same_day[-1] if len(same_day) > 1 else dates[1]
+
+    current = PlayerSnapshot.query.filter_by(batch_at=latest).all()
+    old_rows = PlayerSnapshot.query.filter_by(batch_at=day_start).all()
+    old = {p.player_id: p for p in old_rows}
+
+    levels = brotherhood_changes = clan_changes = 0
+    total_power_gain = 0
+    activity = []
+
+    for p in current:
+        b = old.get(p.player_id)
+        if not b:
+            continue
+        if p.level is not None and b.level is not None and p.level > b.level:
+            levels += 1
+        if p.brotherhood != b.brotherhood:
+            brotherhood_changes += 1
+        if p.clan != b.clan:
+            clan_changes += 1
+
+        power_gain = max(0, int(p.power or 0) - int(b.power or 0))
+        stat_gain = max(0, int(p.stat_sum or 0) - int(b.stat_sum or 0))
+        wins_gain = max(0, int(p.wins or 0) - int(b.wins or 0))
+        bandit_gain = max(0, int(p.bandit_wins or 0) - int(b.bandit_wins or 0))
+        dragon_gain = max(0, int(p.dragon_wins or 0) - int(b.dragon_wins or 0))
+        serpent_gain = max(0, int(p.serpent_wins or 0) - int(b.serpent_wins or 0))
+        quests_gain = max(0, int(p.quests or 0) - int(b.quests or 0))
+        mine_gain = max(0, int(p.mine or 0) - int(b.mine or 0))
+        total_power_gain += power_gain
+
+        # Weighted only to select an interesting "hero", not a game score.
+        score = (power_gain + stat_gain * 5 + wins_gain * 5000 +
+                 bandit_gain * 10000 + dragon_gain * 100000 +
+                 serpent_gain * 100000 + quests_gain * 1000 + mine_gain * 1000)
+        if score > 0:
+            activity.append({
+                "player_id": p.player_id, "nickname": p.nickname, "score": score,
+                "power_gain": power_gain, "stat_gain": stat_gain,
+                "wins_gain": wins_gain, "bandit_gain": bandit_gain,
+                "dragon_gain": dragon_gain, "serpent_gain": serpent_gain
+            })
+
+    activity.sort(key=lambda x: x["score"], reverse=True)
+    hero = activity[0] if activity else None
+
+    # Ranking movement by power: compare positions among players present in both snapshots.
+    current_sorted = sorted([p for p in current if p.player_id in old], key=lambda p: int(p.power or 0), reverse=True)
+    old_sorted = sorted([p for p in old_rows if any(c.player_id == p.player_id for c in current)], key=lambda p: int(p.power or 0), reverse=True)
+    current_rank = {p.player_id: i + 1 for i, p in enumerate(current_sorted)}
+    old_rank = {p.player_id: i + 1 for i, p in enumerate(old_sorted)}
+    movers = []
+    current_by_id = {p.player_id: p for p in current}
+    for pid, now_rank in current_rank.items():
+        if pid not in old_rank:
+            continue
+        move = old_rank[pid] - now_rank
+        if move:
+            p = current_by_id[pid]
+            movers.append({
+                "player_id": pid, "nickname": p.nickname,
+                "from_rank": old_rank[pid], "to_rank": now_rank, "move": move
+            })
+    movers.sort(key=lambda x: x["move"], reverse=True)
+
+    return jsonify(
+        ready=True,
+        from_date=day_start.isoformat(), to_date=latest.isoformat(),
+        summary={
+            "levels": levels,
+            "brotherhood_changes": brotherhood_changes,
+            "clan_changes": clan_changes,
+            "total_power_gain": total_power_gain,
+            "active_players": len(activity),
+        },
+        hero=hero,
+        top_active=activity[:5],
+        risers=[m for m in movers if m["move"] > 0][:5],
+        fallers=sorted([m for m in movers if m["move"] < 0], key=lambda x: x["move"])[:5],
+    )
+
 _snapshot_dates_cache = {"at": 0.0, "finished_at": None, "dates": None}
 
 def completed_snapshot_dates():
