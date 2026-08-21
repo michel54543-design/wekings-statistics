@@ -221,3 +221,18 @@ body.modal-open{overflow:hidden}
 .life-feature-card p{margin:8px 0 0;color:#aaa39a;font-size:10px}.life-feature-card>a{display:inline-block;margin-top:7px;color:#e8c66b;font-size:9px;text-decoration:none}
 .rank-move-list{margin-top:7px}.rank-move-list>div{display:flex;justify-content:space-between;gap:8px;padding:3px 0;border-top:1px solid #2e2920;font-size:9px}.rank-move-list span{color:#d8d1c6;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.rank-move-list b{color:#b8b0a5;white-space:nowrap}.rank-move-list em{color:#68cf8f;font-style:normal}.rank-move-list p{margin:7px 0 0;color:#827c73}
 @media(max-width:760px){.life-daily-summary{grid-template-columns:repeat(2,minmax(0,1fr))}.life-feature-grid{grid-template-columns:1fr}.life-feature-card{min-height:0}}
+
+/* V63: ТОП вкладов по приросту суммы характеристик */
+.life-contributor-card{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+.life-contributor-section+ .life-contributor-section{border-left:1px solid rgba(202,157,63,.22);padding-left:18px}
+.life-contributor-section header{display:flex;gap:9px;align-items:center;margin-bottom:8px}
+.life-contributor-section header small{display:block;color:#b99751;font-size:10px;letter-spacing:.09em}
+.life-contributor-section header strong{display:block;font-size:13px}
+.life-contributor-row{display:grid;grid-template-columns:22px 1fr auto;align-items:center;gap:7px;padding:7px 0;border-top:1px solid rgba(255,255,255,.07)}
+.life-contributor-rank{color:#c6a65c;font-weight:700}
+.life-contributor-row small{display:block;color:#9b978f;font-size:10px;margin-top:2px}
+.life-contributor-row b{color:#59d994;font-size:14px}
+@media(max-width:760px){
+  .life-contributor-card{grid-template-columns:1fr}
+  .life-contributor-section+ .life-contributor-section{border-left:0;border-top:1px solid rgba(202,157,63,.22);padding-left:0;padding-top:14px}
+}

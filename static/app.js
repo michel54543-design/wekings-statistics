@@ -359,6 +359,25 @@ async function loadLifeSummary() {
   } else {
     $("lifeHeroDay").innerHTML = `<header><span>👑</span><div><small>ГЕРОЙ ДНЯ</small><strong>Пока определяется</strong></div></header>`;
   }
+
+  const topRows = (items, emptyText) => items?.length
+    ? items.slice(0,5).map((x, i) => `
+        <div class="life-contributor-row">
+          <span class="life-contributor-rank">${i + 1}</span>
+          <div><a class="game-profile-link" href="https://playwekings.mobi/hero/detail?player=${x.player_id}">${escapeHtml(x.nickname)}</a>
+          <small>${escapeHtml(x.organization)}</small></div>
+          <b>+${fmt(x.gain)}</b>
+        </div>`).join("")
+    : `<p class="life-empty">${emptyText}</p>`;
+  $("lifeContributorTops").innerHTML = `
+    <div class="life-contributor-section">
+      <header><span>🛡️</span><div><small>ТОП В БРАТСТВАХ</small><strong>Прирост характеристик</strong></div></header>
+      ${topRows(data.top_brotherhood, "Пока нет прироста")}
+    </div>
+    <div class="life-contributor-section">
+      <header><span>🏰</span><div><small>ТОП В КЛАНАХ</small><strong>Прирост характеристик</strong></div></header>
+      ${topRows(data.top_clan, "Пока нет прироста")}
+    </div>`;
 }
 
 function openLife(){$("lifePanel").classList.remove("hidden");$("lifeToggle").classList.add("active");$("lifeToggle").setAttribute("aria-expanded","true");if(!lifeState.loaded)loadLife().catch(()=>{$("lifeEvents").innerHTML='<p class="life-empty">Не удалось загрузить события.</p>';});loadLifeSummary().catch(()=>{});$("lifePanel").scrollIntoView({behavior:"smooth",block:"start"});}
