@@ -1109,10 +1109,8 @@ def api_status():
 @app.get("/api/attacks")
 def api_attacks():
     state = db.session.get(GameAttackState, 1)
-    # Бесплатный Render может пропустить задание планировщика после сна.
-    # Поэтому запрос с сайта сам просит обновление, если таймеры пустые,
-    # устарели или предыдущая попытка завершилась ошибкой.
-    request_attack_refresh_if_needed(state)
+    # Только отдаём сохранённое расписание.
+    # Просмотр сайта НЕ запускает повторное сканирование Монаха.
     return jsonify(
         fetched_at=state.fetched_at.isoformat() if state and state.fetched_at else None,
         game_time=state.game_time.isoformat() if state and state.game_time else None,
@@ -1412,21 +1410,24 @@ def start_attack_thread():
     ).start()
 
 
-def start_attack_on_boot_if_needed():
+
+def start_daily_attack_if_needed():
+    """Получает расписание Дракона/Змея не более одного успешного раза в сутки."""
     with app.app_context():
         state = db.session.get(GameAttackState, 1)
-        now = datetime.now(timezone.utc)
+        now_local = datetime.now(ZoneInfo("Europe/Chisinau"))
         fetched_at = _as_utc(state.fetched_at) if state and state.fetched_at else None
-        needs_update = (
-            not fetched_at
-            or now - fetched_at >= timedelta(minutes=15)
-            or not state.dragon_at
-            or not state.serpent_at
-            or _as_utc(state.dragon_at) <= now
-            or _as_utc(state.serpent_at) <= now
-        )
-    if needs_update:
-        start_attack_thread()
+        if fetched_at and not state.last_error:
+            fetched_local = fetched_at.astimezone(ZoneInfo("Europe/Chisinau"))
+            if fetched_local.date() == now_local.date():
+                app.logger.info("Wekings attacks skipped: schedule already fetched today")
+                return
+    start_attack_thread()
+
+def start_attack_on_boot_if_needed():
+    # После deploy догоняем расписание только если сегодня ещё не было
+    # успешного получения. Если уже получили — повторно в игру не заходим.
+    start_daily_attack_if_needed()
 
 
 def start_scan_on_boot_if_needed():
@@ -1528,7 +1529,7 @@ if os.getenv("SCAN_ENABLED", "true").lower() == "true":
         ("wekings-attacks-0022", 22),
     ):
         scheduler.add_job(
-            start_attack_thread,
+            start_daily_attack_if_needed,
             "cron",
             hour=0,
             minute=minute,
