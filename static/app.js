@@ -392,6 +392,45 @@ async function loadLifeSummary() {
 function openLife(){$("lifePanel").classList.remove("hidden");$("lifeToggle").classList.add("active");$("lifeToggle").setAttribute("aria-expanded","true");if(!lifeState.loaded)loadLife().catch(()=>{$("lifeEvents").innerHTML='<p class="life-empty">Не удалось загрузить события.</p>';});loadLifeSummary().catch(()=>{});$("lifePanel").scrollIntoView({behavior:"smooth",block:"start"});}
 function closeLife(){$("lifePanel").classList.add("hidden");$("lifeToggle").classList.remove("active");$("lifeToggle").setAttribute("aria-expanded","false");}
 
+
+const yesterdayTopsState = { loaded: false };
+async function loadYesterdayTops() {
+  $("yesterdayTopsGrid").innerHTML = '<p class="life-empty">Считаем вчерашние топы…</p>';
+  const data = await fetch("/api/yesterday-tops").then(r => r.json());
+  if (!data.ready) {
+    $("yesterdayTopsDate").textContent = "Нужно минимум три дневных снимка";
+    $("yesterdayHero").innerHTML = "";
+    $("yesterdayTopsGrid").innerHTML = '<p class="life-empty">Пока недостаточно данных.</p>';
+    return;
+  }
+  const d = new Date(data.date + "T12:00:00");
+  $("yesterdayTopsDate").textContent = `Итоги за ${d.toLocaleDateString("ru-RU")}`;
+  const hero = data.hero;
+  $("yesterdayHero").innerHTML = hero ? `
+    <span>👑 Герой вчерашнего дня</span>
+    <a class="game-profile-link" href="https://playwekings.mobi/hero/detail?player=${hero.player_id}">${escapeHtml(hero.nickname)}</a>
+    <b>${hero.first_places} ${hero.first_places === 1 ? "первое место" : "первых места"}</b>` : "";
+  $("yesterdayTopsGrid").innerHTML = data.tops?.length ? data.tops.map(x => `
+    <article class="yesterday-top-card">
+      <span>${x.icon} ${escapeHtml(x.label)}</span>
+      <a class="game-profile-link" href="https://playwekings.mobi/hero/detail?player=${x.player_id}">${escapeHtml(x.nickname)}</a>
+      <b>+${fmt(x.gain)}</b>
+    </article>`).join("") : '<p class="life-empty">За вчера прироста по этим показателям нет.</p>';
+  yesterdayTopsState.loaded = true;
+}
+function openYesterdayTops(){
+  $("yesterdayTopsPanel").classList.remove("hidden");
+  $("yesterdayTopsToggle").classList.add("active");
+  $("yesterdayTopsToggle").setAttribute("aria-expanded","true");
+  if (!yesterdayTopsState.loaded) loadYesterdayTops().catch(()=>{$("yesterdayTopsGrid").innerHTML='<p class="life-empty">Не удалось загрузить топы.</p>';});
+  $("yesterdayTopsPanel").scrollIntoView({behavior:"smooth",block:"start"});
+}
+function closeYesterdayTops(){
+  $("yesterdayTopsPanel").classList.add("hidden");
+  $("yesterdayTopsToggle").classList.remove("active");
+  $("yesterdayTopsToggle").setAttribute("aria-expanded","false");
+}
+
 function escapeHtml(value) {
   return String(value ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 }
@@ -483,6 +522,8 @@ $("mobilePlayer").onclick = () => {
 
 $("lifeToggle").onclick=()=>{$("lifePanel").classList.contains("hidden")?openLife():closeLife();};
 $("lifeClose").onclick=closeLife;
+$("yesterdayTopsToggle").onclick=()=>{$("yesterdayTopsPanel").classList.contains("hidden")?openYesterdayTops():closeYesterdayTops();};
+$("yesterdayTopsClose").onclick=closeYesterdayTops;
 document.querySelectorAll("[data-life-period]").forEach(b=>{b.onclick=()=>loadLife(b.dataset.lifePeriod).catch(()=>{$("lifeEvents").innerHTML='<p class="life-empty">Не удалось загрузить события.</p>';});});
 
 $("todayBadge").textContent = new Date().toLocaleDateString("ru-RU", {

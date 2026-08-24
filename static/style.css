@@ -239,3 +239,16 @@ body.modal-open{overflow:hidden}
 
 /* V64: hide Hero Day + organization contributor tops */
 .life-feature-hidden{display:none!important}
+
+
+/* V72 — Топы вчерашнего дня */
+.yesterday-tops-toggle{color:#f1c96d!important}
+.yesterday-tops-panel{margin:0 0 14px;padding:16px;border:1px solid var(--gold-line);border-radius:14px;background:#11110f}
+.yesterday-hero{display:flex;align-items:center;gap:12px;margin-bottom:10px;padding:11px 13px;border:1px solid #5d4926;border-radius:10px;background:linear-gradient(145deg,#211a10,#12110e)}
+.yesterday-hero span{color:#b9a36e;font-size:10px}.yesterday-hero a{color:#f3d47c;text-decoration:none;font-weight:800}.yesterday-hero b{margin-left:auto;color:#68cf8f;font-size:12px}
+.yesterday-tops-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
+.yesterday-top-card{min-width:0;padding:11px;border:1px solid #3b3428;border-radius:10px;background:#161510}
+.yesterday-top-card span{display:block;color:#9f988d;font-size:9px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.yesterday-top-card a{display:block;margin-top:5px;color:#f3d47c;text-decoration:none;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.yesterday-top-card b{display:block;margin-top:4px;color:#68cf8f;font-size:14px}
+@media(max-width:760px){.yesterday-tops-panel{padding:11px}.yesterday-tops-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.yesterday-hero{align-items:flex-start;flex-wrap:wrap}.yesterday-hero b{margin-left:0;width:100%}}
