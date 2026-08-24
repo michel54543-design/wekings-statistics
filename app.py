@@ -435,6 +435,10 @@ def admin_wekings_scan_now():
     state = db.session.get(ScanState, 1)
     if not state.running:
         start_scan_thread()
+    # Ручное обновление статистики также принудительно обновляет Монаха.
+    # Это исключение из суточного лимита и срабатывает только по нажатию пользователя.
+    start_attack_thread()
+
     return redirect("/admin/wekings-login")
 
 
