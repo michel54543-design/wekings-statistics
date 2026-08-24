@@ -887,30 +887,35 @@ def api_yesterday_tops():
     cached = _life_cache_get(cache_key)
     if cached is not None:
         return jsonify(cached)
+
     dates = _life_snapshot_dates()
-    if len(dates) < 3:
+    if len(dates) < 2:
         return jsonify(ready=False, tops=[])
 
-    # Последний завершённый снимок каждого календарного дня Молдовы.
+    # "Топы вчера" должны считать именно завершившиеся календарные сутки:
+    # первый готовый снимок СЕГОДНЯ минус первый готовый снимок ВЧЕРА.
+    # Раньше код при наличии сегодняшнего снимка сравнивал ВЧЕРА с ПОЗАВЧЕРА,
+    # поэтому результаты были сдвинуты на один день.
     by_day = {}
-    for dt in dates:
+    for dt in sorted(dates):
         day = moldova_date(dt)
+        # sorted() идёт от старых к новым, поэтому сохраняем первый снимок дня
+        # (обычно ночной запуск около 00:15), ближайший к границе суток.
         if day not in by_day:
             by_day[day] = dt
-    days = sorted(by_day.keys(), reverse=True)
-    if len(days) < 3:
-        return jsonify(ready=False, tops=[])
 
-    # Если сегодня уже есть снимок, берём вчера и позавчера.
-    # Если сегодняшнего ещё нет — последние два полностью доступных дня.
     today = moldova_date(datetime.now(timezone.utc))
-    if days[0] == today:
-        yesterday_day, before_day = days[1], days[2]
-    else:
-        yesterday_day, before_day = days[0], days[1]
-    yesterday_at, before_at = by_day[yesterday_day], by_day[before_day]
+    yesterday_day = today - timedelta(days=1)
+    if today not in by_day or yesterday_day not in by_day:
+        # Пока сегодняшнего контрольного снимка нет, вчерашние сутки ещё нельзя
+        # посчитать корректно. Лучше показать "недостаточно данных", чем топы
+        # позавчера под подписью "вчера".
+        return jsonify(ready=False, tops=[], date=yesterday_day.isoformat())
 
-    current = PlayerSnapshot.query.filter_by(batch_at=yesterday_at).all()
+    before_at = by_day[yesterday_day]
+    current_at = by_day[today]
+
+    current = PlayerSnapshot.query.filter_by(batch_at=current_at).all()
     before = {x.player_id: x for x in PlayerSnapshot.query.filter_by(batch_at=before_at).all()}
     tops = []
     first_counts = {}
@@ -945,7 +950,7 @@ def api_yesterday_tops():
 
     payload = {
         "ready": True, "date": yesterday_day.isoformat(),
-        "from_date": before_at.isoformat(), "to_date": yesterday_at.isoformat(),
+        "from_date": before_at.isoformat(), "to_date": current_at.isoformat(),
         "tops": tops, "hero": hero,
     }
     _life_cache_put(cache_key, payload)
