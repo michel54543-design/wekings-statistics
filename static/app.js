@@ -105,14 +105,22 @@ async function loadPlayerDetail(playerId, scroll = true) {
   $("closePlayerDetail").focus();
 }
 
-function attackTimeText(value, status) {
-  if (value) {
-    const date = new Date(value);
-    if (!Number.isNaN(date.getTime())) {
-      return date.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" });
-    }
-  }
+function attackTimeText(value, stayMinutes) {
+  if (!value) return "Ожидаем новое время";
+  const start = new Date(value);
+  if (Number.isNaN(start.getTime())) return "Ожидаем новое время";
+  const now = new Date();
+  const end = new Date(start.getTime() + stayMinutes * 60000);
+  if (now < start) return start.toLocaleTimeString("ru-RU", {hour:"2-digit", minute:"2-digit"});
+  if (now < end) return "Сейчас в городе";
   return "Ожидаем новое время";
+}
+
+function weatherTimeText(value) {
+  if (!value) return "Нет прогноза";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime()) || new Date() > date) return "Нет прогноза";
+  return date.toLocaleString("ru-RU", {day:"2-digit", month:"2-digit", hour:"2-digit", minute:"2-digit"});
 }
 
 async function loadAttacks() {
@@ -121,8 +129,9 @@ async function loadAttacks() {
     const response = await fetch(`/api/attacks?_=${Date.now()}`, { cache: "no-store" });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const data = await response.json();
-    $("dragonTime").textContent = attackTimeText(data.dragon_at, data.dragon_status);
-    $("serpentTime").textContent = attackTimeText(data.serpent_at, data.serpent_status);
+    $("dragonTime").textContent = attackTimeText(data.dragon_at, 60);
+    $("serpentTime").textContent = attackTimeText(data.serpent_at, 90);
+    $("weatherTime").textContent = weatherTimeText(data.weather_at);
     if (data.fetched_at) {
       $("attackUpdated").textContent = `обновлено ${new Date(data.fetched_at).toLocaleTimeString("ru-RU", {hour:"2-digit", minute:"2-digit"})}`;
     } else {
@@ -132,6 +141,7 @@ async function loadAttacks() {
   } catch (error) {
     $("dragonTime").textContent = "Ожидаем новое время";
     $("serpentTime").textContent = "Ожидаем новое время";
+    $("weatherTime").textContent = "Нет прогноза";
     $("attackUpdated").textContent = "нет связи";
     box?.classList.add("waiting");
   }
