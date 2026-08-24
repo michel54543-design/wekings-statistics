@@ -844,6 +844,113 @@ def api_life():
     return jsonify(payload)
 
 
+
+YESTERDAY_TOP_METRICS = [
+    # Все числовые накопительные показатели, которые сохраняются в дневных снимках.
+    ("glory", "Слава", "🏆"),
+    ("power", "Сила", "⚡"),
+    ("defense", "Защита", "🛡️"),
+    ("agility", "Ловкость", "💨"),
+    ("mastery", "Мастерство", "🎯"),
+    ("vitality", "Живучесть", "❤️"),
+    ("stat_sum", "Сумма характеристик", "💪"),
+    ("wins", "Победы", "🏅"),
+    ("losses", "Поражения", "💥"),
+    ("dragon_wins", "Победы над Драконом", "🐉"),
+    ("serpent_wins", "Победы над Змеем", "🐍"),
+    ("beasts_killed", "Убито зверей", "🐾"),
+    ("silver_stolen", "Украдено серебра", "💰"),
+    ("silver_lost", "Потеряно серебра", "🪙"),
+    ("crystals_stolen", "Украдено кристаллов", "💎"),
+    ("crystals_lost", "Потеряно кристаллов", "🔹"),
+    ("bandit_wins", "Победы над наёмниками", "⚔️"),
+    ("mine", "Шахта", "⛏️"),
+    ("crusade", "Походы", "🛡️"),
+    ("quests", "Задания", "📜"),
+    ("pet_fights", "Бои питомцев", "🐺"),
+    ("pet_kills", "Победы питомцев", "🐾"),
+    ("garden", "Участок", "🌱"),
+    ("goblins", "Гоблины", "👺"),
+    ("lord_wins", "Победы над Владыкой", "👑"),
+    ("undead_wins", "Победы над нежитью", "☠️"),
+    ("heroes_wins", "Победы над героями", "🗡️"),
+    ("serpent_fights", "Бои со Змеем", "🌊"),
+    ("sent_gifts", "Отправлено подарков", "🎁"),
+    ("fishing", "Рыбалка", "🎣"),
+    ("dragon_kills", "Убийства Дракона", "🔥"),
+    ("serpent_kills", "Убийства Змея", "🌊"),
+]
+
+@app.get("/api/yesterday-tops")
+def api_yesterday_tops():
+    cache_key = "yesterday:tops"
+    cached = _life_cache_get(cache_key)
+    if cached is not None:
+        return jsonify(cached)
+    dates = _life_snapshot_dates()
+    if len(dates) < 3:
+        return jsonify(ready=False, tops=[])
+
+    # Последний завершённый снимок каждого календарного дня Молдовы.
+    by_day = {}
+    for dt in dates:
+        day = moldova_date(dt)
+        if day not in by_day:
+            by_day[day] = dt
+    days = sorted(by_day.keys(), reverse=True)
+    if len(days) < 3:
+        return jsonify(ready=False, tops=[])
+
+    # Если сегодня уже есть снимок, берём вчера и позавчера.
+    # Если сегодняшнего ещё нет — последние два полностью доступных дня.
+    today = moldova_date(datetime.now(timezone.utc))
+    if days[0] == today:
+        yesterday_day, before_day = days[1], days[2]
+    else:
+        yesterday_day, before_day = days[0], days[1]
+    yesterday_at, before_at = by_day[yesterday_day], by_day[before_day]
+
+    current = PlayerSnapshot.query.filter_by(batch_at=yesterday_at).all()
+    before = {x.player_id: x for x in PlayerSnapshot.query.filter_by(batch_at=before_at).all()}
+    tops = []
+    first_counts = {}
+    first_total_gain = {}
+    first_players = {}
+
+    for key, label, icon in YESTERDAY_TOP_METRICS:
+        best = None
+        for player in current:
+            old = before.get(player.player_id)
+            if not old:
+                continue
+            a, b = getattr(player, key, None), getattr(old, key, None)
+            if a is None or b is None:
+                continue
+            gain = int(a) - int(b)
+            if gain <= 0:
+                continue
+            if best is None or gain > best[0]:
+                best = (gain, player)
+        if best:
+            gain, player = best
+            tops.append({"metric": key, "label": label, "icon": icon, "player_id": player.player_id, "nickname": player.nickname, "gain": gain})
+            first_counts[player.player_id] = first_counts.get(player.player_id, 0) + 1
+            first_total_gain[player.player_id] = first_total_gain.get(player.player_id, 0) + gain
+            first_players[player.player_id] = player.nickname
+
+    hero = None
+    if first_counts:
+        pid = max(first_counts, key=lambda x: (first_counts[x], first_total_gain[x]))
+        hero = {"player_id": pid, "nickname": first_players[pid], "first_places": first_counts[pid]}
+
+    payload = {
+        "ready": True, "date": yesterday_day.isoformat(),
+        "from_date": before_at.isoformat(), "to_date": yesterday_at.isoformat(),
+        "tops": tops, "hero": hero,
+    }
+    _life_cache_put(cache_key, payload)
+    return jsonify(payload)
+
 @app.get("/api/life-summary")
 def api_life_summary():
     cached = _life_cache_get("life:summary")
