@@ -467,6 +467,26 @@ def fetch_attack_schedule():
                 game_now = datetime.strptime(meta["content"].strip(), "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc).astimezone(ZoneInfo("Europe/Chisinau"))
             except ValueError:
                 logger.warning("[ATTACKS] bad server-time=%r", meta.get("content"))
+        # Необязательный прогноз хорошей погоды для плавания.
+        weather_at = None
+        weather_raw = None
+        weather_match = re.search(
+            r"(?:подходящая|хорошая)\s+погода[^\n]*(?:ожидается|будет)?\s*"
+            r"(\d{1,2})\.(\d{1,2})(?:\.(\d{2,4}))?\s+(\d{1,2}):(\d{2})",
+            text, re.I
+        )
+        if weather_match:
+            day, month, year, hour, minute = weather_match.groups()
+            year = int(year) if year else game_now.year
+            if year < 100:
+                year += 2000
+            try:
+                weather_at = datetime(year, int(month), int(day), int(hour), int(minute),
+                                      tzinfo=ZoneInfo("Europe/Chisinau"))
+                weather_raw = weather_match.group(0)[:240]
+            except ValueError:
+                logger.warning("[ATTACKS] bad weather forecast=%r", weather_match.group(0))
+
         _save(s)
         result = {
             "fetched_at": datetime.now(timezone.utc), "game_time": game_now,
@@ -474,6 +494,8 @@ def fetch_attack_schedule():
             "serpent_at": game_now + serpent_delta if serpent_delta else None,
             "dragon_raw": "Дракон уже напал — сражайся!" if dragon_active else dragon_raw,
             "serpent_raw": "Морской Змей уже напал — сражайся!" if serpent_active else serpent_raw,
+            "weather_at": weather_at,
+            "weather_raw": weather_raw,
         }
         logger.warning("[ATTACKS] success dragon_at=%s serpent_at=%s", result["dragon_at"], result["serpent_at"])
         return result

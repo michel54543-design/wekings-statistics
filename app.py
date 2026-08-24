@@ -137,6 +137,8 @@ class GameAttackState(db.Model):
     serpent_at = db.Column(db.DateTime(timezone=True))
     dragon_raw = db.Column(db.String(200))
     serpent_raw = db.Column(db.String(200))
+    weather_at = db.Column(db.DateTime(timezone=True))
+    weather_raw = db.Column(db.String(240))
     last_error = db.Column(db.Text)
 
 
@@ -201,6 +203,19 @@ class PlayerSnapshot(db.Model):
 
 with app.app_context():
     db.create_all()
+    # Добавляем поля прогноза Монаха в существующую БД без удаления данных.
+    try:
+        inspector = db.inspect(db.engine)
+        existing_attack = {col["name"] for col in inspector.get_columns("game_attack_state")}
+        if "weather_at" not in existing_attack:
+            db.session.execute(db.text('ALTER TABLE game_attack_state ADD COLUMN weather_at TIMESTAMP'))
+        if "weather_raw" not in existing_attack:
+            db.session.execute(db.text('ALTER TABLE game_attack_state ADD COLUMN weather_raw VARCHAR(240)'))
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+        app.logger.exception("Could not add Monk weather columns")
+
     # Добавляем новые поля API в существующую БД без удаления истории.
     api_metric_columns = [
         "beasts_killed", "silver_stolen", "silver_lost", "crystals_stolen", "crystals_lost",
@@ -1118,6 +1133,8 @@ def api_attacks():
         serpent_at=state.serpent_at.isoformat() if state and state.serpent_at else None,
         dragon_status=state.dragon_raw if state and not state.dragon_at else None,
         serpent_status=state.serpent_raw if state and not state.serpent_at else None,
+        weather_at=state.weather_at.isoformat() if state and state.weather_at else None,
+        weather_status=state.weather_raw if state else None,
         error=state.last_error if state else None,
     )
 
@@ -1380,7 +1397,7 @@ def update_attack_schedule():
                 result = fetch_attack_schedule()
                 for field in (
                     "fetched_at", "game_time", "dragon_at", "serpent_at",
-                    "dragon_raw", "serpent_raw",
+                    "dragon_raw", "serpent_raw", "weather_at", "weather_raw",
                 ):
                     setattr(state, field, result.get(field))
                 state.last_error = None
@@ -1396,6 +1413,8 @@ def update_attack_schedule():
                 state.serpent_at = None
                 state.dragon_raw = None
                 state.serpent_raw = None
+                state.weather_at = None
+                state.weather_raw = None
                 state.last_error = str(exc)[:1000]
                 db.session.commit()
     finally:
