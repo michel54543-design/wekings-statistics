@@ -470,10 +470,15 @@ def fetch_attack_schedule():
         # Необязательный прогноз хорошей погоды для плавания.
         weather_at = None
         weather_raw = None
+        # HTML Монаха может содержать переносы строк и NBSP между словами.
+        monk_text = re.sub(r"\s+", " ", text.replace("\xa0", " ")).strip()
         weather_match = re.search(
-            r"(?:подходящая|хорошая)\s+погода[^\n]*(?:ожидается|будет)?\s*"
-            r"(\d{1,2})\.(\d{1,2})(?:\.(\d{2,4}))?\s+(\d{1,2}):(\d{2})",
-            text, re.I
+            r"(?:по\s+прогнозу\s+)?(?:подходящая|хорошая)\s+погода"
+            r".{0,120}?"
+            r"(\d{1,2})\s*[./-]\s*(\d{1,2})"
+            r"(?:\s*[./-]\s*(\d{2,4}))?\s+"
+            r"(\d{1,2})\s*:\s*(\d{2})",
+            monk_text, re.I
         )
         if weather_match:
             day, month, year, hour, minute = weather_match.groups()
@@ -484,6 +489,7 @@ def fetch_attack_schedule():
                 weather_at = datetime(year, int(month), int(day), int(hour), int(minute),
                                       tzinfo=ZoneInfo("Europe/Chisinau"))
                 weather_raw = weather_match.group(0)[:240]
+                logger.info("[ATTACKS] sailing weather found: %s", weather_raw)
             except ValueError:
                 logger.warning("[ATTACKS] bad weather forecast=%r", weather_match.group(0))
 
