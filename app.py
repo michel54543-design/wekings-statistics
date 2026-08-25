@@ -1255,6 +1255,52 @@ def api_attacks():
     )
 
 
+@app.get("/api/debug-wekings-player/<int:player_id>")
+def api_debug_wekings_player(player_id):
+    """Показывает исходные поля ForGlory API для одного игрока без записи в БД."""
+    try:
+        import scraper
+
+        session = scraper._session(saved=True)
+        try:
+            response = session.get(scraper.API_URL, timeout=scraper.TIMEOUT, allow_redirects=True)
+            if response.status_code in {401, 403} or "/login" in response.url:
+                return jsonify(error="Нужна авторизация WEKINGS через /wekings-login"), 401
+            response.raise_for_status()
+            body = response.json()
+            rows = body.get("data") if isinstance(body, dict) else body
+            if not isinstance(rows, list):
+                return jsonify(error="ForGlory API не вернул список data"), 502
+
+            raw = next((row for row in rows if isinstance(row, dict) and scraper._int(row.get("id")) == player_id), None)
+            if raw is None:
+                return jsonify(error="Игрок не найден в ForGlory API", player_id=player_id), 404
+
+            achievements = raw.get("achievements") if isinstance(raw.get("achievements"), dict) else {}
+            normalized = scraper._normalize(raw)
+            keys = [
+                "beasts_killed", "pet_fights", "pet_kills",
+                "wins", "losses", "dragon_wins", "serpent_wins",
+                "bandit_wins", "mine", "crusade", "quests",
+                "garden", "goblins", "sent_gifts", "fishing",
+                "dragon_kills", "serpent_kills",
+            ]
+            return jsonify(
+                player_id=player_id,
+                nickname=raw.get("nickname") or raw.get("name"),
+                raw_top_level={key: raw.get(key) for key in keys},
+                raw_achievements={key: achievements.get(key) for key in keys},
+                normalized={key: normalized.get(key) for key in keys},
+                raw_keys=sorted(raw.keys()),
+                achievement_keys=sorted(achievements.keys()),
+            )
+        finally:
+            session.close()
+    except Exception as exc:
+        app.logger.exception("WEKINGS debug player failed: %r", exc)
+        return jsonify(error=str(exc)), 500
+
+
 @app.get("/api/player/<int:player_id>")
 def api_player_detail(player_id):
     player = db.session.get(Player, player_id)
