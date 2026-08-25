@@ -441,3 +441,27 @@ body:has(.arena-panel:not(.hidden)){overflow:hidden}
 @keyframes v83Fall{0%{transform:translateX(-50%) rotate(0);opacity:1}70%{transform:translateX(-48%) rotate(76deg) translateY(35px);opacity:.85}100%{transform:translateX(-48%) rotate(88deg) translateY(48px);opacity:.55}}
 @keyframes v83Victory{from{transform:translateX(-50%) translateY(0) scale(1)}to{transform:translateX(-50%) translateY(-10px) scale(1.04)}}
 @media(max-width:760px){.arena-stage .fighter{width:160px;height:190px;transform:translateX(-50%) scale(.72);transform-origin:50% 100%}.arena-stage .fighter.defeated{transform-origin:50% 100%}}
+
+/* ===== ARENA V84: illustrated animated Viking sprites ===== */
+.arena-stage .fighter.v84{width:360px;height:270px;bottom:24px;overflow:visible;transition:none!important}
+.arena-stage .fighter.v84 .v84-sprite{position:absolute;inset:0;background:url('/static/arena_v84/idle.webp') center bottom/contain no-repeat;filter:drop-shadow(0 12px 10px #000b);transform-origin:50% 90%;animation:v84Idle 1.05s ease-in-out infinite alternate}
+.arena-stage .fighter-right.v84 .v84-sprite{transform:scaleX(-1)}
+.arena-stage .fighter.v84.attack-left{animation:v84ChargeLeft 1.38s cubic-bezier(.2,.75,.2,1)!important}
+.arena-stage .fighter.v84.attack-right{animation:v84ChargeRight 1.38s cubic-bezier(.2,.75,.2,1)!important}
+.arena-stage .fighter.v84.attack-left .v84-sprite,.arena-stage .fighter.v84.attack-right .v84-sprite{background-image:url('/static/arena_v84/attack.webp');animation:v84Swing 1.38s ease-in-out!important}
+.arena-stage .fighter-right.v84.attack-right .v84-sprite{animation:v84SwingRight 1.38s ease-in-out!important}
+.arena-stage .fighter.v84.hurt .v84-sprite{background-image:url('/static/arena_v84/hurt.webp');animation:v84HurtSprite .62s ease!important}
+.arena-stage .fighter.v84.dodge .v84-sprite{background-image:url('/static/arena_v84/dodge.webp');animation:v84DodgeSprite .7s ease!important}
+.arena-stage .fighter.v84.defeated{animation:v84FallWrap .95s ease-out forwards!important}
+.arena-stage .fighter.v84.defeated .v84-sprite{background-image:url('/static/arena_v84/fall.webp');animation:none!important}
+.arena-stage .fighter.v84.winner .v84-sprite{background-image:url('/static/arena_v84/victory.webp');animation:v84VictorySprite .75s ease-in-out infinite alternate!important}
+@keyframes v84Idle{from{translate:0 0;rotate:-.5deg}to{translate:0 -5px;rotate:.7deg}}
+@keyframes v84ChargeLeft{0%{translate:0 0}32%{translate:45px -3px}58%{translate:170px -6px}78%{translate:205px 0}100%{translate:0 0}}
+@keyframes v84ChargeRight{0%{translate:0 0}32%{translate:-45px -3px}58%{translate:-170px -6px}78%{translate:-205px 0}100%{translate:0 0}}
+@keyframes v84Swing{0%,28%{background-image:url('/static/arena_v84/move.webp');transform:rotate(0) scale(1)}42%,60%{background-image:url('/static/arena_v84/attack.webp');transform:rotate(-3deg) scale(1.03)}68%,78%{background-image:url('/static/arena_v84/strike.webp');transform:rotate(3deg) scale(1.06)}100%{background-image:url('/static/arena_v84/idle.webp');transform:rotate(0) scale(1)}}
+@keyframes v84SwingRight{0%,28%{background-image:url('/static/arena_v84/move.webp');transform:scaleX(-1) rotate(0)}42%,60%{background-image:url('/static/arena_v84/attack.webp');transform:scaleX(-1) rotate(-3deg) scale(1.03)}68%,78%{background-image:url('/static/arena_v84/strike.webp');transform:scaleX(-1) rotate(3deg) scale(1.06)}100%{background-image:url('/static/arena_v84/idle.webp');transform:scaleX(-1)}}
+@keyframes v84HurtSprite{0%{translate:0}30%{translate:18px -3px;filter:brightness(1.8) drop-shadow(0 0 16px #ff8a00)}100%{translate:0}}
+@keyframes v84DodgeSprite{0%,100%{translate:0}45%{translate:42px -8px;rotate:7deg}}
+@keyframes v84FallWrap{0%{opacity:1}100%{opacity:.92;translate:0 35px}}
+@keyframes v84VictorySprite{from{translate:0 0;scale:1}to{translate:0 -10px;scale:1.035}}
+@media(max-width:760px){.arena-stage .fighter.v84{width:240px;height:200px;bottom:28px}.arena-stage .fighter.v84.attack-left{animation-name:v84ChargeLeftMobile!important}.arena-stage .fighter.v84.attack-right{animation-name:v84ChargeRightMobile!important}@keyframes v84ChargeLeftMobile{0%{translate:0}55%{translate:80px -4px}78%{translate:96px}100%{translate:0}}@keyframes v84ChargeRightMobile{0%{translate:0}55%{translate:-80px -4px}78%{translate:-96px}100%{translate:0}}}
