@@ -435,9 +435,9 @@ function escapeHtml(value) {
   return String(value ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 }
 
-document.querySelectorAll(".modes button").forEach(button => {
+document.querySelectorAll(".modes button[data-mode]").forEach(button => {
   button.onclick = () => {
-    document.querySelectorAll(".modes button").forEach(item => item.classList.remove("active"));
+    document.querySelectorAll(".modes button[data-mode]").forEach(item => item.classList.remove("active"));
     button.classList.add("active");
     state.mode = button.dataset.mode;
     syncMobileNav();
