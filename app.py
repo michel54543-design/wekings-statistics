@@ -1478,7 +1478,11 @@ def run_scan():
                         api_life()
                 with app.test_request_context("/api/life-summary"):
                     api_life_summary()
-                app.logger.info("Life WEKINGS cache warmed")
+                # Пересчитываем "Топы вчера" сразу после каждого нового
+                # завершённого снимка, чтобы старый результат не задерживался.
+                with app.test_request_context("/api/yesterday-tops"):
+                    api_yesterday_tops()
+                app.logger.info("Life WEKINGS + yesterday tops cache warmed")
             except Exception:
                 app.logger.exception("Life WEKINGS cache warm failed")
         except Exception as exc:
