@@ -95,6 +95,10 @@ body.dark{--bg:#090908;--panel:#11110ff5;--text:#f5f1e8;--muted:#aaa59b;--line:#
 .site-heading .brand{margin-bottom:4px;color:var(--gold);font-size:10px}
 .site-heading .status{margin:8px 0 0;font-size:13px}
 .today-badge{align-self:start;margin-top:6px;padding:7px 10px;border:1px solid var(--gold-line);border-radius:8px;background:#171510;color:var(--gold-bright);font-family:Georgia,serif;font-size:12px;font-weight:700;letter-spacing:.06em}
+.attack-schedule{display:grid;grid-template-columns:minmax(260px,1fr) minmax(260px,1fr) auto;align-items:center;gap:10px;margin:4px 0 13px;padding:10px 13px;border:1px solid var(--gold-line);border-radius:10px;background:linear-gradient(90deg,#12110e,#0d0d0c);box-shadow:0 10px 32px #0005}
+.attack-event{display:flex;align-items:center;gap:7px;min-width:0;padding:7px 10px;border:1px solid #37322a;border-radius:8px;background:#181715;font-size:13px}
+.attack-event b{color:#f4eee3}.attack-event strong{margin-left:auto;color:var(--gold-bright);font-size:12px;white-space:nowrap}
+.attack-event.serpent strong{color:#a7dbb8}.attack-schedule>small{color:#817b71;font-size:9px;white-space:nowrap}.attack-schedule.waiting{opacity:.78}
 .modes{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:0;margin:20px 0 13px;border:1px solid var(--gold-line);border-radius:10px;overflow:hidden;background:#0e0e0d}
 .modes button{display:flex;align-items:center;justify-content:center;gap:7px;min-width:0;min-height:52px;padding:0 8px;border:0;border-right:1px solid var(--gold-line);border-radius:0;background:transparent;color:#aaa498;font-size:13px}
 .modes button:last-child{border-right:0}.modes button small{font-size:9px}
@@ -119,6 +123,9 @@ body.dark .card-head>span{border:1px solid #4e432c;background:#1d1a14;color:var(
   .site-heading .status{gap:7px;margin:6px 0 0;font-size:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .site-heading .status i{width:6px;height:6px;box-shadow:0 0 0 3px #22b66f20}
   .today-badge{margin-top:2px;padding:6px 7px;font-size:10px}
+  .attack-schedule{grid-template-columns:1fr 1fr;gap:6px;margin:7px 0 10px;padding:8px;border-radius:9px}
+  .attack-event{display:grid;grid-template-columns:auto 1fr;gap:2px 5px;padding:7px;font-size:11px}
+  .attack-event strong{grid-column:1/-1;margin:0;font-size:9px;white-space:normal;line-height:1.25}.attack-schedule>small{grid-column:1/-1;text-align:right;font-size:8px}
   .modes{grid-template-columns:repeat(6,minmax(0,1fr));margin:10px 0;border-radius:8px}
   .modes button{display:block;min-height:48px;padding:6px 1px;border-right:1px solid #3b321f;font-size:9px;line-height:1.05;white-space:normal}
   .modes button small{margin-top:2px;font-size:7px}.mode-icon{display:block;margin:0 0 4px;font-size:14px}
@@ -178,6 +185,9 @@ body.modal-open{overflow:hidden}
 .player-detail-panel .detail-head{padding-right:42px}
 .show-stats{flex:0 0 auto;display:inline-grid;place-items:center;width:23px;height:23px;margin-left:6px;padding:0;border:1px solid #6d5529;border-radius:6px;background:#1d1a14;color:var(--gold-bright);font-size:14px;line-height:1;cursor:pointer}
 .show-stats:hover{border-color:var(--gold);background:#312713;color:#fff0bc}
+.stats-bars{display:flex;align-items:flex-end;justify-content:center;gap:2px;width:13px;height:13px}
+.stats-bars i{display:block;width:3px;border-radius:1px 1px 0 0;background:currentColor}
+.stats-bars i:nth-child(1){height:6px}.stats-bars i:nth-child(2){height:11px}.stats-bars i:nth-child(3){height:8px}
 .org-player{grid-template-columns:27px minmax(0,1fr) auto 24px}
 .org-player-name{min-width:0;color:#fff;text-decoration:none;overflow:hidden}
 .org-player-name span{display:block}
@@ -190,3 +200,153 @@ body.modal-open{overflow:hidden}
   .show-stats{width:21px;height:21px;margin-left:4px;font-size:12px}
   .org-player{grid-template-columns:25px minmax(0,1fr) auto 22px}
 }
+
+/* V57 — collapsible Life WEKINGS */
+.life-toggle{color:#f1c96d!important}.life-panel{margin:0 0 14px;padding:16px;border:1px solid var(--gold-line);border-radius:14px;background:#11110f}.life-panel.hidden{display:none}
+.life-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:12px}.life-head h2{margin:0;color:#f5f1e8;font-family:Georgia,"Times New Roman",serif;font-size:22px}.life-head p{margin:4px 0 0;color:#8f897f;font-size:11px}.life-head button{padding:7px 10px;border:1px solid #5d4926;border-radius:8px;background:#1b1812;color:var(--gold-bright)}
+.life-periods{display:flex;gap:7px;margin-bottom:12px}.life-periods button{padding:8px 13px;border:1px solid #4b3c23;border-radius:999px;background:#171510;color:#aaa39a}.life-periods button.active{border-color:var(--gold);background:#332817;color:#ffe7a1}
+.life-heroes{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin-bottom:12px}.life-hero{min-width:0;padding:10px;border:1px solid #3b3428;border-radius:10px;background:#161510}.life-hero span{display:block;color:#9f988d;font-size:9px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.life-hero strong{display:block;margin-top:5px;color:#f4efe4;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.life-hero b{display:block;margin-top:3px;color:#68cf8f;font-size:14px}
+.life-events{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}.life-event{display:grid;grid-template-columns:32px minmax(0,1fr);gap:8px;align-items:center;padding:9px 10px;border-bottom:1px solid #2d2922;background:#13120f}.life-event-icon{font-size:20px;text-align:center}.life-event a{color:#f3d47c;text-decoration:none;font-weight:700}.life-event p{margin:2px 0 0;color:#b4ada3;font-size:10px}.life-empty{grid-column:1/-1;margin:0;padding:16px;color:#918b82;text-align:center}
+@media(max-width:760px){.modes{grid-template-columns:repeat(4,minmax(0,1fr))}.life-panel{padding:11px}.life-head h2{font-size:18px}.life-head button{padding:6px 8px;font-size:10px}.life-periods button{flex:1;padding:7px 5px;font-size:10px}.life-heroes{grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}.life-events{grid-template-columns:1fr}}
+
+
+/* V59 — daily summary, Hero of the Day, ranking movers */
+.life-daily-summary{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:7px;margin:0 0 10px}
+.life-daily-summary>div{padding:9px 10px;border:1px solid #3b3428;border-radius:10px;background:linear-gradient(180deg,#191711,#12110e)}
+.life-daily-summary b{display:block;color:#f2d178;font-size:13px}.life-daily-summary span{display:block;margin-top:2px;color:#8f897f;font-size:9px}
+.life-feature-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px}
+.life-feature-card{padding:12px;border:1px solid #4a3b22;border-radius:12px;background:linear-gradient(145deg,#1d1911,#11110f);min-height:92px}
+.life-feature-card header{display:flex;align-items:center;gap:9px}.life-feature-card header>span{font-size:27px}
+.life-feature-card small{display:block;color:#a58a4b;font-size:8px;letter-spacing:1.1px}.life-feature-card strong{display:block;color:#f5efe2;font-size:14px;margin-top:2px}
+.life-feature-card p{margin:8px 0 0;color:#aaa39a;font-size:10px}.life-feature-card>a{display:inline-block;margin-top:7px;color:#e8c66b;font-size:9px;text-decoration:none}
+.rank-move-list{margin-top:7px}.rank-move-list>div{display:flex;justify-content:space-between;gap:8px;padding:3px 0;border-top:1px solid #2e2920;font-size:9px}.rank-move-list span{color:#d8d1c6;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.rank-move-list b{color:#b8b0a5;white-space:nowrap}.rank-move-list em{color:#68cf8f;font-style:normal}.rank-move-list p{margin:7px 0 0;color:#827c73}
+@media(max-width:760px){.life-daily-summary{grid-template-columns:repeat(2,minmax(0,1fr))}.life-feature-grid{grid-template-columns:1fr}.life-feature-card{min-height:0}}
+
+/* V63: ТОП вкладов по приросту суммы характеристик */
+.life-contributor-card{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+.life-contributor-section+ .life-contributor-section{border-left:1px solid rgba(202,157,63,.22);padding-left:18px}
+.life-contributor-section header{display:flex;gap:9px;align-items:center;margin-bottom:8px}
+.life-contributor-section header small{display:block;color:#b99751;font-size:10px;letter-spacing:.09em}
+.life-contributor-section header strong{display:block;font-size:13px}
+.life-contributor-row{display:grid;grid-template-columns:22px 1fr auto;align-items:center;gap:7px;padding:7px 0;border-top:1px solid rgba(255,255,255,.07)}
+.life-contributor-rank{color:#c6a65c;font-weight:700}
+.life-contributor-row small{display:block;color:#9b978f;font-size:10px;margin-top:2px}
+.life-contributor-row b{color:#59d994;font-size:14px}
+@media(max-width:760px){
+  .life-contributor-card{grid-template-columns:1fr}
+  .life-contributor-section+ .life-contributor-section{border-left:0;border-top:1px solid rgba(202,157,63,.22);padding-left:0;padding-top:14px}
+}
+
+/* V64: hide Hero Day + organization contributor tops */
+.life-feature-hidden{display:none!important}
+
+
+/* V72 — Топы вчерашнего дня */
+.yesterday-tops-toggle{color:#f1c96d!important}
+.yesterday-tops-panel{margin:0 0 14px;padding:16px;border:1px solid var(--gold-line);border-radius:14px;background:#11110f}
+.yesterday-hero{display:flex;align-items:center;gap:12px;margin-bottom:10px;padding:11px 13px;border:1px solid #5d4926;border-radius:10px;background:linear-gradient(145deg,#211a10,#12110e)}
+.yesterday-hero span{color:#b9a36e;font-size:10px}.yesterday-hero a{color:#f3d47c;text-decoration:none;font-weight:800}.yesterday-hero b{margin-left:auto;color:#68cf8f;font-size:12px}
+.yesterday-tops-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
+.yesterday-top-card{min-width:0;padding:11px;border:1px solid #3b3428;border-radius:10px;background:#161510}
+.yesterday-top-card span{display:block;color:#9f988d;font-size:9px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.yesterday-top-card a{display:block;margin-top:5px;color:#f3d47c;text-decoration:none;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.yesterday-top-card b{display:block;margin-top:4px;color:#68cf8f;font-size:14px}
+@media(max-width:760px){.yesterday-tops-panel{padding:11px}.yesterday-tops-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.yesterday-hero{align-items:flex-start;flex-wrap:wrap}.yesterday-hero b{margin-left:0;width:100%}}
+
+/* V75 — Arena Vikings test mini-game */
+.arena-toggle{color:#ffd66f!important}.arena-panel{margin:0 0 14px;padding:16px;border:1px solid #76551f;border-radius:14px;background:radial-gradient(circle at 50% 15%,#332315 0,#15120e 38%,#0b0b0a 100%);box-shadow:inset 0 0 45px #0008}.arena-panel.hidden{display:none}.arena-head{display:flex;justify-content:space-between;gap:12px;align-items:flex-start}.arena-head h2{margin:0;color:#f4d17c;font-family:Georgia,serif;font-size:25px}.arena-head p{margin:4px 0 0;color:#9f978a;font-size:10px}.arena-head button,.arena-controls button{padding:7px 10px;border:1px solid #705226;border-radius:8px;background:#1c1710;color:#f5d47f}.arena-selectors{display:grid;grid-template-columns:1fr auto 1fr auto auto;gap:8px;align-items:end;margin:14px 0}.arena-selectors label span{display:block;margin-bottom:5px;color:#aa9b80;font-size:9px}.arena-selectors select{width:100%;padding:10px;border:1px solid #594422;border-radius:8px;background:#111;color:#f4dfad}.arena-selectors>b{align-self:center;color:#e5a83f;font:900 26px Georgia}.arena-selectors button{padding:10px 12px;border:1px solid #76551f;border-radius:8px;background:#241a0d;color:#f5d47f;font-weight:800}.arena-selectors #arenaStart{background:linear-gradient(#3c7d27,#1f4e16);border-color:#77ad50;color:#fff}.arena-stage{position:relative;display:grid;grid-template-columns:1fr 120px 1fr;min-height:370px;overflow:hidden;border:1px solid #62491f;border-radius:13px;background:linear-gradient(#152130aa,#15110dcc),radial-gradient(circle at 50% 60%,#7d4c1e55,#050505 70%);box-shadow:inset 0 -80px 100px #0009}.arena-stage:before{content:"";position:absolute;inset:auto 0 0;height:35%;background:linear-gradient(transparent,#38251477),repeating-linear-gradient(95deg,#ffffff05 0 2px,transparent 2px 14px)}.arena-side{position:relative;z-index:2;padding:14px;text-align:center}.arena-name{color:#f6d57c;font:800 20px Georgia}.arena-hp{height:14px;margin:7px auto 3px;max-width:310px;border:2px solid #080808;border-radius:8px;background:#390b0b;overflow:hidden}.arena-hp i{display:block;width:100%;height:100%;background:linear-gradient(90deg,#1f8b3b,#65d66f);transition:width .35s}.arena-side small{color:#bbb}.fighter{position:absolute;bottom:40px;left:50%;width:150px;height:190px;transform:translateX(-50%);transition:transform .18s;filter:drop-shadow(0 16px 8px #0009)}.fighter-body{position:absolute;left:35px;bottom:20px;font-size:105px;transform:scaleX(1.05)}.fighter-shield{position:absolute;bottom:38px;font-size:72px;z-index:3}.fighter-weapon{position:absolute;top:17px;font-size:72px;transform-origin:20% 80%;z-index:4}.fighter-left .fighter-shield{right:0}.fighter-left .fighter-weapon{left:2px;transform:rotate(-32deg)}.fighter-right .fighter-shield{left:0}.fighter-right .fighter-weapon{right:0;transform:rotate(32deg)}.fighter-right .fighter-body{transform:scaleX(-1.05)}.fighter.attack-left{animation:chargeLeft .55s ease}.fighter.attack-left .fighter-weapon{animation:swingLeft .55s ease}.fighter.attack-right{animation:chargeRight .55s ease}.fighter.attack-right .fighter-weapon{animation:swingRight .55s ease}.fighter.hurt{animation:hurt .35s ease}.fighter.dodge{animation:dodge .45s ease}.fighter.defeated{transform:translateX(-50%) rotate(80deg) translateY(45px);opacity:.55}.fighter.winner{animation:winner .7s ease infinite alternate}.arena-center{z-index:5;display:flex;flex-direction:column;align-items:center;justify-content:center}.arena-center strong{color:#f1bb50;font:900 23px Georgia;text-shadow:0 2px 4px #000}.arena-hit{min-height:70px;margin-top:20px;color:#ff4738;font:900 31px Impact,sans-serif;transform:rotate(-6deg);text-shadow:0 3px 2px #000}.arena-hit.show{animation:hitPop .45s ease}.arena-stats{position:absolute;left:8px;right:8px;bottom:8px;color:#b9b1a4;font-size:9px}.arena-controls{display:flex;align-items:center;justify-content:center;gap:12px;margin:10px 0}.arena-controls span{color:#e4d7bd;font-weight:700}.arena-log{max-height:145px;overflow:auto;border-top:1px solid #49391f;padding-top:7px;color:#aaa39a;font-size:10px}.arena-log div{padding:4px 7px;border-bottom:1px solid #24211c}.arena-log b{color:#efcc74}.arena-log .crit{color:#ff6254}.arena-log .win{color:#67d78f;font-weight:800}
+@keyframes chargeLeft{45%{transform:translateX(15%) scale(1.05)}100%{transform:translateX(-50%)}}@keyframes chargeRight{45%{transform:translateX(-115%) scale(1.05)}100%{transform:translateX(-50%)}}@keyframes swingLeft{20%{transform:rotate(-70deg)}55%{transform:rotate(48deg)}100%{transform:rotate(-32deg)}}@keyframes swingRight{20%{transform:rotate(70deg)}55%{transform:rotate(-48deg)}100%{transform:rotate(32deg)}}@keyframes hurt{35%{filter:brightness(2) sepia(1) saturate(8);transform:translateX(-40%) rotate(5deg)}}@keyframes dodge{45%{transform:translateX(-25%) translateY(-15px)}}@keyframes winner{to{transform:translateX(-50%) translateY(-12px) scale(1.04)}}@keyframes hitPop{0%{opacity:0;transform:scale(.3) rotate(-10deg)}55%{opacity:1;transform:scale(1.3) rotate(-5deg)}100%{transform:scale(1) rotate(-6deg)}}
+@media(max-width:760px){.arena-panel{padding:10px}.arena-head h2{font-size:20px}.arena-selectors{grid-template-columns:1fr auto 1fr}.arena-selectors button{grid-column:span 3}.arena-stage{grid-template-columns:1fr 55px 1fr;min-height:300px}.arena-side{padding:9px 4px}.arena-name{font-size:15px}.fighter{width:105px;height:145px;bottom:43px}.fighter-body{left:24px;font-size:75px}.fighter-shield{font-size:48px}.fighter-weapon{font-size:48px}.arena-center strong{font-size:15px}.arena-hit{font-size:22px}.arena-stats{font-size:7px}.arena-controls{flex-direction:column}.modes{grid-template-columns:repeat(3,minmax(0,1fr))}}
+
+/* V76: Arena is an isolated full-screen overlay; normal statistics stay untouched. */
+.arena-panel:not(.hidden){position:fixed;inset:18px;z-index:10000;margin:0;padding:18px;overflow:auto;background:radial-gradient(circle at 50% 15%,#332315 0,#15120e 38%,#0b0b0a 100%);box-shadow:0 0 0 9999px #000d,inset 0 0 45px #0008}
+body:has(.arena-panel:not(.hidden)){overflow:hidden}
+@media(max-width:760px){.arena-panel:not(.hidden){inset:6px;padding:10px}}
+
+
+/* V77 — detailed CSS Vikings, visual-only arena upgrade */
+.arena-stage{background:linear-gradient(#08111ad9,#18100bd9),radial-gradient(ellipse at 50% 68%,#9b5a214d 0,#2a160b66 35%,#020202 75%);}
+.arena-stage:after{content:"";position:absolute;inset:0;pointer-events:none;background:linear-gradient(90deg,#0007,transparent 18%,transparent 82%,#0007),radial-gradient(circle at 50% 12%,#ffb53617,transparent 35%);box-shadow:inset 0 0 70px #000;}
+.fighter{width:190px;height:225px;bottom:32px;filter:drop-shadow(0 18px 8px #000b);transform-origin:50% 90%;}
+.viking{position:absolute;left:45px;bottom:17px;width:100px;height:175px;z-index:2}.viking i{position:absolute;display:block}
+.v-body{left:20px;top:68px;width:65px;height:76px;border-radius:28px 28px 17px 17px;background:linear-gradient(90deg,#4c2415,#8b4a26 46%,#35190f);border:3px solid #160b07;box-shadow:inset 0 0 0 7px #6b341d,inset 0 -16px 0 #25201d}
+.v-body:after{content:"";position:absolute;left:8px;right:8px;top:12px;height:8px;border-top:4px dotted #b9b0a0;transform:rotate(-6deg)}
+.v-belt{left:20px;top:128px;width:65px;height:11px;background:#24130c;border:2px solid #0b0705;z-index:3}.v-belt:after{content:"";position:absolute;left:27px;top:-3px;width:12px;height:13px;border:3px solid #d19a35;border-radius:2px}
+.v-head{left:28px;top:25px;width:50px;height:55px;border-radius:45% 45% 48% 48%;background:linear-gradient(90deg,#b36a3d,#e5a06d 55%,#9b5633);border:3px solid #1b0e09;z-index:4;box-shadow:inset 0 13px 0 #6e432d}
+.v-head:after{content:"";position:absolute;left:-5px;right:-5px;top:4px;height:19px;border-radius:50% 50% 25% 25%;background:linear-gradient(#59636a,#222a2f);border:2px solid #121619}
+.v-beard{left:25px;top:61px;width:58px;height:48px;z-index:5;background:linear-gradient(90deg,#9c4d20,#d7812e,#6f3218);clip-path:polygon(8% 0,92% 0,78% 72%,58% 55%,50% 100%,39% 55%,20% 75%);filter:drop-shadow(0 3px 1px #0008)}
+.v-eye{left:40px;top:50px;width:5px;height:4px;background:#17120f;border-radius:50%;z-index:7;box-shadow:22px 0 0 #17120f}
+.v-horn{top:20px;width:30px;height:22px;z-index:6;border-top:8px solid #e8d6a5;border-radius:70% 0 0 0}.v-horn.h1{left:12px;transform:rotate(-27deg)}.v-horn.h2{right:6px;transform:scaleX(-1) rotate(-27deg)}
+.v-legs{left:27px;top:136px;width:19px;height:36px;background:#292522;border-radius:0 0 7px 7px;box-shadow:35px 0 0 #292522}.v-legs:after{content:"";position:absolute;left:-7px;top:27px;width:30px;height:12px;border-radius:8px 2px 3px 3px;background:#17100c;box-shadow:35px 0 0 #17100c}
+.fighter-shield{position:absolute;bottom:34px;width:79px;height:91px;z-index:8;border-radius:50%;background:radial-gradient(circle,#b98231 0 9px,#283c4e 10px 34px,#a8782e 35px 40px,#19130e 41px);border:3px solid #15110e;box-shadow:inset 8px -7px 14px #0007,0 5px 8px #0007}.fighter-shield i{position:absolute;left:36px;top:5px;width:6px;height:78px;background:#c08d3c;transform:rotate(18deg);opacity:.7}
+.fighter-weapon{position:absolute;top:16px;width:86px;height:120px;z-index:9;transform-origin:50% 85%}.fighter-weapon:before{content:"";position:absolute;left:40px;top:25px;width:8px;height:92px;border-radius:4px;background:linear-gradient(90deg,#4a2512,#a46630,#32180c);box-shadow:0 2px 2px #000}.fighter-weapon.axe:after{content:"";position:absolute;left:9px;top:8px;width:58px;height:39px;background:linear-gradient(135deg,#e5e7e8,#68727b);clip-path:polygon(28% 5%,100% 0,77% 88%,26% 73%,0 100%,9% 26%);border-radius:4px;filter:drop-shadow(0 2px 1px #000)}
+.fighter-weapon.sword:before{left:39px;top:38px;height:79px}.fighter-weapon.sword:after{content:"";position:absolute;left:35px;top:0;width:17px;height:75px;background:linear-gradient(90deg,#7c8792,#f2f4f5 48%,#707982);clip-path:polygon(50% 0,100% 14%,75% 100%,25% 100%,0 14%);filter:drop-shadow(0 2px 2px #000)}.fighter-weapon.sword i{position:absolute;left:20px;top:70px;width:49px;height:8px;background:#c38b32;border-radius:4px;z-index:3}
+.fighter-left .fighter-shield{right:1px}.fighter-left .fighter-weapon{left:-2px;transform:rotate(-35deg)}.fighter-right .fighter-shield{left:1px}.fighter-right .fighter-weapon{right:-2px;transform:rotate(35deg)}.fighter-right .viking{transform:scaleX(-1)}
+.fighter.blocked .fighter-shield{animation:shieldBlock .32s ease}.fighter.hurt .viking{filter:brightness(1.45) saturate(.55)}
+@keyframes shieldBlock{0%{transform:translateX(0) scale(1)}45%{transform:translateX(17px) scale(1.13)}100%{transform:translateX(0) scale(1)}}
+@keyframes chargeLeft{0%{transform:translateX(-50%)}45%{transform:translateX(-22%) translateY(-4px)}100%{transform:translateX(-50%)}}
+@keyframes chargeRight{0%{transform:translateX(-50%)}45%{transform:translateX(-78%) translateY(-4px)}100%{transform:translateX(-50%)}}
+@keyframes swingLeft{0%{transform:rotate(-35deg)}48%{transform:rotate(66deg)}100%{transform:rotate(-35deg)}}
+@keyframes swingRight{0%{transform:rotate(35deg)}48%{transform:rotate(-66deg)}100%{transform:rotate(35deg)}}
+@keyframes hurt{0%{transform:translateX(-50%)}40%{transform:translateX(-63%) rotate(-7deg)}100%{transform:translateX(-50%)}}
+@media(max-width:760px){.fighter{width:130px;height:170px;transform:translateX(-50%) scale(.78);transform-origin:50% 100%}.fighter.defeated{transform:translateX(-50%) scale(.78) rotate(80deg) translateY(45px)}}
+
+/* V78 — cinematic arena artwork. Statistics outside Arena are untouched. */
+.arena-stage{
+  min-height:520px;
+  background-image:linear-gradient(90deg,rgba(0,0,0,.12),rgba(0,0,0,.02) 50%,rgba(0,0,0,.12)),url('/static/arena-v78.webp')!important;
+  background-size:cover!important;background-position:center 52%!important;
+  border-color:#8a6425;box-shadow:inset 0 0 70px #0008,0 8px 30px #0008;
+}
+.arena-stage:before{height:100%!important;background:linear-gradient(180deg,#0008 0,#0000 24%,#0000 78%,#000a 100%)!important;z-index:1}
+.arena-stage:after{background:radial-gradient(circle at 50% 45%,transparent 35%,#0007 100%)!important;z-index:1}
+/* The detailed warriors are part of the V78 artwork; old CSS placeholder figures are hidden. */
+.arena-stage .fighter{opacity:0!important;pointer-events:none}
+.arena-stage .arena-side{z-index:4;background:linear-gradient(180deg,#05080bd9 0,#05080b80 21%,transparent 42%)}
+.arena-stage .arena-name{font-size:22px;text-shadow:0 2px 4px #000,0 0 12px #000}
+.arena-stage .arena-hp{box-shadow:0 2px 8px #000}
+.arena-stage .arena-stats{bottom:12px;padding:7px 9px;border:1px solid #6d4d20;border-radius:8px;background:#07090bd9;color:#e0d5bf;font-size:11px;backdrop-filter:blur(2px)}
+.arena-center{z-index:6!important}.arena-center strong{padding:8px 18px;border:1px solid #7d5924;border-radius:6px;background:#090a0bd9;font-size:25px}.arena-hit{font-size:38px;text-shadow:0 4px 2px #000,0 0 14px #000}
+.arena-stage.v78-impact-left{animation:v78ImpactLeft .36s ease}.arena-stage.v78-impact-right{animation:v78ImpactRight .36s ease}.arena-stage.v78-crit{animation:v78Crit .42s ease}
+@keyframes v78ImpactLeft{0%,100%{background-position:center 52%}45%{background-position:calc(50% + 13px) 52%}}
+@keyframes v78ImpactRight{0%,100%{background-position:center 52%}45%{background-position:calc(50% - 13px) 52%}}
+@keyframes v78Crit{0%,100%{filter:none}35%{filter:brightness(1.28) contrast(1.12)}55%{filter:brightness(.8)}}
+@media(max-width:760px){.arena-stage{min-height:410px;background-position:center 50%!important}.arena-stage .arena-name{font-size:15px}.arena-stage .arena-stats{font-size:8px}.arena-center strong{font-size:17px;padding:6px 9px}.arena-hit{font-size:27px}}
+
+/* V79 — REAL ANIMATED FIGHTERS. The V78 poster is no longer used as the stage. */
+.arena-stage{
+  min-height:520px;
+  background-image:
+    linear-gradient(180deg,rgba(3,8,12,.18) 0,rgba(3,6,8,.35) 55%,rgba(0,0,0,.72) 100%),
+    radial-gradient(ellipse at 50% 88%,rgba(139,77,26,.55) 0,rgba(46,25,12,.72) 38%,rgba(4,5,6,.96) 78%),
+    linear-gradient(90deg,#111923 0,#302013 48%,#111923 100%)!important;
+  background-size:cover!important;background-position:center!important;
+}
+.arena-stage:before{content:"";position:absolute;inset:0!important;height:auto!important;z-index:1;background:
+  radial-gradient(circle at 8% 45%,#ff8a1645 0 3%,transparent 8%),
+  radial-gradient(circle at 92% 45%,#ff8a1645 0 3%,transparent 8%),
+  repeating-linear-gradient(90deg,transparent 0 10%,#d6a34a0b 10.2% 10.6%,transparent 10.8% 20%)!important;}
+.arena-stage:after{content:"";position:absolute;left:0;right:0;bottom:0;top:auto;height:31%!important;z-index:1;background:
+  linear-gradient(transparent,#3b2418aa),
+  repeating-linear-gradient(96deg,#ffffff08 0 2px,transparent 2px 18px)!important;box-shadow:inset 0 -35px 55px #0009!important;}
+.arena-stage .fighter{opacity:1!important;pointer-events:auto;display:block!important;z-index:7;bottom:42px;animation:v79Idle 1.15s ease-in-out infinite alternate;will-change:transform,filter;}
+.arena-stage .fighter-left{filter:drop-shadow(0 18px 9px #000c) drop-shadow(0 0 18px #3b78a333)}
+.arena-stage .fighter-right{filter:drop-shadow(0 18px 9px #000c) drop-shadow(0 0 18px #a33b3b33)}
+.arena-stage .fighter.attack-left{animation:v79ChargeLeft .82s cubic-bezier(.2,.8,.2,1)!important}
+.arena-stage .fighter.attack-right{animation:v79ChargeRight .82s cubic-bezier(.2,.8,.2,1)!important}
+.arena-stage .fighter.attack-left .fighter-weapon{animation:v79SwingLeft .82s cubic-bezier(.2,.8,.2,1)!important}
+.arena-stage .fighter.attack-right .fighter-weapon{animation:v79SwingRight .82s cubic-bezier(.2,.8,.2,1)!important}
+.arena-stage .fighter.hurt{animation:v79Hurt .5s ease!important}
+.arena-stage .fighter.dodge{animation:v79Dodge .58s ease!important}
+.arena-stage .fighter.defeated{animation:v79Fall .72s ease-out forwards!important;opacity:.72!important}
+.arena-stage .fighter.winner{animation:v79Victory .65s ease-in-out infinite alternate!important}
+@keyframes v79Idle{from{transform:translateX(-50%) translateY(0) rotate(-.8deg)}to{transform:translateX(-50%) translateY(-7px) rotate(.8deg)}}
+@keyframes v79ChargeLeft{0%{transform:translateX(-50%)}28%{transform:translateX(-60%) rotate(-3deg)}58%{transform:translateX(18%) translateY(-5px) rotate(4deg) scale(1.06)}76%{transform:translateX(5%) rotate(1deg)}100%{transform:translateX(-50%)}}
+@keyframes v79ChargeRight{0%{transform:translateX(-50%)}28%{transform:translateX(-40%) rotate(3deg)}58%{transform:translateX(-118%) translateY(-5px) rotate(-4deg) scale(1.06)}76%{transform:translateX(-105%) rotate(-1deg)}100%{transform:translateX(-50%)}}
+@keyframes v79SwingLeft{0%,22%{transform:rotate(-35deg)}42%{transform:rotate(-92deg)}62%{transform:rotate(72deg)}100%{transform:rotate(-35deg)}}
+@keyframes v79SwingRight{0%,22%{transform:rotate(35deg)}42%{transform:rotate(92deg)}62%{transform:rotate(-72deg)}100%{transform:rotate(35deg)}}
+@keyframes v79Hurt{0%{transform:translateX(-50%)}28%{transform:translateX(-50%) scale(1.04);filter:brightness(2.2) saturate(.4)}55%{transform:translateX(-30%) rotate(10deg)}100%{transform:translateX(-50%)}}
+@keyframes v79Dodge{0%,100%{transform:translateX(-50%)}48%{transform:translateX(-50%) translateY(-38px) scale(.94)}}
+@keyframes v79Fall{0%{transform:translateX(-50%) rotate(0)}100%{transform:translateX(-50%) translateY(48px) rotate(82deg);filter:grayscale(.55) brightness(.65)}}
+@keyframes v79Victory{from{transform:translateX(-50%) translateY(0) scale(1)}to{transform:translateX(-50%) translateY(-15px) scale(1.07)}}
+@media(max-width:760px){.arena-stage{min-height:410px}.arena-stage .fighter{bottom:48px}.arena-stage .fighter.attack-left{animation:v79ChargeLeftMobile .82s ease!important}.arena-stage .fighter.attack-right{animation:v79ChargeRightMobile .82s ease!important}@keyframes v79ChargeLeftMobile{0%{transform:translateX(-50%) scale(.78)}55%{transform:translateX(0%) translateY(-4px) scale(.84)}100%{transform:translateX(-50%) scale(.78)}}@keyframes v79ChargeRightMobile{0%{transform:translateX(-50%) scale(.78)}55%{transform:translateX(-100%) translateY(-4px) scale(.84)}100%{transform:translateX(-50%) scale(.78)}}}

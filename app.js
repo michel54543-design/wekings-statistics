@@ -13,7 +13,7 @@ const metricNames = {
   quests: "Задания",
   pet_fights: "Бои питомца",
   pet_kills: "Убийства питомца",
-  garden: "Сад",
+  garden: "Участок",
   goblins: "Гоблины",
   lord_wins: "Победы над Владыкой",
   undead_wins: "Победы над нежитью",
@@ -103,6 +103,48 @@ async function loadPlayerDetail(playerId, scroll = true) {
   document.body.classList.add("modal-open");
   renderPlayerDetail();
   $("closePlayerDetail").focus();
+}
+
+function attackTimeText(value, stayMinutes) {
+  if (!value) return "Ожидаем новое время";
+  const start = new Date(value);
+  if (Number.isNaN(start.getTime())) return "Ожидаем новое время";
+  const now = new Date();
+  const end = new Date(start.getTime() + stayMinutes * 60000);
+  if (now < start) return start.toLocaleTimeString("ru-RU", {hour:"2-digit", minute:"2-digit"});
+  if (now < end) return "Сейчас в городе";
+  return "Ожидаем новое время";
+}
+
+function weatherTimeText(value) {
+  if (!value) return "Нет прогноза";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime()) || new Date() > date) return "Нет прогноза";
+  return date.toLocaleString("ru-RU", {day:"2-digit", month:"2-digit", hour:"2-digit", minute:"2-digit"});
+}
+
+async function loadAttacks() {
+  const box = $("attackSchedule");
+  try {
+    const response = await fetch(`/api/attacks?_=${Date.now()}`, { cache: "no-store" });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const data = await response.json();
+    $("dragonTime").textContent = attackTimeText(data.dragon_at, 60);
+    $("serpentTime").textContent = attackTimeText(data.serpent_at, 90);
+    $("weatherTime").textContent = weatherTimeText(data.weather_at);
+    if (data.fetched_at) {
+      $("attackUpdated").textContent = `обновлено ${new Date(data.fetched_at).toLocaleTimeString("ru-RU", {hour:"2-digit", minute:"2-digit"})}`;
+    } else {
+      $("attackUpdated").textContent = "";
+    }
+    box?.classList.toggle("waiting", !data.dragon_at || !data.serpent_at);
+  } catch (error) {
+    $("dragonTime").textContent = "Ожидаем новое время";
+    $("serpentTime").textContent = "Ожидаем новое время";
+    $("weatherTime").textContent = "Нет прогноза";
+    $("attackUpdated").textContent = "нет связи";
+    box?.classList.add("waiting");
+  }
 }
 
 async function loadStatus() {
@@ -284,13 +326,118 @@ async function loadPlayers() {
   }
 }
 
+
+const lifeState = { period: "now", loaded: false };
+function lifeDateText(value) {
+  return new Date(value).toLocaleString("ru-RU",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"});
+}
+async function loadLife(period=lifeState.period) {
+  lifeState.period=period;
+  document.querySelectorAll("[data-life-period]").forEach(b=>b.classList.toggle("active",b.dataset.lifePeriod===period));
+  $("lifeEvents").innerHTML='<p class="life-empty">Собираем события…</p>';
+  const data=await fetch(`/api/life?period=${encodeURIComponent(period)}`).then(r=>r.json());
+  if(!data.ready){$("lifeRange").textContent="Нужно минимум два завершённых снимка";$("lifeHeroes").innerHTML="";$("lifeEvents").innerHTML='<p class="life-empty">Пока недостаточно данных.</p>';return;}
+  $("lifeRange").textContent=`${lifeDateText(data.from_date)} → ${lifeDateText(data.to_date)}`;
+  $("lifeHeroes").innerHTML=data.heroes?.length?data.heroes.slice(0,4).map(h=>`<article class="life-hero"><span>${h.icon} ${escapeHtml(h.label)}</span><strong>${escapeHtml(h.nickname)}</strong><b>+${fmt(h.gain)}</b></article>`).join(""):"";
+  $("lifeEvents").innerHTML=data.events?.length?data.events.map(e=>`<article class="life-event"><span class="life-event-icon">${e.icon}</span><div><a class="game-profile-link" href="https://playwekings.mobi/hero/detail?player=${e.player_id}">${escapeHtml(e.nickname)}</a><p>${escapeHtml(e.text)}</p></div></article>`).join(""):'<p class="life-empty">За выбранный период заметных изменений нет.</p>';
+  lifeState.loaded=true;
+}
+
+async function loadLifeSummary() {
+  const data = await fetch("/api/life-summary").then(r => r.json());
+  if (!data.ready) return;
+  const s = data.summary || {};
+  $("lifeDailySummary").innerHTML = `
+    <div><b>📊 ${fmt(s.active_players)}</b><span>активных игроков</span></div>`;
+  const h = data.hero;
+  if (h) {
+    const achievements = [];
+    if (h.bandit_gain) achievements.push(`⚔️ ${fmt(h.bandit_gain)} побед над наёмниками`);
+    if (h.stat_gain) achievements.push(`💪 +${fmt(h.stat_gain)} характеристик`);
+    if (h.mine_gain) achievements.push(`⛏️ +${fmt(h.mine_gain)} шахта`);
+    if (h.power_gain) achievements.push(`⚡ +${fmt(h.power_gain)} силы`);
+    if (h.dragon_gain) achievements.push(`🐉 ${fmt(h.dragon_gain)} побед над Драконом`);
+    if (h.serpent_gain) achievements.push(`🐍 ${fmt(h.serpent_gain)} побед над Змеем`);
+    if (h.quests_gain) achievements.push(`📜 +${fmt(h.quests_gain)} заданий`);
+    if (h.wins_gain) achievements.push(`🏆 +${fmt(h.wins_gain)} побед`);
+    $("lifeHeroDay").innerHTML = `
+      <header><span>👑</span><div><small>ГЕРОЙ ДНЯ</small><strong>${escapeHtml(h.nickname)}</strong></div></header>
+      <div class="life-hero-reasons">${achievements.slice(0,4).map(x => `<div>${x}</div>`).join("")}</div>
+      <p><b>За наибольшую активность сегодня</b></p>
+      <a class="game-profile-link" href="https://playwekings.mobi/hero/detail?player=${h.player_id}">Открыть игрока →</a>`;
+  } else {
+    $("lifeHeroDay").innerHTML = `<header><span>👑</span><div><small>ГЕРОЙ ДНЯ</small><strong>Пока определяется</strong></div></header>`;
+  }
+
+  const topRows = (items, emptyText) => items?.length
+    ? items.slice(0,5).map((x, i) => `
+        <div class="life-contributor-row">
+          <span class="life-contributor-rank">${i + 1}</span>
+          <div><a class="game-profile-link" href="https://playwekings.mobi/hero/detail?player=${x.player_id}">${escapeHtml(x.nickname)}</a>
+          <small>${escapeHtml(x.organization)}</small></div>
+          <b>+${fmt(x.gain)}</b>
+        </div>`).join("")
+    : `<p class="life-empty">${emptyText}</p>`;
+  $("lifeContributorTops").innerHTML = `
+    <div class="life-contributor-section">
+      <header><span>🛡️</span><div><small>ТОП В БРАТСТВАХ</small><strong>Прирост характеристик</strong></div></header>
+      ${topRows(data.top_brotherhood, "Пока нет прироста")}
+    </div>
+    <div class="life-contributor-section">
+      <header><span>🏰</span><div><small>ТОП В КЛАНАХ</small><strong>Прирост характеристик</strong></div></header>
+      ${topRows(data.top_clan, "Пока нет прироста")}
+    </div>`;
+}
+
+function openLife(){$("lifePanel").classList.remove("hidden");$("lifeToggle").classList.add("active");$("lifeToggle").setAttribute("aria-expanded","true");if(!lifeState.loaded)loadLife().catch(()=>{$("lifeEvents").innerHTML='<p class="life-empty">Не удалось загрузить события.</p>';});loadLifeSummary().catch(()=>{});$("lifePanel").scrollIntoView({behavior:"smooth",block:"start"});}
+function closeLife(){$("lifePanel").classList.add("hidden");$("lifeToggle").classList.remove("active");$("lifeToggle").setAttribute("aria-expanded","false");}
+
+
+const yesterdayTopsState = { loaded: false };
+async function loadYesterdayTops() {
+  $("yesterdayTopsGrid").innerHTML = '<p class="life-empty">Считаем вчерашние топы…</p>';
+  const data = await fetch(`/api/yesterday-tops?_=${Date.now()}`, { cache: "no-store" }).then(r => r.json());
+  if (!data.ready) {
+    $("yesterdayTopsDate").textContent = "Нужно минимум три дневных снимка";
+    $("yesterdayHero").innerHTML = "";
+    $("yesterdayTopsGrid").innerHTML = '<p class="life-empty">Пока недостаточно данных.</p>';
+    return;
+  }
+  const d = new Date(data.date + "T12:00:00");
+  $("yesterdayTopsDate").textContent = `Итоги за ${d.toLocaleDateString("ru-RU")}`;
+  const hero = data.hero;
+  $("yesterdayHero").innerHTML = hero ? `
+    <span>👑 Герой вчерашнего дня</span>
+    <a class="game-profile-link" href="https://playwekings.mobi/hero/detail?player=${hero.player_id}">${escapeHtml(hero.nickname)}</a>
+    <b>${hero.first_places} ${hero.first_places === 1 ? "первое место" : "первых места"}</b>` : "";
+  $("yesterdayTopsGrid").innerHTML = data.tops?.length ? data.tops.map(x => `
+    <article class="yesterday-top-card">
+      <span>${x.icon} ${escapeHtml(x.label)}</span>
+      <a class="game-profile-link" href="https://playwekings.mobi/hero/detail?player=${x.player_id}">${escapeHtml(x.nickname)}</a>
+      <b>+${fmt(x.gain)}</b>
+    </article>`).join("") : '<p class="life-empty">За вчера прироста по этим показателям нет.</p>';
+  yesterdayTopsState.loaded = true;
+}
+function openYesterdayTops(){
+  $("yesterdayTopsPanel").classList.remove("hidden");
+  $("yesterdayTopsToggle").classList.add("active");
+  $("yesterdayTopsToggle").setAttribute("aria-expanded","true");
+  loadYesterdayTops().catch(()=>{$("yesterdayTopsGrid").innerHTML='<p class="life-empty">Не удалось загрузить топы.</p>';});
+  $("yesterdayTopsPanel").scrollIntoView({behavior:"smooth",block:"start"});
+}
+function closeYesterdayTops(){
+  $("yesterdayTopsPanel").classList.add("hidden");
+  $("yesterdayTopsToggle").classList.remove("active");
+  $("yesterdayTopsToggle").setAttribute("aria-expanded","false");
+}
+
 function escapeHtml(value) {
   return String(value ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 }
 
-document.querySelectorAll(".modes button").forEach(button => {
+document.querySelectorAll(".modes button[data-mode]").forEach(button => {
   button.onclick = () => {
-    document.querySelectorAll(".modes button").forEach(item => item.classList.remove("active"));
+    document.querySelectorAll(".modes button[data-mode]").forEach(item => item.classList.remove("active"));
     button.classList.add("active");
     state.mode = button.dataset.mode;
     syncMobileNav();
@@ -372,10 +519,60 @@ $("mobilePlayer").onclick = () => {
   }
 };
 
+
+$("lifeToggle").onclick=()=>{$("lifePanel").classList.contains("hidden")?openLife():closeLife();};
+$("lifeClose").onclick=closeLife;
+$("yesterdayTopsToggle").onclick=()=>{$("yesterdayTopsPanel").classList.contains("hidden")?openYesterdayTops():closeYesterdayTops();};
+$("yesterdayTopsClose").onclick=closeYesterdayTops;
+document.querySelectorAll("[data-life-period]").forEach(b=>{b.onclick=()=>loadLife(b.dataset.lifePeriod).catch(()=>{$("lifeEvents").innerHTML='<p class="life-empty">Не удалось загрузить события.</p>';});});
+
 $("todayBadge").textContent = new Date().toLocaleDateString("ru-RU", {
   day: "2-digit", month: "short"
 }).replace(".", "").toUpperCase();
 syncMobileNav();
 loadStatus().catch(() => {});
+loadAttacks().catch(() => {});
 loadPlayers().catch(() => $("rows").innerHTML = '<tr><td colspan="7" class="loading">Не удалось загрузить данные</td></tr>');
 setInterval(() => loadStatus().catch(() => {}), 30000);
+setInterval(() => loadAttacks().catch(() => {}), 60000);
+
+// V75 — Arena Vikings test mini-game
+const arena = { players: [], running: false, skip: false, timer: null };
+const arenaSleep = ms => new Promise(resolve => { arena.timer=setTimeout(resolve, ms); });
+const arenaVal = (p,k) => Math.max(0, Number(p?.[k]) || 0);
+function arenaPlayer(id){ return arena.players.find(p => String(p.id)===String(id)); }
+function arenaMaxHp(p){ return Math.max(600, Math.round(700 + arenaVal(p,"vitality")*1.55 + arenaVal(p,"defense")*.18)); }
+function arenaStats(p){ return `💪 ${fmt(p.power)} &nbsp; 🛡 ${fmt(p.defense)} &nbsp; ⚔ ${fmt(p.mastery)} &nbsp; ❤️ ${fmt(p.vitality)} &nbsp; 🍀 ${fmt(p.agility)}`; }
+function arenaSetHp(side,hp,max){ const pct=Math.max(0,Math.min(100,hp/max*100)); $("arenaHp"+side).style.width=pct+"%"; $("arenaHpText"+side).textContent=`${Math.max(0,Math.round(hp)).toLocaleString("ru-RU")} / ${max.toLocaleString("ru-RU")}`; }
+function arenaPreview(){ const a=arenaPlayer($("arenaP1").value), b=arenaPlayer($("arenaP2").value); if(!a||!b)return; $("arenaName1").textContent=a.nickname; $("arenaName2").textContent=b.nickname; $("arenaStats1").innerHTML=arenaStats(a); $("arenaStats2").innerHTML=arenaStats(b); arenaSetHp(1,arenaMaxHp(a),arenaMaxHp(a)); arenaSetHp(2,arenaMaxHp(b),arenaMaxHp(b)); }
+async function arenaLoadPlayers(){
+  if(arena.players.length) return;
+  const d=await fetch('/api/players?page=1&per_page=100&sort=stat_sum&mode=general').then(r=>r.json()); arena.players=d.players||[];
+  const opts=arena.players.map(p=>`<option value="${p.id}">${p.nickname} · ур.${p.level??"?"}</option>`).join('');
+  $("arenaP1").innerHTML=opts; $("arenaP2").innerHTML=opts; if(arena.players[1]) $("arenaP2").value=arena.players[1].id; arenaPreview();
+}
+function arenaLog(text,cls=''){ const d=document.createElement('div'); d.className=cls; d.innerHTML=text; $("arenaLog").prepend(d); }
+async function arenaAnimate(attacker, defender, side, damage, crit, dodge){
+  const a=$("fighter"+attacker), d=$("fighter"+defender), hit=$("arenaHit"), stage=document.querySelector('.arena-stage');
+  a.classList.add(side===1?'attack-left':'attack-right');
+  if(stage){stage.classList.remove('v78-impact-left','v78-impact-right','v78-crit'); void stage.offsetWidth; stage.classList.add(side===1?'v78-impact-left':'v78-impact-right'); if(crit) stage.classList.add('v78-crit');}
+  await arenaSleep(arena.skip?20:500);
+  if(dodge){ d.classList.add('dodge'); hit.textContent='УКЛОН!'; } else { d.classList.add('hurt'); hit.textContent=(crit?'КРИТ! ':'')+'-'+damage; } hit.classList.remove('show'); void hit.offsetWidth; hit.classList.add('show');
+  await arenaSleep(arena.skip?20:430); a.classList.remove('attack-left','attack-right'); d.classList.remove('hurt','dodge','blocked');
+}
+async function arenaFight(){
+  if(arena.running)return; const p1=arenaPlayer($("arenaP1").value),p2=arenaPlayer($("arenaP2").value); if(!p1||!p2||p1.id===p2.id){$("arenaResult").textContent='Выберите двух разных игроков.';return;}
+  arena.running=true; arena.skip=false; $("arenaLog").innerHTML=''; $("fighter1").className='fighter fighter-left'; $("fighter2").className='fighter fighter-right'; let hp=[0,arenaMaxHp(p1),arenaMaxHp(p2)], max=[0,hp[1],hp[2]], ps=[null,p1,p2]; arenaSetHp(1,hp[1],max[1]);arenaSetHp(2,hp[2],max[2]);
+  $("arenaResult").textContent='Бой начался!'; let round=1, turn=Math.random()<.5?1:2;
+  while(hp[1]>0&&hp[2]>0&&round<=12){ const atk=turn,def=atk===1?2:1,A=ps[atk],D=ps[def]; $("arenaRound").textContent=`Раунд ${round}`;
+    const mastery=arenaVal(A,'mastery'), agility=arenaVal(A,'agility'), defAg=arenaVal(D,'agility'), luck=Math.random(); const dodge=Math.random()<Math.min(.18,.035+defAg/(defAg+mastery+2500)*.14); const crit=!dodge&&Math.random()<Math.min(.25,.055+agility/(agility+3500)*.18);
+    let base=120+arenaVal(A,'power')*.20+mastery*.085-arenaVal(D,'defense')*.045; let damage=Math.max(95,Math.round(base*(.90+Math.random()*.25)*(crit?1.72:1))); if(dodge)damage=0;
+    await arenaAnimate(atk,def,atk,damage,crit,dodge); if(!dodge){hp[def]=Math.max(0,hp[def]-damage);arenaSetHp(def,hp[def],max[def]);}
+    arenaLog(`<b>Раунд ${round}:</b> ${A.nickname} ${dodge?'— '+D.nickname+' уклоняется!':`наносит ${damage} урона${crit?' — КРИТ!':''}`}`,crit?'crit':''); if(hp[def]<=0)break; turn=def; if(turn===1)round++; await arenaSleep(arena.skip?10:330);
+  }
+  const win=hp[1]>0?1:2,lose=win===1?2:1; $("fighter"+lose).classList.add('defeated'); $("fighter"+win).classList.add('winner'); $("arenaRound").textContent='ПОБЕДА'; $("arenaHit").textContent='🏆 '+ps[win].nickname; $("arenaResult").textContent=`Победитель: ${ps[win].nickname}`; arenaLog(`🏆 <b>${ps[win].nickname}</b> побеждает!`,'win'); arena.running=false;
+}
+$("arenaToggle")?.addEventListener('click',async()=>{ $("arenaPanel").classList.toggle('hidden'); const open=!$("arenaPanel").classList.contains('hidden'); $("arenaToggle").setAttribute('aria-expanded',String(open)); if(open){await arenaLoadPlayers();$("arenaPanel").scrollIntoView({behavior:'smooth',block:'start'});} });
+$("arenaClose")?.addEventListener('click',()=>{$("arenaPanel").classList.add('hidden');$("arenaToggle").setAttribute('aria-expanded','false');});
+$("arenaP1")?.addEventListener('change',arenaPreview); $("arenaP2")?.addEventListener('change',arenaPreview); $("arenaStart")?.addEventListener('click',arenaFight); $("arenaSkip")?.addEventListener('click',()=>{arena.skip=true;});
+$("arenaRandom")?.addEventListener('click',async()=>{await arenaLoadPlayers();if(arena.players.length<2)return;let a=Math.floor(Math.random()*arena.players.length),b;do{b=Math.floor(Math.random()*arena.players.length)}while(b===a);$("arenaP1").value=arena.players[a].id;$("arenaP2").value=arena.players[b].id;arenaPreview();});
