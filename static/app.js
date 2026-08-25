@@ -542,14 +542,20 @@ const arenaSleep = ms => new Promise(resolve => { arena.timer=setTimeout(resolve
 const arenaVal = (p,k) => Math.max(0, Number(p?.[k]) || 0);
 function arenaPlayer(id){ return arena.players.find(p => String(p.id)===String(id)); }
 function arenaMaxHp(p){ return Math.max(600, Math.round(700 + arenaVal(p,"vitality")*1.55 + arenaVal(p,"defense")*.18)); }
-function arenaStats(p){ return `💪 ${fmt(p.power)} &nbsp; 🛡 ${fmt(p.defense)} &nbsp; ⚔ ${fmt(p.mastery)} &nbsp; ❤️ ${fmt(p.vitality)} &nbsp; 🍀 ${fmt(p.agility)}`; }
+function arenaStats(p){ return `💪 Сила ${fmt(p.power)} &nbsp; 🛡 Защита ${fmt(p.defense)} &nbsp; 🏃 Ловкость ${fmt(p.agility)} &nbsp; ⚔ Мастерство ${fmt(p.mastery)} &nbsp; ❤️ Живучесть ${fmt(p.vitality)}`; }
 function arenaSetHp(side,hp,max){ const pct=Math.max(0,Math.min(100,hp/max*100)); $("arenaHp"+side).style.width=pct+"%"; $("arenaHpText"+side).textContent=`${Math.max(0,Math.round(hp)).toLocaleString("ru-RU")} / ${max.toLocaleString("ru-RU")}`; }
 function arenaPreview(){ const a=arenaPlayer($("arenaP1").value), b=arenaPlayer($("arenaP2").value); if(!a||!b)return; $("arenaName1").textContent=a.nickname; $("arenaName2").textContent=b.nickname; $("arenaStats1").innerHTML=arenaStats(a); $("arenaStats2").innerHTML=arenaStats(b); arenaSetHp(1,arenaMaxHp(a),arenaMaxHp(a)); arenaSetHp(2,arenaMaxHp(b),arenaMaxHp(b)); }
+function arenaMergePlayers(items){ for(const p of items||[]){ if(!arena.players.some(x=>String(x.id)===String(p.id))) arena.players.push(p); } }
+function arenaFillSelect(side,items,keep){ const el=$("arenaP"+side); const list=items||[]; el.innerHTML=list.map(p=>`<option value="${p.id}">${p.nickname} · ур.${p.level??"?"}</option>`).join(''); if(keep&&list.some(p=>String(p.id)===String(keep)))el.value=keep; }
+async function arenaSearch(side){
+  const nick=$("arenaNick"+side).value.trim(), level=$("arenaLevel"+side).value.trim();
+  const qs=new URLSearchParams({page:'1',per_page:'100',sort:'stat_sum',mode:'general'}); if(nick)qs.set('q',nick); if(level)qs.set('level',level);
+  const d=await fetch('/api/players?'+qs.toString()).then(r=>r.json()); const items=d.players||[]; arenaMergePlayers(items); arenaFillSelect(side,items); if(items.length) arenaPreview();
+}
 async function arenaLoadPlayers(){
   if(arena.players.length) return;
-  const d=await fetch('/api/players?page=1&per_page=100&sort=stat_sum&mode=general').then(r=>r.json()); arena.players=d.players||[];
-  const opts=arena.players.map(p=>`<option value="${p.id}">${p.nickname} · ур.${p.level??"?"}</option>`).join('');
-  $("arenaP1").innerHTML=opts; $("arenaP2").innerHTML=opts; if(arena.players[1]) $("arenaP2").value=arena.players[1].id; arenaPreview();
+  const d=await fetch('/api/players?page=1&per_page=100&sort=stat_sum&mode=general').then(r=>r.json()); arenaMergePlayers(d.players||[]);
+  arenaFillSelect(1,d.players||[]); arenaFillSelect(2,d.players||[]); if(arena.players[1]) $("arenaP2").value=arena.players[1].id; arenaPreview();
 }
 function arenaLog(text,cls=''){ const d=document.createElement('div'); d.className=cls; d.innerHTML=text; $("arenaLog").prepend(d); }
 async function arenaAnimate(attacker, defender, side, damage, crit, dodge){
@@ -565,8 +571,13 @@ async function arenaFight(){
   arena.running=true; arena.skip=false; $("arenaLog").innerHTML=''; $("fighter1").className='fighter fighter-left'; $("fighter2").className='fighter fighter-right'; let hp=[0,arenaMaxHp(p1),arenaMaxHp(p2)], max=[0,hp[1],hp[2]], ps=[null,p1,p2]; arenaSetHp(1,hp[1],max[1]);arenaSetHp(2,hp[2],max[2]);
   $("arenaResult").textContent='Бой начался!'; let round=1, turn=Math.random()<.5?1:2;
   while(hp[1]>0&&hp[2]>0&&round<=12){ const atk=turn,def=atk===1?2:1,A=ps[atk],D=ps[def]; $("arenaRound").textContent=`Раунд ${round}`;
-    const mastery=arenaVal(A,'mastery'), agility=arenaVal(A,'agility'), defAg=arenaVal(D,'agility'), luck=Math.random(); const dodge=Math.random()<Math.min(.18,.035+defAg/(defAg+mastery+2500)*.14); const crit=!dodge&&Math.random()<Math.min(.25,.055+agility/(agility+3500)*.18);
-    let base=120+arenaVal(A,'power')*.20+mastery*.085-arenaVal(D,'defense')*.045; let damage=Math.max(95,Math.round(base*(.90+Math.random()*.25)*(crit?1.72:1))); if(dodge)damage=0;
+    const mastery=arenaVal(A,'mastery'), agility=arenaVal(A,'agility'), defAg=arenaVal(D,'agility');
+    const dodge=Math.random()<Math.min(.22,.04+defAg/(defAg+mastery+2200)*.16);
+    const crit=!dodge&&Math.random()<Math.min(.28,.05+mastery/(mastery+3200)*.16+agility/(agility+5000)*.05);
+    let base=105+arenaVal(A,'power')*.19+mastery*.08-arenaVal(D,'defense')*.043;
+    // Небольшой шанс на сенсацию: слабый игрок иногда проводит особенно удачную атаку.
+    const upset=!dodge&&Math.random()<.085, swing=.82+Math.random()*.42;
+    let damage=Math.max(75,Math.round(base*swing*(crit?1.65:1)*(upset?1.55:1))); if(dodge)damage=0;
     await arenaAnimate(atk,def,atk,damage,crit,dodge); if(!dodge){hp[def]=Math.max(0,hp[def]-damage);arenaSetHp(def,hp[def],max[def]);}
     arenaLog(`<b>Раунд ${round}:</b> ${A.nickname} ${dodge?'— '+D.nickname+' уклоняется!':`наносит ${damage} урона${crit?' — КРИТ!':''}`}`,crit?'crit':''); if(hp[def]<=0)break; turn=def; if(turn===1)round++; await arenaSleep(arena.skip?10:330);
   }
@@ -574,5 +585,5 @@ async function arenaFight(){
 }
 $("arenaToggle")?.addEventListener('click',async()=>{ $("arenaPanel").classList.toggle('hidden'); const open=!$("arenaPanel").classList.contains('hidden'); $("arenaToggle").setAttribute('aria-expanded',String(open)); if(open){await arenaLoadPlayers();$("arenaPanel").scrollIntoView({behavior:'smooth',block:'start'});} });
 $("arenaClose")?.addEventListener('click',()=>{$("arenaPanel").classList.add('hidden');$("arenaToggle").setAttribute('aria-expanded','false');});
-$("arenaP1")?.addEventListener('change',arenaPreview); $("arenaP2")?.addEventListener('change',arenaPreview); $("arenaStart")?.addEventListener('click',arenaFight); $("arenaSkip")?.addEventListener('click',()=>{arena.skip=true;});
+$("arenaP1")?.addEventListener('change',arenaPreview); $("arenaP2")?.addEventListener('change',arenaPreview); $("arenaFind1")?.addEventListener('click',()=>arenaSearch(1)); $("arenaFind2")?.addEventListener('click',()=>arenaSearch(2)); $("arenaStart")?.addEventListener('click',arenaFight); $("arenaSkip")?.addEventListener('click',()=>{arena.skip=true;});
 $("arenaRandom")?.addEventListener('click',async()=>{await arenaLoadPlayers();if(arena.players.length<2)return;let a=Math.floor(Math.random()*arena.players.length),b;do{b=Math.floor(Math.random()*arena.players.length)}while(b===a);$("arenaP1").value=arena.players[a].id;$("arenaP2").value=arena.players[b].id;arenaPreview();});
