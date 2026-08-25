@@ -38,7 +38,6 @@
       <button data-mode="brotherhoods"><span class="mode-icon">♛</span>Братства</button>
       <button id="lifeToggle" class="life-toggle" type="button" aria-expanded="false"><span class="mode-icon">🔥</span>Жизнь</button>
       <button id="yesterdayTopsToggle" class="yesterday-tops-toggle" type="button" aria-expanded="false"><span class="mode-icon">🏆</span>Топы вчера</button>
-      <button id="arenaToggle" class="arena-toggle" type="button" aria-expanded="false"><span class="mode-icon">⚔️</span>Арена</button>
     </nav>
 
     <section id="lifePanel" class="life-panel hidden" aria-live="polite">
@@ -67,21 +66,6 @@
       </div>
       <div id="yesterdayHero" class="yesterday-hero"></div>
       <div id="yesterdayTopsGrid" class="yesterday-tops-grid"><p class="life-empty">Загрузка топов…</p></div>
-    </section>
-
-    <section id="arenaPanel" class="arena-panel hidden" aria-live="polite">
-      <div class="arena-head"><div><h2>⚔️ Арена Викингов</h2><p>Мини-игра в стиле WEKINGS. Бой не изменяет реальные данные игроков.</p></div><button id="arenaClose" type="button">Свернуть ↑</button></div>
-      <div class="arena-selectors">
-        <label><span>Игрок 1</span><div class="arena-find"><input id="arenaNick1" placeholder="Ник игрока"><input id="arenaLevel1" type="number" min="1" placeholder="Уровень"><button id="arenaFind1" type="button">Найти</button></div><select id="arenaP1"></select></label><b>VS</b><label><span>Игрок 2</span><div class="arena-find"><input id="arenaNick2" placeholder="Ник игрока"><input id="arenaLevel2" type="number" min="1" placeholder="Уровень"><button id="arenaFind2" type="button">Найти</button></div><select id="arenaP2"></select></label>
-        <button id="arenaRandom" type="button">🎲 Случайная пара</button><button id="arenaStart" type="button">⚔️ НАЧАТЬ БОЙ</button>
-      </div>
-      <div class="arena-stage">
-        <div class="arena-side left"><div class="arena-name" id="arenaName1">Игрок 1</div><div class="arena-hp"><i id="arenaHp1"></i></div><small id="arenaHpText1"></small><div class="fighter fighter-left v84" id="fighter1"><span class="v84-sprite" aria-hidden="true"></span></div><div class="arena-stats" id="arenaStats1"></div></div>
-        <div class="arena-center"><strong id="arenaRound">VS</strong><div id="arenaHit" class="arena-hit"></div></div>
-        <div class="arena-side right"><div class="arena-name" id="arenaName2">Игрок 2</div><div class="arena-hp"><i id="arenaHp2"></i></div><small id="arenaHpText2"></small><div class="fighter fighter-right v84" id="fighter2"><span class="v84-sprite" aria-hidden="true"></span></div><div class="arena-stats" id="arenaStats2"></div></div>
-      </div>
-      <div class="arena-controls"><button id="arenaSkip" type="button">⏩ Пропустить бой</button><span id="arenaResult">Выберите двух игроков и начните бой.</span></div>
-      <div id="arenaLog" class="arena-log"></div>
     </section>
 
     <section id="filters" class="controls">
