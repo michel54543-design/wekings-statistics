@@ -290,3 +290,25 @@ body:has(.arena-panel:not(.hidden)){overflow:hidden}
 @keyframes swingRight{0%{transform:rotate(35deg)}48%{transform:rotate(-66deg)}100%{transform:rotate(35deg)}}
 @keyframes hurt{0%{transform:translateX(-50%)}40%{transform:translateX(-63%) rotate(-7deg)}100%{transform:translateX(-50%)}}
 @media(max-width:760px){.fighter{width:130px;height:170px;transform:translateX(-50%) scale(.78);transform-origin:50% 100%}.fighter.defeated{transform:translateX(-50%) scale(.78) rotate(80deg) translateY(45px)}}
+
+/* V78 — cinematic arena artwork. Statistics outside Arena are untouched. */
+.arena-stage{
+  min-height:520px;
+  background-image:linear-gradient(90deg,rgba(0,0,0,.12),rgba(0,0,0,.02) 50%,rgba(0,0,0,.12)),url('/static/arena-v78.webp')!important;
+  background-size:cover!important;background-position:center 52%!important;
+  border-color:#8a6425;box-shadow:inset 0 0 70px #0008,0 8px 30px #0008;
+}
+.arena-stage:before{height:100%!important;background:linear-gradient(180deg,#0008 0,#0000 24%,#0000 78%,#000a 100%)!important;z-index:1}
+.arena-stage:after{background:radial-gradient(circle at 50% 45%,transparent 35%,#0007 100%)!important;z-index:1}
+/* The detailed warriors are part of the V78 artwork; old CSS placeholder figures are hidden. */
+.arena-stage .fighter{opacity:0!important;pointer-events:none}
+.arena-stage .arena-side{z-index:4;background:linear-gradient(180deg,#05080bd9 0,#05080b80 21%,transparent 42%)}
+.arena-stage .arena-name{font-size:22px;text-shadow:0 2px 4px #000,0 0 12px #000}
+.arena-stage .arena-hp{box-shadow:0 2px 8px #000}
+.arena-stage .arena-stats{bottom:12px;padding:7px 9px;border:1px solid #6d4d20;border-radius:8px;background:#07090bd9;color:#e0d5bf;font-size:11px;backdrop-filter:blur(2px)}
+.arena-center{z-index:6!important}.arena-center strong{padding:8px 18px;border:1px solid #7d5924;border-radius:6px;background:#090a0bd9;font-size:25px}.arena-hit{font-size:38px;text-shadow:0 4px 2px #000,0 0 14px #000}
+.arena-stage.v78-impact-left{animation:v78ImpactLeft .36s ease}.arena-stage.v78-impact-right{animation:v78ImpactRight .36s ease}.arena-stage.v78-crit{animation:v78Crit .42s ease}
+@keyframes v78ImpactLeft{0%,100%{background-position:center 52%}45%{background-position:calc(50% + 13px) 52%}}
+@keyframes v78ImpactRight{0%,100%{background-position:center 52%}45%{background-position:calc(50% - 13px) 52%}}
+@keyframes v78Crit{0%,100%{filter:none}35%{filter:brightness(1.28) contrast(1.12)}55%{filter:brightness(.8)}}
+@media(max-width:760px){.arena-stage{min-height:410px;background-position:center 50%!important}.arena-stage .arena-name{font-size:15px}.arena-stage .arena-stats{font-size:8px}.arena-center strong{font-size:17px;padding:6px 9px}.arena-hit{font-size:27px}}

@@ -553,7 +553,10 @@ async function arenaLoadPlayers(){
 }
 function arenaLog(text,cls=''){ const d=document.createElement('div'); d.className=cls; d.innerHTML=text; $("arenaLog").prepend(d); }
 async function arenaAnimate(attacker, defender, side, damage, crit, dodge){
-  const a=$("fighter"+attacker), d=$("fighter"+defender), hit=$("arenaHit"); a.classList.add(side===1?'attack-left':'attack-right'); await arenaSleep(arena.skip?20:310);
+  const a=$("fighter"+attacker), d=$("fighter"+defender), hit=$("arenaHit"), stage=document.querySelector('.arena-stage');
+  a.classList.add(side===1?'attack-left':'attack-right');
+  if(stage){stage.classList.remove('v78-impact-left','v78-impact-right','v78-crit'); void stage.offsetWidth; stage.classList.add(side===1?'v78-impact-left':'v78-impact-right'); if(crit) stage.classList.add('v78-crit');}
+  await arenaSleep(arena.skip?20:310);
   if(dodge){ d.classList.add('dodge'); hit.textContent='УКЛОН!'; } else { d.classList.add('hurt'); hit.textContent=(crit?'КРИТ! ':'')+'-'+damage; } hit.classList.remove('show'); void hit.offsetWidth; hit.classList.add('show');
   await arenaSleep(arena.skip?20:360); a.classList.remove('attack-left','attack-right'); d.classList.remove('hurt','dodge','blocked');
 }
