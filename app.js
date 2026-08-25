@@ -562,9 +562,9 @@ async function arenaAnimate(attacker, defender, side, damage, crit, dodge){
   const a=$("fighter"+attacker), d=$("fighter"+defender), hit=$("arenaHit"), stage=document.querySelector('.arena-stage');
   a.classList.add(side===1?'attack-left':'attack-right');
   if(stage){stage.classList.remove('v78-impact-left','v78-impact-right','v78-crit'); void stage.offsetWidth; stage.classList.add(side===1?'v78-impact-left':'v78-impact-right'); if(crit) stage.classList.add('v78-crit');}
-  await arenaSleep(arena.skip?20:620);
+  await arenaSleep(arena.skip?20:760);
   if(dodge){ d.classList.add('dodge'); hit.textContent='УКЛОН!'; } else { d.classList.add('hurt'); hit.textContent=(crit?'КРИТ! ':'')+'-'+damage; } hit.classList.remove('show'); void hit.offsetWidth; hit.classList.add('show');
-  await arenaSleep(arena.skip?20:470); a.classList.remove('attack-left','attack-right'); d.classList.remove('hurt','dodge','blocked');
+  await arenaSleep(arena.skip?20:620); a.classList.remove('attack-left','attack-right'); d.classList.remove('hurt','dodge','blocked');
 }
 async function arenaFight(){
   if(arena.running)return; const p1=arenaPlayer($("arenaP1").value),p2=arenaPlayer($("arenaP2").value); if(!p1||!p2||p1.id===p2.id){$("arenaResult").textContent='Выберите двух разных игроков.';return;}
