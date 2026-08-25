@@ -350,3 +350,26 @@ body:has(.arena-panel:not(.hidden)){overflow:hidden}
 @keyframes v79Fall{0%{transform:translateX(-50%) rotate(0)}100%{transform:translateX(-50%) translateY(48px) rotate(82deg);filter:grayscale(.55) brightness(.65)}}
 @keyframes v79Victory{from{transform:translateX(-50%) translateY(0) scale(1)}to{transform:translateX(-50%) translateY(-15px) scale(1.07)}}
 @media(max-width:760px){.arena-stage{min-height:410px}.arena-stage .fighter{bottom:48px}.arena-stage .fighter.attack-left{animation:v79ChargeLeftMobile .82s ease!important}.arena-stage .fighter.attack-right{animation:v79ChargeRightMobile .82s ease!important}@keyframes v79ChargeLeftMobile{0%{transform:translateX(-50%) scale(.78)}55%{transform:translateX(0%) translateY(-4px) scale(.84)}100%{transform:translateX(-50%) scale(.78)}}@keyframes v79ChargeRightMobile{0%{transform:translateX(-50%) scale(.78)}55%{transform:translateX(-100%) translateY(-4px) scale(.84)}100%{transform:translateX(-50%) scale(.78)}}}
+
+/* V80 — livelier compact Viking fighters: layered movement, weapon recoil and shield reaction */
+.arena-stage .viking{transform-origin:50% 85%;animation:v80Breathe .9s ease-in-out infinite alternate}
+.arena-stage .fighter-shield{transform-origin:50% 50%;animation:v80ShieldIdle 1.1s ease-in-out infinite alternate}
+.arena-stage .fighter-weapon{transform-origin:50% 85%}
+.arena-stage .fighter.attack-left .viking,.arena-stage .fighter.attack-right .viking{animation:v80BodyAttack .82s ease!important}
+.arena-stage .fighter.hurt .viking{animation:v80BodyHurt .48s ease!important}
+.arena-stage .fighter.hurt .fighter-shield{animation:v80ShieldHit .48s ease!important}
+.arena-stage .fighter.winner .fighter-weapon{animation:v80WeaponVictory .65s ease-in-out infinite alternate!important}
+.arena-stage .fighter.defeated .fighter-weapon{animation:v80WeaponDrop .7s ease-out forwards!important}
+.arena-stage .fighter.defeated .fighter-shield{animation:v80ShieldDrop .7s ease-out forwards!important}
+@keyframes v80Breathe{from{transform:translateY(0) scaleY(1)}to{transform:translateY(-2px) scaleY(1.018)}}
+@keyframes v80ShieldIdle{from{transform:rotate(-2deg)}to{transform:rotate(3deg)}}
+@keyframes v80BodyAttack{0%,100%{transform:rotate(0)}28%{transform:rotate(-7deg) translateY(2px)}58%{transform:rotate(8deg) translateY(-3px)}76%{transform:rotate(3deg)}}
+@keyframes v80BodyHurt{0%,100%{transform:rotate(0)}25%{transform:rotate(8deg) translateX(5px)}50%{transform:rotate(-4deg) translateX(-3px)}}
+@keyframes v80ShieldHit{0%,100%{transform:rotate(0)}35%{transform:rotate(22deg) scale(1.08)}60%{transform:rotate(-8deg)}}
+@keyframes v80WeaponVictory{from{transform:rotate(-35deg) translateY(0)}to{transform:rotate(-72deg) translateY(-9px)}}
+@keyframes v80WeaponDrop{to{transform:rotate(125deg) translate(24px,35px);opacity:.65}}
+@keyframes v80ShieldDrop{to{transform:rotate(38deg) translate(18px,24px);opacity:.72}}
+
+/* V81 — Arena player search and five combat stats */
+.arena-find{display:grid;grid-template-columns:minmax(110px,1fr) 92px auto;gap:5px;margin-bottom:6px}.arena-find input{min-width:0;padding:8px;border:1px solid #594422;border-radius:7px;background:#0d0d0d;color:#f4dfad}.arena-find button{padding:8px 10px!important}.arena-stats{line-height:1.45}
+@media(max-width:760px){.arena-find{grid-template-columns:1fr 75px}.arena-find button{grid-column:span 2}.arena-selectors{grid-template-columns:1fr}.arena-selectors>b{display:none}.arena-selectors button{grid-column:auto}}
