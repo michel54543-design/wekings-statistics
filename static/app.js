@@ -555,15 +555,15 @@ function arenaLog(text,cls=''){ const d=document.createElement('div'); d.classNa
 async function arenaAnimate(attacker, defender, side, damage, crit, dodge){
   const a=$("fighter"+attacker), d=$("fighter"+defender), hit=$("arenaHit"); a.classList.add(side===1?'attack-left':'attack-right'); await arenaSleep(arena.skip?20:310);
   if(dodge){ d.classList.add('dodge'); hit.textContent='УКЛОН!'; } else { d.classList.add('hurt'); hit.textContent=(crit?'КРИТ! ':'')+'-'+damage; } hit.classList.remove('show'); void hit.offsetWidth; hit.classList.add('show');
-  await arenaSleep(arena.skip?20:360); a.classList.remove('attack-left','attack-right'); d.classList.remove('hurt','dodge');
+  await arenaSleep(arena.skip?20:360); a.classList.remove('attack-left','attack-right'); d.classList.remove('hurt','dodge','blocked');
 }
 async function arenaFight(){
   if(arena.running)return; const p1=arenaPlayer($("arenaP1").value),p2=arenaPlayer($("arenaP2").value); if(!p1||!p2||p1.id===p2.id){$("arenaResult").textContent='Выберите двух разных игроков.';return;}
   arena.running=true; arena.skip=false; $("arenaLog").innerHTML=''; $("fighter1").className='fighter fighter-left'; $("fighter2").className='fighter fighter-right'; let hp=[0,arenaMaxHp(p1),arenaMaxHp(p2)], max=[0,hp[1],hp[2]], ps=[null,p1,p2]; arenaSetHp(1,hp[1],max[1]);arenaSetHp(2,hp[2],max[2]);
   $("arenaResult").textContent='Бой начался!'; let round=1, turn=Math.random()<.5?1:2;
-  while(hp[1]>0&&hp[2]>0&&round<=30){ const atk=turn,def=atk===1?2:1,A=ps[atk],D=ps[def]; $("arenaRound").textContent=`Раунд ${round}`;
+  while(hp[1]>0&&hp[2]>0&&round<=12){ const atk=turn,def=atk===1?2:1,A=ps[atk],D=ps[def]; $("arenaRound").textContent=`Раунд ${round}`;
     const mastery=arenaVal(A,'mastery'), agility=arenaVal(A,'agility'), defAg=arenaVal(D,'agility'), luck=Math.random(); const dodge=Math.random()<Math.min(.18,.035+defAg/(defAg+mastery+2500)*.14); const crit=!dodge&&Math.random()<Math.min(.25,.055+agility/(agility+3500)*.18);
-    let base=55+arenaVal(A,'power')*.105+mastery*.045-arenaVal(D,'defense')*.055; let damage=Math.max(35,Math.round(base*(.86+Math.random()*.28)*(crit?1.65:1))); if(dodge)damage=0;
+    let base=120+arenaVal(A,'power')*.20+mastery*.085-arenaVal(D,'defense')*.045; let damage=Math.max(95,Math.round(base*(.90+Math.random()*.25)*(crit?1.72:1))); if(dodge)damage=0;
     await arenaAnimate(atk,def,atk,damage,crit,dodge); if(!dodge){hp[def]=Math.max(0,hp[def]-damage);arenaSetHp(def,hp[def],max[def]);}
     arenaLog(`<b>Раунд ${round}:</b> ${A.nickname} ${dodge?'— '+D.nickname+' уклоняется!':`наносит ${damage} урона${crit?' — КРИТ!':''}`}`,crit?'crit':''); if(hp[def]<=0)break; turn=def; if(turn===1)round++; await arenaSleep(arena.skip?10:330);
   }

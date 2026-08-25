@@ -262,3 +262,31 @@ body.modal-open{overflow:hidden}
 .arena-panel:not(.hidden){position:fixed;inset:18px;z-index:10000;margin:0;padding:18px;overflow:auto;background:radial-gradient(circle at 50% 15%,#332315 0,#15120e 38%,#0b0b0a 100%);box-shadow:0 0 0 9999px #000d,inset 0 0 45px #0008}
 body:has(.arena-panel:not(.hidden)){overflow:hidden}
 @media(max-width:760px){.arena-panel:not(.hidden){inset:6px;padding:10px}}
+
+
+/* V77 — detailed CSS Vikings, visual-only arena upgrade */
+.arena-stage{background:linear-gradient(#08111ad9,#18100bd9),radial-gradient(ellipse at 50% 68%,#9b5a214d 0,#2a160b66 35%,#020202 75%);}
+.arena-stage:after{content:"";position:absolute;inset:0;pointer-events:none;background:linear-gradient(90deg,#0007,transparent 18%,transparent 82%,#0007),radial-gradient(circle at 50% 12%,#ffb53617,transparent 35%);box-shadow:inset 0 0 70px #000;}
+.fighter{width:190px;height:225px;bottom:32px;filter:drop-shadow(0 18px 8px #000b);transform-origin:50% 90%;}
+.viking{position:absolute;left:45px;bottom:17px;width:100px;height:175px;z-index:2}.viking i{position:absolute;display:block}
+.v-body{left:20px;top:68px;width:65px;height:76px;border-radius:28px 28px 17px 17px;background:linear-gradient(90deg,#4c2415,#8b4a26 46%,#35190f);border:3px solid #160b07;box-shadow:inset 0 0 0 7px #6b341d,inset 0 -16px 0 #25201d}
+.v-body:after{content:"";position:absolute;left:8px;right:8px;top:12px;height:8px;border-top:4px dotted #b9b0a0;transform:rotate(-6deg)}
+.v-belt{left:20px;top:128px;width:65px;height:11px;background:#24130c;border:2px solid #0b0705;z-index:3}.v-belt:after{content:"";position:absolute;left:27px;top:-3px;width:12px;height:13px;border:3px solid #d19a35;border-radius:2px}
+.v-head{left:28px;top:25px;width:50px;height:55px;border-radius:45% 45% 48% 48%;background:linear-gradient(90deg,#b36a3d,#e5a06d 55%,#9b5633);border:3px solid #1b0e09;z-index:4;box-shadow:inset 0 13px 0 #6e432d}
+.v-head:after{content:"";position:absolute;left:-5px;right:-5px;top:4px;height:19px;border-radius:50% 50% 25% 25%;background:linear-gradient(#59636a,#222a2f);border:2px solid #121619}
+.v-beard{left:25px;top:61px;width:58px;height:48px;z-index:5;background:linear-gradient(90deg,#9c4d20,#d7812e,#6f3218);clip-path:polygon(8% 0,92% 0,78% 72%,58% 55%,50% 100%,39% 55%,20% 75%);filter:drop-shadow(0 3px 1px #0008)}
+.v-eye{left:40px;top:50px;width:5px;height:4px;background:#17120f;border-radius:50%;z-index:7;box-shadow:22px 0 0 #17120f}
+.v-horn{top:20px;width:30px;height:22px;z-index:6;border-top:8px solid #e8d6a5;border-radius:70% 0 0 0}.v-horn.h1{left:12px;transform:rotate(-27deg)}.v-horn.h2{right:6px;transform:scaleX(-1) rotate(-27deg)}
+.v-legs{left:27px;top:136px;width:19px;height:36px;background:#292522;border-radius:0 0 7px 7px;box-shadow:35px 0 0 #292522}.v-legs:after{content:"";position:absolute;left:-7px;top:27px;width:30px;height:12px;border-radius:8px 2px 3px 3px;background:#17100c;box-shadow:35px 0 0 #17100c}
+.fighter-shield{position:absolute;bottom:34px;width:79px;height:91px;z-index:8;border-radius:50%;background:radial-gradient(circle,#b98231 0 9px,#283c4e 10px 34px,#a8782e 35px 40px,#19130e 41px);border:3px solid #15110e;box-shadow:inset 8px -7px 14px #0007,0 5px 8px #0007}.fighter-shield i{position:absolute;left:36px;top:5px;width:6px;height:78px;background:#c08d3c;transform:rotate(18deg);opacity:.7}
+.fighter-weapon{position:absolute;top:16px;width:86px;height:120px;z-index:9;transform-origin:50% 85%}.fighter-weapon:before{content:"";position:absolute;left:40px;top:25px;width:8px;height:92px;border-radius:4px;background:linear-gradient(90deg,#4a2512,#a46630,#32180c);box-shadow:0 2px 2px #000}.fighter-weapon.axe:after{content:"";position:absolute;left:9px;top:8px;width:58px;height:39px;background:linear-gradient(135deg,#e5e7e8,#68727b);clip-path:polygon(28% 5%,100% 0,77% 88%,26% 73%,0 100%,9% 26%);border-radius:4px;filter:drop-shadow(0 2px 1px #000)}
+.fighter-weapon.sword:before{left:39px;top:38px;height:79px}.fighter-weapon.sword:after{content:"";position:absolute;left:35px;top:0;width:17px;height:75px;background:linear-gradient(90deg,#7c8792,#f2f4f5 48%,#707982);clip-path:polygon(50% 0,100% 14%,75% 100%,25% 100%,0 14%);filter:drop-shadow(0 2px 2px #000)}.fighter-weapon.sword i{position:absolute;left:20px;top:70px;width:49px;height:8px;background:#c38b32;border-radius:4px;z-index:3}
+.fighter-left .fighter-shield{right:1px}.fighter-left .fighter-weapon{left:-2px;transform:rotate(-35deg)}.fighter-right .fighter-shield{left:1px}.fighter-right .fighter-weapon{right:-2px;transform:rotate(35deg)}.fighter-right .viking{transform:scaleX(-1)}
+.fighter.blocked .fighter-shield{animation:shieldBlock .32s ease}.fighter.hurt .viking{filter:brightness(1.45) saturate(.55)}
+@keyframes shieldBlock{0%{transform:translateX(0) scale(1)}45%{transform:translateX(17px) scale(1.13)}100%{transform:translateX(0) scale(1)}}
+@keyframes chargeLeft{0%{transform:translateX(-50%)}45%{transform:translateX(-22%) translateY(-4px)}100%{transform:translateX(-50%)}}
+@keyframes chargeRight{0%{transform:translateX(-50%)}45%{transform:translateX(-78%) translateY(-4px)}100%{transform:translateX(-50%)}}
+@keyframes swingLeft{0%{transform:rotate(-35deg)}48%{transform:rotate(66deg)}100%{transform:rotate(-35deg)}}
+@keyframes swingRight{0%{transform:rotate(35deg)}48%{transform:rotate(-66deg)}100%{transform:rotate(35deg)}}
+@keyframes hurt{0%{transform:translateX(-50%)}40%{transform:translateX(-63%) rotate(-7deg)}100%{transform:translateX(-50%)}}
+@media(max-width:760px){.fighter{width:130px;height:170px;transform:translateX(-50%) scale(.78);transform-origin:50% 100%}.fighter.defeated{transform:translateX(-50%) scale(.78) rotate(80deg) translateY(45px)}}
