@@ -312,3 +312,41 @@ body:has(.arena-panel:not(.hidden)){overflow:hidden}
 @keyframes v78ImpactRight{0%,100%{background-position:center 52%}45%{background-position:calc(50% - 13px) 52%}}
 @keyframes v78Crit{0%,100%{filter:none}35%{filter:brightness(1.28) contrast(1.12)}55%{filter:brightness(.8)}}
 @media(max-width:760px){.arena-stage{min-height:410px;background-position:center 50%!important}.arena-stage .arena-name{font-size:15px}.arena-stage .arena-stats{font-size:8px}.arena-center strong{font-size:17px;padding:6px 9px}.arena-hit{font-size:27px}}
+
+/* V79 — REAL ANIMATED FIGHTERS. The V78 poster is no longer used as the stage. */
+.arena-stage{
+  min-height:520px;
+  background-image:
+    linear-gradient(180deg,rgba(3,8,12,.18) 0,rgba(3,6,8,.35) 55%,rgba(0,0,0,.72) 100%),
+    radial-gradient(ellipse at 50% 88%,rgba(139,77,26,.55) 0,rgba(46,25,12,.72) 38%,rgba(4,5,6,.96) 78%),
+    linear-gradient(90deg,#111923 0,#302013 48%,#111923 100%)!important;
+  background-size:cover!important;background-position:center!important;
+}
+.arena-stage:before{content:"";position:absolute;inset:0!important;height:auto!important;z-index:1;background:
+  radial-gradient(circle at 8% 45%,#ff8a1645 0 3%,transparent 8%),
+  radial-gradient(circle at 92% 45%,#ff8a1645 0 3%,transparent 8%),
+  repeating-linear-gradient(90deg,transparent 0 10%,#d6a34a0b 10.2% 10.6%,transparent 10.8% 20%)!important;}
+.arena-stage:after{content:"";position:absolute;left:0;right:0;bottom:0;top:auto;height:31%!important;z-index:1;background:
+  linear-gradient(transparent,#3b2418aa),
+  repeating-linear-gradient(96deg,#ffffff08 0 2px,transparent 2px 18px)!important;box-shadow:inset 0 -35px 55px #0009!important;}
+.arena-stage .fighter{opacity:1!important;pointer-events:auto;display:block!important;z-index:7;bottom:42px;animation:v79Idle 1.15s ease-in-out infinite alternate;will-change:transform,filter;}
+.arena-stage .fighter-left{filter:drop-shadow(0 18px 9px #000c) drop-shadow(0 0 18px #3b78a333)}
+.arena-stage .fighter-right{filter:drop-shadow(0 18px 9px #000c) drop-shadow(0 0 18px #a33b3b33)}
+.arena-stage .fighter.attack-left{animation:v79ChargeLeft .82s cubic-bezier(.2,.8,.2,1)!important}
+.arena-stage .fighter.attack-right{animation:v79ChargeRight .82s cubic-bezier(.2,.8,.2,1)!important}
+.arena-stage .fighter.attack-left .fighter-weapon{animation:v79SwingLeft .82s cubic-bezier(.2,.8,.2,1)!important}
+.arena-stage .fighter.attack-right .fighter-weapon{animation:v79SwingRight .82s cubic-bezier(.2,.8,.2,1)!important}
+.arena-stage .fighter.hurt{animation:v79Hurt .5s ease!important}
+.arena-stage .fighter.dodge{animation:v79Dodge .58s ease!important}
+.arena-stage .fighter.defeated{animation:v79Fall .72s ease-out forwards!important;opacity:.72!important}
+.arena-stage .fighter.winner{animation:v79Victory .65s ease-in-out infinite alternate!important}
+@keyframes v79Idle{from{transform:translateX(-50%) translateY(0) rotate(-.8deg)}to{transform:translateX(-50%) translateY(-7px) rotate(.8deg)}}
+@keyframes v79ChargeLeft{0%{transform:translateX(-50%)}28%{transform:translateX(-60%) rotate(-3deg)}58%{transform:translateX(18%) translateY(-5px) rotate(4deg) scale(1.06)}76%{transform:translateX(5%) rotate(1deg)}100%{transform:translateX(-50%)}}
+@keyframes v79ChargeRight{0%{transform:translateX(-50%)}28%{transform:translateX(-40%) rotate(3deg)}58%{transform:translateX(-118%) translateY(-5px) rotate(-4deg) scale(1.06)}76%{transform:translateX(-105%) rotate(-1deg)}100%{transform:translateX(-50%)}}
+@keyframes v79SwingLeft{0%,22%{transform:rotate(-35deg)}42%{transform:rotate(-92deg)}62%{transform:rotate(72deg)}100%{transform:rotate(-35deg)}}
+@keyframes v79SwingRight{0%,22%{transform:rotate(35deg)}42%{transform:rotate(92deg)}62%{transform:rotate(-72deg)}100%{transform:rotate(35deg)}}
+@keyframes v79Hurt{0%{transform:translateX(-50%)}28%{transform:translateX(-50%) scale(1.04);filter:brightness(2.2) saturate(.4)}55%{transform:translateX(-30%) rotate(10deg)}100%{transform:translateX(-50%)}}
+@keyframes v79Dodge{0%,100%{transform:translateX(-50%)}48%{transform:translateX(-50%) translateY(-38px) scale(.94)}}
+@keyframes v79Fall{0%{transform:translateX(-50%) rotate(0)}100%{transform:translateX(-50%) translateY(48px) rotate(82deg);filter:grayscale(.55) brightness(.65)}}
+@keyframes v79Victory{from{transform:translateX(-50%) translateY(0) scale(1)}to{transform:translateX(-50%) translateY(-15px) scale(1.07)}}
+@media(max-width:760px){.arena-stage{min-height:410px}.arena-stage .fighter{bottom:48px}.arena-stage .fighter.attack-left{animation:v79ChargeLeftMobile .82s ease!important}.arena-stage .fighter.attack-right{animation:v79ChargeRightMobile .82s ease!important}@keyframes v79ChargeLeftMobile{0%{transform:translateX(-50%) scale(.78)}55%{transform:translateX(0%) translateY(-4px) scale(.84)}100%{transform:translateX(-50%) scale(.78)}}@keyframes v79ChargeRightMobile{0%{transform:translateX(-50%) scale(.78)}55%{transform:translateX(-100%) translateY(-4px) scale(.84)}100%{transform:translateX(-50%) scale(.78)}}}
