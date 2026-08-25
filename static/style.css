@@ -251,4 +251,5 @@ body.modal-open{overflow:hidden}
 .yesterday-top-card span{display:block;color:#9f988d;font-size:9px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .yesterday-top-card a{display:block;margin-top:5px;color:#f3d47c;text-decoration:none;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .yesterday-top-card b{display:block;margin-top:4px;color:#68cf8f;font-size:14px}
+.yesterday-top-card b.yesterday-negative{color:#ff5b55}
 @media(max-width:760px){.yesterday-tops-panel{padding:11px}.yesterday-tops-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.yesterday-hero{align-items:flex-start;flex-wrap:wrap}.yesterday-hero b{margin-left:0;width:100%}}
