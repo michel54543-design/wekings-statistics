@@ -396,7 +396,7 @@ function closeLife(){$("lifePanel").classList.add("hidden");$("lifeToggle").clas
 const yesterdayTopsState = { loaded: false };
 async function loadYesterdayTops() {
   $("yesterdayTopsGrid").innerHTML = '<p class="life-empty">Считаем вчерашние топы…</p>';
-  const data = await fetch("/api/yesterday-tops").then(r => r.json());
+  const data = await fetch(`/api/yesterday-tops?_=${Date.now()}`, { cache: "no-store" }).then(r => r.json());
   if (!data.ready) {
     $("yesterdayTopsDate").textContent = "Нужно минимум три дневных снимка";
     $("yesterdayHero").innerHTML = "";
@@ -422,7 +422,7 @@ function openYesterdayTops(){
   $("yesterdayTopsPanel").classList.remove("hidden");
   $("yesterdayTopsToggle").classList.add("active");
   $("yesterdayTopsToggle").setAttribute("aria-expanded","true");
-  if (!yesterdayTopsState.loaded) loadYesterdayTops().catch(()=>{$("yesterdayTopsGrid").innerHTML='<p class="life-empty">Не удалось загрузить топы.</p>';});
+  loadYesterdayTops().catch(()=>{$("yesterdayTopsGrid").innerHTML='<p class="life-empty">Не удалось загрузить топы.</p>';});
   $("yesterdayTopsPanel").scrollIntoView({behavior:"smooth",block:"start"});
 }
 function closeYesterdayTops(){
