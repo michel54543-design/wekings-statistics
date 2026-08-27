@@ -472,16 +472,33 @@ def fetch_attack_schedule():
         weather_raw = None
         # HTML Монаха может содержать переносы строк и NBSP между словами.
         monk_text = re.sub(r"\s+", " ", text.replace("\xa0", " ")).strip()
+        # Игра сейчас выводит прогноз как "... ожидается 18:30 28.08.26"
+        # (сначала время, затем дата). Поддерживаем также старый формат
+        # "28.08.26 18:30", чтобы обновление игры снова не сломало прогноз.
         weather_match = re.search(
             r"(?:по\s+прогнозу\s+)?(?:подходящая|хорошая)\s+погода"
             r".{0,120}?"
+            r"(\d{1,2})\s*:\s*(\d{2})\s+"
             r"(\d{1,2})\s*[./-]\s*(\d{1,2})"
-            r"(?:\s*[./-]\s*(\d{2,4}))?\s+"
-            r"(\d{1,2})\s*:\s*(\d{2})",
+            r"(?:\s*[./-]\s*(\d{2,4}))?",
             monk_text, re.I
         )
+        weather_time_first = bool(weather_match)
+        if not weather_match:
+            weather_match = re.search(
+                r"(?:по\s+прогнозу\s+)?(?:подходящая|хорошая)\s+погода"
+                r".{0,120}?"
+                r"(\d{1,2})\s*[./-]\s*(\d{1,2})"
+                r"(?:\s*[./-]\s*(\d{2,4}))?\s+"
+                r"(\d{1,2})\s*:\s*(\d{2})",
+                monk_text, re.I
+            )
+            weather_time_first = False
         if weather_match:
-            day, month, year, hour, minute = weather_match.groups()
+            if weather_time_first:
+                hour, minute, day, month, year = weather_match.groups()
+            else:
+                day, month, year, hour, minute = weather_match.groups()
             year = int(year) if year else game_now.year
             if year < 100:
                 year += 2000
