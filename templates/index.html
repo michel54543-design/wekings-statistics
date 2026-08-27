@@ -36,27 +36,17 @@
       <button data-mode="stats"><span class="mode-icon">≡</span>Едина</button>
       <button data-mode="clans"><span class="mode-icon">♜</span>Кланы</button>
       <button data-mode="brotherhoods"><span class="mode-icon">♛</span>Братства</button>
-      <button id="lifeToggle" class="life-toggle" type="button" aria-expanded="false"><span class="mode-icon">🔥</span>Жизнь</button>
+      <button id="todayTopsToggle" class="yesterday-tops-toggle" type="button" aria-expanded="false"><span class="mode-icon">🏆</span>Топы сегодня</button>
       <button id="yesterdayTopsToggle" class="yesterday-tops-toggle" type="button" aria-expanded="false"><span class="mode-icon">🏆</span>Топы вчера</button>
     </nav>
 
-    <section id="lifePanel" class="life-panel hidden" aria-live="polite">
+    <section id="todayTopsPanel" class="yesterday-tops-panel hidden" aria-live="polite">
       <div class="life-head">
-        <div><h2>🔥 Жизнь WEKINGS</h2><p id="lifeRange">Что изменилось в игре</p></div>
-        <button id="lifeClose" type="button">Свернуть ↑</button>
+        <div><h2>🏆 Топы сегодня</h2><p id="todayTopsDate">Лучшие результаты за сегодня</p></div>
+        <button id="todayTopsClose" type="button">Свернуть ↑</button>
       </div>
-      <div class="life-periods">
-        <button type="button" data-life-period="now" class="active">За последний час</button>
-        <button type="button" data-life-period="today">Сегодня</button>
-        <button type="button" data-life-period="7d">За 7 дней</button>
-      </div>
-      <div id="lifeDailySummary" class="life-daily-summary"></div>
-      <div class="life-feature-grid life-feature-hidden" aria-hidden="true">
-        <article id="lifeHeroDay" class="life-feature-card"></article>
-        <article id="lifeContributorTops" class="life-feature-card life-contributor-card"></article>
-      </div>
-      <div id="lifeHeroes" class="life-heroes"></div>
-      <div id="lifeEvents" class="life-events"><p class="life-empty">Загрузка событий…</p></div>
+      <div id="todayHero" class="yesterday-hero"></div>
+      <div id="todayTopsGrid" class="yesterday-tops-grid"><p class="life-empty">Загрузка топов…</p></div>
     </section>
 
     <section id="yesterdayTopsPanel" class="yesterday-tops-panel hidden" aria-live="polite">
