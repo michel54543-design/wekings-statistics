@@ -327,71 +327,43 @@ async function loadPlayers() {
 }
 
 
-const lifeState = { period: "now", loaded: false };
-function lifeDateText(value) {
-  return new Date(value).toLocaleString("ru-RU",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"});
-}
-async function loadLife(period=lifeState.period) {
-  lifeState.period=period;
-  document.querySelectorAll("[data-life-period]").forEach(b=>b.classList.toggle("active",b.dataset.lifePeriod===period));
-  $("lifeEvents").innerHTML='<p class="life-empty">Собираем события…</p>';
-  const data=await fetch(`/api/life?period=${encodeURIComponent(period)}`).then(r=>r.json());
-  if(!data.ready){$("lifeRange").textContent="Нужно минимум два завершённых снимка";$("lifeHeroes").innerHTML="";$("lifeEvents").innerHTML='<p class="life-empty">Пока недостаточно данных.</p>';return;}
-  $("lifeRange").textContent=`${lifeDateText(data.from_date)} → ${lifeDateText(data.to_date)}`;
-  $("lifeHeroes").innerHTML=data.heroes?.length?data.heroes.slice(0,4).map(h=>`<article class="life-hero"><span>${h.icon} ${escapeHtml(h.label)}</span><strong>${escapeHtml(h.nickname)}</strong><b>+${fmt(h.gain)}</b></article>`).join(""):"";
-  $("lifeEvents").innerHTML=data.events?.length?data.events.map(e=>`<article class="life-event"><span class="life-event-icon">${e.icon}</span><div><a class="game-profile-link" href="https://playwekings.mobi/hero/detail?player=${e.player_id}">${escapeHtml(e.nickname)}</a><p>${escapeHtml(e.text)}</p></div></article>`).join(""):'<p class="life-empty">За выбранный период заметных изменений нет.</p>';
-  lifeState.loaded=true;
-}
-
-async function loadLifeSummary() {
-  const data = await fetch("/api/life-summary").then(r => r.json());
-  if (!data.ready) return;
-  const s = data.summary || {};
-  $("lifeDailySummary").innerHTML = `
-    <div><b>📊 ${fmt(s.active_players)}</b><span>активных игроков</span></div>`;
-  const h = data.hero;
-  if (h) {
-    const achievements = [];
-    if (h.bandit_gain) achievements.push(`⚔️ ${fmt(h.bandit_gain)} побед над наёмниками`);
-    if (h.stat_gain) achievements.push(`💪 +${fmt(h.stat_gain)} характеристик`);
-    if (h.mine_gain) achievements.push(`⛏️ +${fmt(h.mine_gain)} шахта`);
-    if (h.power_gain) achievements.push(`⚡ +${fmt(h.power_gain)} силы`);
-    if (h.dragon_gain) achievements.push(`🐉 ${fmt(h.dragon_gain)} побед над Драконом`);
-    if (h.serpent_gain) achievements.push(`🐍 ${fmt(h.serpent_gain)} побед над Змеем`);
-    if (h.quests_gain) achievements.push(`📜 +${fmt(h.quests_gain)} заданий`);
-    if (h.wins_gain) achievements.push(`🏆 +${fmt(h.wins_gain)} побед`);
-    $("lifeHeroDay").innerHTML = `
-      <header><span>👑</span><div><small>ГЕРОЙ ДНЯ</small><strong>${escapeHtml(h.nickname)}</strong></div></header>
-      <div class="life-hero-reasons">${achievements.slice(0,4).map(x => `<div>${x}</div>`).join("")}</div>
-      <p><b>За наибольшую активность сегодня</b></p>
-      <a class="game-profile-link" href="https://playwekings.mobi/hero/detail?player=${h.player_id}">Открыть игрока →</a>`;
-  } else {
-    $("lifeHeroDay").innerHTML = `<header><span>👑</span><div><small>ГЕРОЙ ДНЯ</small><strong>Пока определяется</strong></div></header>`;
+const todayTopsState = { loaded: false };
+async function loadTodayTops() {
+  $("todayTopsGrid").innerHTML = '<p class="life-empty">Считаем топы за сегодня…</p>';
+  const data = await fetch(`/api/today-tops?_=${Date.now()}`, { cache: "no-store" }).then(r => r.json());
+  if (!data.ready) {
+    $("todayTopsDate").textContent = "Нужно минимум два снимка за сегодняшний день";
+    $("todayHero").innerHTML = "";
+    $("todayTopsGrid").innerHTML = '<p class="life-empty">Пока недостаточно данных за сегодня.</p>';
+    return;
   }
-
-  const topRows = (items, emptyText) => items?.length
-    ? items.slice(0,5).map((x, i) => `
-        <div class="life-contributor-row">
-          <span class="life-contributor-rank">${i + 1}</span>
-          <div><a class="game-profile-link" href="https://playwekings.mobi/hero/detail?player=${x.player_id}">${escapeHtml(x.nickname)}</a>
-          <small>${escapeHtml(x.organization)}</small></div>
-          <b class="${["losses","silver_lost","crystals_lost"].includes(x.metric) ? "yesterday-negative" : ""}">${["losses","silver_lost","crystals_lost"].includes(x.metric) ? "−" : "+"}${fmt(x.gain)}</b>
-        </div>`).join("")
-    : `<p class="life-empty">${emptyText}</p>`;
-  $("lifeContributorTops").innerHTML = `
-    <div class="life-contributor-section">
-      <header><span>🛡️</span><div><small>ТОП В БРАТСТВАХ</small><strong>Прирост характеристик</strong></div></header>
-      ${topRows(data.top_brotherhood, "Пока нет прироста")}
-    </div>
-    <div class="life-contributor-section">
-      <header><span>🏰</span><div><small>ТОП В КЛАНАХ</small><strong>Прирост характеристик</strong></div></header>
-      ${topRows(data.top_clan, "Пока нет прироста")}
-    </div>`;
+  const d = new Date(data.date + "T12:00:00");
+  $("todayTopsDate").textContent = `Результаты за ${d.toLocaleDateString("ru-RU")} • обновлено по последнему снимку`;
+  const hero = data.hero;
+  $("todayHero").innerHTML = hero ? `
+    <span>👑 Герой сегодняшнего дня</span>
+    <a class="game-profile-link" href="https://playwekings.mobi/hero/detail?player=${hero.player_id}">${escapeHtml(hero.nickname)}</a>
+    <b>${hero.first_places} ${hero.first_places === 1 ? "первое место" : "первых места"}</b>` : "";
+  $("todayTopsGrid").innerHTML = data.tops?.length ? data.tops.map(x => `
+    <article class="yesterday-top-card">
+      <span>${x.icon} ${escapeHtml(x.label)}</span>
+      <a class="game-profile-link" href="https://playwekings.mobi/hero/detail?player=${x.player_id}">${escapeHtml(x.nickname)}</a>
+      <b class="${["losses","silver_lost","crystals_lost"].includes(x.metric) ? "yesterday-negative" : ""}">${["losses","silver_lost","crystals_lost"].includes(x.metric) ? "−" : "+"}${fmt(x.gain)}</b>
+    </article>`).join("") : '<p class="life-empty">Сегодня пока нет прироста по этим показателям.</p>';
+  todayTopsState.loaded = true;
 }
-
-function openLife(){$("lifePanel").classList.remove("hidden");$("lifeToggle").classList.add("active");$("lifeToggle").setAttribute("aria-expanded","true");if(!lifeState.loaded)loadLife().catch(()=>{$("lifeEvents").innerHTML='<p class="life-empty">Не удалось загрузить события.</p>';});loadLifeSummary().catch(()=>{});$("lifePanel").scrollIntoView({behavior:"smooth",block:"start"});}
-function closeLife(){$("lifePanel").classList.add("hidden");$("lifeToggle").classList.remove("active");$("lifeToggle").setAttribute("aria-expanded","false");}
-
+function openTodayTops(){
+  $("todayTopsPanel").classList.remove("hidden");
+  $("todayTopsToggle").classList.add("active");
+  $("todayTopsToggle").setAttribute("aria-expanded","true");
+  loadTodayTops().catch(()=>{$("todayTopsGrid").innerHTML='<p class="life-empty">Не удалось загрузить топы.</p>';});
+  $("todayTopsPanel").scrollIntoView({behavior:"smooth",block:"start"});
+}
+function closeTodayTops(){
+  $("todayTopsPanel").classList.add("hidden");
+  $("todayTopsToggle").classList.remove("active");
+  $("todayTopsToggle").setAttribute("aria-expanded","false");
+}
 
 const yesterdayTopsState = { loaded: false };
 async function loadYesterdayTops() {
@@ -520,11 +492,10 @@ $("mobilePlayer").onclick = () => {
 };
 
 
-$("lifeToggle").onclick=()=>{$("lifePanel").classList.contains("hidden")?openLife():closeLife();};
-$("lifeClose").onclick=closeLife;
+$("todayTopsToggle").onclick=()=>{$("todayTopsPanel").classList.contains("hidden")?openTodayTops():closeTodayTops();};
+$("todayTopsClose").onclick=closeTodayTops;
 $("yesterdayTopsToggle").onclick=()=>{$("yesterdayTopsPanel").classList.contains("hidden")?openYesterdayTops():closeYesterdayTops();};
 $("yesterdayTopsClose").onclick=closeYesterdayTops;
-document.querySelectorAll("[data-life-period]").forEach(b=>{b.onclick=()=>loadLife(b.dataset.lifePeriod).catch(()=>{$("lifeEvents").innerHTML='<p class="life-empty">Не удалось загрузить события.</p>';});});
 
 $("todayBadge").textContent = new Date().toLocaleDateString("ru-RU", {
   day: "2-digit", month: "short"
