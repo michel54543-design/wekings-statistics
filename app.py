@@ -875,6 +875,54 @@ YESTERDAY_TOP_METRICS = [
     ("serpent_kills", "Убийства Змея", "🌊"),
 ]
 
+@app.get("/api/today-tops")
+def api_today_tops():
+    # Топы текущего дня: первый завершённый снимок сегодня -> последний завершённый снимок сегодня.
+    # Используем тот же набор категорий, что и в «Топы вчера».
+    dates = _life_snapshot_dates()
+    today = moldova_date(datetime.now(timezone.utc))
+    today_dates = sorted([dt for dt in dates if moldova_date(dt) == today])
+    if len(today_dates) < 2:
+        return jsonify(ready=False, tops=[], date=today.isoformat())
+
+    before_at = today_dates[0]
+    current_at = today_dates[-1]
+    current = PlayerSnapshot.query.filter_by(batch_at=current_at).all()
+    before = {x.player_id: x for x in PlayerSnapshot.query.filter_by(batch_at=before_at).all()}
+
+    tops = []
+    first_counts = {}
+    first_total_gain = {}
+    first_players = {}
+    for key, label, icon in YESTERDAY_TOP_METRICS:
+        best = None
+        for player in current:
+            old = before.get(player.player_id)
+            if not old:
+                continue
+            a, b = getattr(player, key, None), getattr(old, key, None)
+            if a is None or b is None:
+                continue
+            gain = int(a) - int(b)
+            if gain <= 0:
+                continue
+            if best is None or gain > best[0]:
+                best = (gain, player)
+        if best:
+            gain, player = best
+            tops.append({"metric": key, "label": label, "icon": icon, "player_id": player.player_id, "nickname": player.nickname, "gain": gain})
+            first_counts[player.player_id] = first_counts.get(player.player_id, 0) + 1
+            first_total_gain[player.player_id] = first_total_gain.get(player.player_id, 0) + gain
+            first_players[player.player_id] = player.nickname
+
+    hero = None
+    if first_counts:
+        pid = max(first_counts, key=lambda x: (first_counts[x], first_total_gain[x]))
+        hero = {"player_id": pid, "nickname": first_players[pid], "first_places": first_counts[pid]}
+
+    return jsonify(ready=True, date=today.isoformat(), from_date=before_at.isoformat(),
+                   to_date=current_at.isoformat(), tops=tops, hero=hero)
+
 @app.get("/api/yesterday-tops")
 def api_yesterday_tops():
     cache_key = "yesterday:tops"
