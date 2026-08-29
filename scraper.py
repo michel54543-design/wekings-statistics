@@ -400,29 +400,25 @@ def _link_by_text(html: str, label: str, base_url: str):
 
 
 def _duration_near(text: str, labels):
-    """Ищет обратный отсчёт босса даже если HTML разбил фразу на несколько строк."""
     lines = [line.strip() for line in text.splitlines() if line.strip()]
     for label in labels:
-        for idx, source_line in enumerate(lines):
-            if label.casefold() not in source_line.casefold():
-                continue
-            # В игре подпись и 03:05:08 иногда находятся в соседних span/div.
-            # Поэтому проверяем строку босса и две следующие строки вместе.
-            line = " ".join(lines[idx:idx + 3])
-            days = re.search(r"(\d+)\s*(?:дн(?:ей|я|ь)?|d)", line, re.I)
-            hours = re.search(r"(\d+)\s*(?:час(?:а|ов)?|ч\.?|h)", line, re.I)
-            minutes = re.search(r"(\d+)\s*(?:мин(?:ут|ы)?|м\.?|min)", line, re.I)
-            seconds = re.search(r"(\d+)\s*(?:сек(?:унд)?|с\.?|sec)", line, re.I)
-            if any((days, hours, minutes, seconds)):
-                return timedelta(days=int(days.group(1)) if days else 0,
-                                 hours=int(hours.group(1)) if hours else 0,
-                                 minutes=int(minutes.group(1)) if minutes else 0,
-                                 seconds=int(seconds.group(1)) if seconds else 0), line[:180]
-            clock = re.search(r"(?:через|осталось|до\s+(?:нападения|атаки|начала))?\s*(\d{1,3}):(\d{2})(?::(\d{2}))?", line, re.I)
-            if clock:
-                a, b, c = int(clock.group(1)), int(clock.group(2)), clock.group(3)
-                delta = timedelta(minutes=a, seconds=b) if c is None else timedelta(hours=a, minutes=b, seconds=int(c))
-                return delta, line[:180]
+        line = next((x for x in lines if label.casefold() in x.casefold()), None)
+        if not line:
+            continue
+        days = re.search(r"(\d+)\s*(?:дн(?:ей|я|ь)?|d)", line, re.I)
+        hours = re.search(r"(\d+)\s*(?:час(?:а|ов)?|ч\.?|h)", line, re.I)
+        minutes = re.search(r"(\d+)\s*(?:мин(?:ут|ы)?|м\.?|min)", line, re.I)
+        seconds = re.search(r"(\d+)\s*(?:сек(?:унд)?|с\.?|sec)", line, re.I)
+        if any((days, hours, minutes, seconds)):
+            return timedelta(days=int(days.group(1)) if days else 0,
+                             hours=int(hours.group(1)) if hours else 0,
+                             minutes=int(minutes.group(1)) if minutes else 0,
+                             seconds=int(seconds.group(1)) if seconds else 0), line[:180]
+        clock = re.search(r"(?:через|осталось|до\s+(?:нападения|атаки|начала))?\s*(\d{1,3}):(\d{2})(?::(\d{2}))?", line, re.I)
+        if clock:
+            a, b, c = int(clock.group(1)), int(clock.group(2)), clock.group(3)
+            delta = timedelta(minutes=a, seconds=b) if c is None else timedelta(hours=a, minutes=b, seconds=int(c))
+            return delta, line[:180]
     return None, None
 
 
@@ -454,10 +450,23 @@ def fetch_attack_schedule():
 
         soup = BeautifulSoup(monk.text, "html.parser")
         text = soup.get_text("\n", strip=True)
+        # ВАЖНО: таймер каждого босса ищем только в его собственной строке.
+        # Нельзя брать ближайший таймер из соседней строки: когда написано
+        # "Дракон уже улетел", следующий таймер относится к Морскому Змею.
         dragon_delta, dragon_raw = _duration_near(text, ("Дракон", "Дракона", "Драконом"))
-        serpent_delta, serpent_raw = _duration_near(text, ("Змей", "Змея", "Змеем", "Змею"))
+        serpent_delta, serpent_raw = _duration_near(text, ("Морского Змея", "Морской Змей", "Змей", "Змея", "Змеем", "Змею"))
+
         dragon_active = bool(re.search(r"Дракон\s+напал|нападение\s+Дракона\s+(?:уже\s+)?началось", text, re.I))
         serpent_active = bool(re.search(r"(?:Морской\s+)?Змей\s+напал|нападение\s+(?:Морского\s+)?Змея\s+(?:уже\s+)?началось", text, re.I))
+        dragon_gone = bool(re.search(r"Дракон\s+уже\s+улетел", text, re.I))
+        serpent_gone = bool(re.search(r"(?:Морской\s+)?Змей\s+уже\s+(?:уплыл|уш[её]л)", text, re.I))
+
+        # Если у босса статус без таймера, сохраняем именно статус, а не
+        # подставляем таймер другого босса.
+        if dragon_delta is None and dragon_gone:
+            dragon_raw = "Дракон уже улетел"
+        if serpent_delta is None and serpent_gone:
+            serpent_raw = "Морской Змей уже ушёл"
         logger.warning("[ATTACKS] parsed dragon_delta=%r dragon_raw=%r active=%s serpent_delta=%r serpent_raw=%r active=%s", dragon_delta, dragon_raw, dragon_active, serpent_delta, serpent_raw, serpent_active)
         if dragon_delta is None and serpent_delta is None and not dragon_active and not serpent_active:
             sample = re.sub(r"\s+", " ", text)[:700]
