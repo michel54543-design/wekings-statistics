@@ -1646,8 +1646,12 @@ def start_daily_attack_if_needed():
         fetched_at = _as_utc(state.fetched_at) if state and state.fetched_at else None
         if fetched_at and not state.last_error:
             fetched_local = fetched_at.astimezone(ZoneInfo("Europe/Chisinau"))
-            if fetched_local.date() == now_local.date():
-                app.logger.info("Wekings attacks skipped: schedule already fetched today")
+            # Считаем суточное чтение Монаха завершённым только когда получили
+            # ОБА будущих времени. Раньше один найденный босс считался успехом,
+            # поэтому попытки 00:07/00:12/00:22 уже не выполнялись.
+            have_both_bosses = bool(state.dragon_at and state.serpent_at)
+            if fetched_local.date() == now_local.date() and have_both_bosses:
+                app.logger.info("Wekings attacks skipped: both boss times already fetched today")
                 return
     start_attack_thread()
 

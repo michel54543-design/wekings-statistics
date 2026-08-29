@@ -400,25 +400,29 @@ def _link_by_text(html: str, label: str, base_url: str):
 
 
 def _duration_near(text: str, labels):
+    """Ищет обратный отсчёт босса даже если HTML разбил фразу на несколько строк."""
     lines = [line.strip() for line in text.splitlines() if line.strip()]
     for label in labels:
-        line = next((x for x in lines if label.casefold() in x.casefold()), None)
-        if not line:
-            continue
-        days = re.search(r"(\d+)\s*(?:дн(?:ей|я|ь)?|d)", line, re.I)
-        hours = re.search(r"(\d+)\s*(?:час(?:а|ов)?|ч\.?|h)", line, re.I)
-        minutes = re.search(r"(\d+)\s*(?:мин(?:ут|ы)?|м\.?|min)", line, re.I)
-        seconds = re.search(r"(\d+)\s*(?:сек(?:унд)?|с\.?|sec)", line, re.I)
-        if any((days, hours, minutes, seconds)):
-            return timedelta(days=int(days.group(1)) if days else 0,
-                             hours=int(hours.group(1)) if hours else 0,
-                             minutes=int(minutes.group(1)) if minutes else 0,
-                             seconds=int(seconds.group(1)) if seconds else 0), line[:180]
-        clock = re.search(r"(?:через|осталось|до\s+(?:нападения|атаки|начала))?\s*(\d{1,3}):(\d{2})(?::(\d{2}))?", line, re.I)
-        if clock:
-            a, b, c = int(clock.group(1)), int(clock.group(2)), clock.group(3)
-            delta = timedelta(minutes=a, seconds=b) if c is None else timedelta(hours=a, minutes=b, seconds=int(c))
-            return delta, line[:180]
+        for idx, source_line in enumerate(lines):
+            if label.casefold() not in source_line.casefold():
+                continue
+            # В игре подпись и 03:05:08 иногда находятся в соседних span/div.
+            # Поэтому проверяем строку босса и две следующие строки вместе.
+            line = " ".join(lines[idx:idx + 3])
+            days = re.search(r"(\d+)\s*(?:дн(?:ей|я|ь)?|d)", line, re.I)
+            hours = re.search(r"(\d+)\s*(?:час(?:а|ов)?|ч\.?|h)", line, re.I)
+            minutes = re.search(r"(\d+)\s*(?:мин(?:ут|ы)?|м\.?|min)", line, re.I)
+            seconds = re.search(r"(\d+)\s*(?:сек(?:унд)?|с\.?|sec)", line, re.I)
+            if any((days, hours, minutes, seconds)):
+                return timedelta(days=int(days.group(1)) if days else 0,
+                                 hours=int(hours.group(1)) if hours else 0,
+                                 minutes=int(minutes.group(1)) if minutes else 0,
+                                 seconds=int(seconds.group(1)) if seconds else 0), line[:180]
+            clock = re.search(r"(?:через|осталось|до\s+(?:нападения|атаки|начала))?\s*(\d{1,3}):(\d{2})(?::(\d{2}))?", line, re.I)
+            if clock:
+                a, b, c = int(clock.group(1)), int(clock.group(2)), clock.group(3)
+                delta = timedelta(minutes=a, seconds=b) if c is None else timedelta(hours=a, minutes=b, seconds=int(c))
+                return delta, line[:180]
     return None, None
 
 
