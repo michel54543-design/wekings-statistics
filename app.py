@@ -202,96 +202,26 @@ class PlayerSnapshot(db.Model):
 
 
 with app.app_context():
-    db.create_all()
-    # Добавляем поля прогноза Монаха в существующую БД без удаления данных.
-    try:
-        inspector = db.inspect(db.engine)
-        existing_attack = {col["name"] for col in inspector.get_columns("game_attack_state")}
-        if "weather_at" not in existing_attack:
-            db.session.execute(db.text('ALTER TABLE game_attack_state ADD COLUMN weather_at TIMESTAMP'))
-        if "weather_raw" not in existing_attack:
-            db.session.execute(db.text('ALTER TABLE game_attack_state ADD COLUMN weather_raw VARCHAR(240)'))
-        db.session.commit()
-    except Exception:
-        db.session.rollback()
-        app.logger.exception("Could not add Monk weather columns")
+    # Keep web startup lightweight. Schema migrations and index creation used
+    # to run during Gunicorn import and could wait on PostgreSQL locks while a
+    # scan was writing thousands of rows. That made Render report
+    # "No open ports detected" and the whole site appear frozen.
+    #
+    # The current production database already contains the schema. If a new
+    # database is ever created from scratch, set DB_INIT_ON_BOOT=true once.
+    if os.getenv("DB_INIT_ON_BOOT", "false").lower() == "true":
+        db.create_all()
 
-    # Добавляем новые поля API в существующую БД без удаления истории.
-    api_metric_columns = [
-        "beasts_killed", "silver_stolen", "silver_lost", "crystals_stolen", "crystals_lost",
-        "bandit_wins", "mine", "crusade", "quests", "pet_fights", "pet_kills",
-        "garden", "goblins", "lord_wins", "undead_wins", "heroes_wins",
-        "serpent_fights", "sent_gifts", "fishing", "dragon_kills", "serpent_kills",
-    ]
-    try:
-        inspector = db.inspect(db.engine)
-        for table_name in ("player", "player_snapshot"):
-            existing = {col["name"] for col in inspector.get_columns(table_name)}
-            for column_name in api_metric_columns:
-                if column_name not in existing:
-                    db.session.execute(db.text(
-                        f'ALTER TABLE {table_name} ADD COLUMN {column_name} BIGINT'
-                    ))
-        db.session.commit()
-    except Exception:
-        db.session.rollback()
-        app.logger.exception("Could not add ForGlory API metric columns")
-
-    # Индексы для самых частых запросов главной страницы. Они не меняют
-    # данные и безопасно создаются повторно при каждом deploy.
-    try:
-        db.session.execute(db.text(
-            "CREATE INDEX IF NOT EXISTS ix_snapshot_batch_power "
-            "ON player_snapshot (batch_at, power DESC)"
-        ))
-        db.session.execute(db.text(
-            "CREATE INDEX IF NOT EXISTS ix_snapshot_batch_level_power "
-            "ON player_snapshot (batch_at, level, power DESC)"
-        ))
-        # Быстрые сортировки главной страницы по переключателю «Показатель».
-        for _field in ("glory", "defense", "agility", "mastery", "vitality", "stat_sum"):
-            db.session.execute(db.text(
-                f"CREATE INDEX IF NOT EXISTS ix_snapshot_batch_{_field} "
-                f"ON player_snapshot (batch_at, {_field} DESC)"
-            ))
-        db.session.commit()
-    except Exception:
-        db.session.rollback()
-        app.logger.exception("Could not create optional performance indexes")
     scan_state = db.session.get(ScanState, 1)
     if scan_state is None:
         scan_state = ScanState(id=1)
         db.session.add(scan_state)
     else:
-        # Render can stop the process during a scan. A database flag from that
-        # dead process must not block the new worker from resuming.
         scan_state.running = False
+
     if db.session.get(GameAttackState, 1) is None:
         db.session.add(GameAttackState(id=1))
     db.session.commit()
-
-    # Старые версии называли снимок днём начала долгого сканирования.
-    # Если сбор перешёл через полночь, переносим последний готовый снимок
-    # на фактическое время завершения: например 02.08 -> 03.08.
-    if scan_state.finished_at:
-        latest_completed_batch = (
-            db.session.query(db.func.max(PlayerSnapshot.batch_at))
-            .filter(PlayerSnapshot.batch_at <= scan_state.finished_at)
-            .scalar()
-        )
-        if (
-            latest_completed_batch
-            and moldova_date(latest_completed_batch) != moldova_date(scan_state.finished_at)
-        ):
-            PlayerSnapshot.query.filter_by(batch_at=latest_completed_batch).update(
-                {PlayerSnapshot.batch_at: scan_state.finished_at},
-                synchronize_session=False,
-            )
-            db.session.commit()
-    # Не запускаем полное GROUP BY по всей истории при каждом старте Render.
-    # Старые дубликаты уже были очищены, а уникальный индекс не позволяет
-    # сканеру создавать новые. Такой проход блокировал бесплатный PostgreSQL
-    # и сайт несколько минут показывал только «Загрузка…».
 
 
 def load_guest_cookies(base_url):
@@ -1680,11 +1610,14 @@ def run_scan():
                         api_life()
                 with app.test_request_context("/api/life-summary"):
                     api_life_summary()
-                # Пересчитываем "Топы вчера" сразу после каждого нового
-                # завершённого снимка, чтобы старый результат не задерживался.
+                # Сразу прогреваем оба блока топов. Тогда нажатие кнопок
+                # «Топы сегодня/вчера» не запускает тяжёлый пересчёт для
+                # первого посетителя после каждого снимка.
+                with app.test_request_context("/api/today-tops"):
+                    api_today_tops()
                 with app.test_request_context("/api/yesterday-tops"):
                     api_yesterday_tops()
-                app.logger.info("Life WEKINGS + yesterday tops cache warmed")
+                app.logger.info("Life WEKINGS + today/yesterday tops cache warmed")
             except Exception:
                 app.logger.exception("Life WEKINGS cache warm failed")
         except Exception as exc:
@@ -1715,6 +1648,34 @@ def run_scan():
 
 def start_scan_thread():
     threading.Thread(target=run_scan, daemon=True, name="wekings-scan").start()
+
+
+def start_optional_db_maintenance():
+    """Create performance indexes outside the Gunicorn import path."""
+    if os.getenv("DB_MAINTENANCE_ON_BOOT", "false").lower() != "true":
+        return
+
+    def _worker():
+        time.sleep(20)
+        with app.app_context():
+            try:
+                for field in ("power", "glory", "defense", "agility", "mastery", "vitality", "stat_sum"):
+                    db.session.execute(db.text(
+                        f"CREATE INDEX IF NOT EXISTS ix_snapshot_batch_{field} "
+                        f"ON player_snapshot (batch_at, {field} DESC)"
+                    ))
+                db.session.execute(db.text(
+                    "CREATE INDEX IF NOT EXISTS ix_snapshot_batch_level_power "
+                    "ON player_snapshot (batch_at, level, power DESC)"
+                ))
+                db.session.commit()
+                app.logger.info("Optional database performance indexes checked")
+            except Exception:
+                db.session.rollback()
+                app.logger.exception("Optional database maintenance failed")
+
+    threading.Thread(target=_worker, daemon=True, name="db-maintenance").start()
+
 
 
 _attack_lock = threading.Lock()
@@ -1827,6 +1788,8 @@ def start_scan_on_boot_if_needed():
         start_scan_thread()
 
 
+start_optional_db_maintenance()
+
 if os.getenv("SCAN_ENABLED", "true").lower() == "true":
     scheduler = BackgroundScheduler(timezone="Europe/Chisinau")
     scheduler.start()
@@ -1893,7 +1856,7 @@ if os.getenv("SCAN_ENABLED", "true").lower() == "true":
         scheduler.add_job(
             start_scan_on_boot_if_needed,
             "date",
-            run_date=datetime.now(timezone.utc) + timedelta(seconds=30),
+            run_date=datetime.now(timezone.utc) + timedelta(seconds=60),
             id="wekings-first-scan",
             replace_existing=True,
         )

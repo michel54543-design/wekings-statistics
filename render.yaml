@@ -2,7 +2,7 @@ services:
   - type: web
     name: wekings-statistics
     runtime: python
-    plan: free
+    plan: starter
     buildCommand: pip install -r requirements.txt
     startCommand: gunicorn --bind 0.0.0.0:$PORT --workers 1 --threads 4 --timeout 120 --access-logfile - --error-logfile - app:app
     healthCheckPath: /health
@@ -35,6 +35,10 @@ services:
         value: "20"
       - key: START_SCAN_ON_BOOT
         value: "true"
+      - key: DB_INIT_ON_BOOT
+        value: "false"
+      - key: DB_MAINTENANCE_ON_BOOT
+        value: "false"
 
 databases:
   - name: wekings-statistics-db
