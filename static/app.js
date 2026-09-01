@@ -259,67 +259,107 @@ async function loadOrganizations() {
   hidePlayerDetail();
 }
 
+
+const levelGroupState = { open: new Set(), cache: new Map() };
+
+function levelPlayerCard(player, index) {
+  return `<div class="level-player-card">
+    <div class="level-player-name"><span>${index + 1}</span><a class="game-profile-link" href="${escapeHtml(player.profile_url)}">${escapeHtml(player.nickname)}</a></div>
+    <div class="level-player-stat"><small>Сила</small><b>${fmt(player.power)}</b></div>
+    <div class="level-player-stat"><small>Защита</small><b>${fmt(player.defense)}</b></div>
+    <div class="level-player-stat"><small>Ловкость</small><b>${fmt(player.agility)}</b></div>
+    <div class="level-player-stat"><small>Мастерство</small><b>${fmt(player.mastery)}</b></div>
+    <div class="level-player-stat"><small>Живучесть</small><b>${fmt(player.vitality)}</b></div>
+  </div>`;
+}
+
+async function loadLevelPlayers(level, target, toDate) {
+  target.innerHTML = '<div class="level-loading">Загрузка игроков уровня…</div>';
+  try {
+    const params = new URLSearchParams({ level, to: toDate || "" });
+    const q = $("query").value.trim();
+    if (q) params.set("q", q);
+    const data = await fetch(`/api/level-players?${params}`).then(r => r.json());
+    if (!data.players?.length) {
+      target.innerHTML = '<div class="level-loading">Игроки не найдены</div>';
+      return;
+    }
+    target.innerHTML = `<div class="level-player-header"><span>Игрок</span><span>Сила</span><span>Защита</span><span>Ловкость</span><span>Мастерство</span><span>Живучесть</span></div>${data.players.map(levelPlayerCard).join("")}`;
+    levelGroupState.cache.set(level, data.players);
+  } catch (error) {
+    target.innerHTML = '<div class="level-loading">Не удалось загрузить игроков</div>';
+  }
+}
+
 async function loadLevelGroups() {
+  $("tableTitle").textContent = "Едина по уровням";
+  $("resultCount").textContent = "";
+  $("rankingTable").className = "levels-table";
+  $("tableHead").innerHTML = '<tr><th>Уровень</th><th>Игроков</th><th>Сила</th><th>Статус</th></tr>';
+  $("rows").innerHTML = '<tr><td colspan="4" class="loading">Загружаем уровни…</td></tr>';
   const params = new URLSearchParams();
   if (state.datesLoaded && $("dateTo").value) params.set("to", $("dateTo").value);
-  $("rows").innerHTML = '<tr><td colspan="6" class="loading">Считаем уровни…</td></tr>';
-  const data = await fetch(`/api/level-groups?${params}`).then(r => {
-    if (!r.ok) throw new Error(`HTTP ${r.status}`);
-    return r.json();
-  });
-  if (!state.datesLoaded && data.dates?.length) fillDates(data.dates, data.date_from, data.date_to);
+  const q = $("query").value.trim();
+  if (q) params.set("q", q);
+  try {
+    const data = await fetch(`/api/level-groups?${params}`).then(r => r.json());
+    if (!state.datesLoaded && data.dates?.length) fillDates(data.dates, data.date_from, data.date_to);
+    if (!data.levels?.length) {
+      $("rows").innerHTML = '<tr><td colspan="4" class="loading">Уровни не найдены</td></tr>';
+      return;
+    }
+    $("resultCount").textContent = `${fmt(data.levels.reduce((sum, x) => sum + x.count, 0))} игроков`;
+    $("pageText").textContent = `${data.levels.length} уровней`;
+    $("prev").disabled = true;
+    $("next").disabled = true;
+    $("rows").innerHTML = data.levels.map(item => {
+      const open = levelGroupState.open.has(item.level);
+      const up = item.up || [];
+      const down = item.down || [];
+      const upText = up.length ? `<div class="level-change up"><b>🟢 Поднялись:</b> ${up.map(escapeHtml).join(", ")}</div>` : "";
+      const downText = down.length ? `<div class="level-change down"><b>🔴 Ушли:</b> ${down.map(escapeHtml).join(", ")}</div>` : "";
+      return `<tr class="level-group-row ${open ? "open" : ""}" data-level="${item.level}">
+        <td class="level-group-title"><button class="level-toggle" type="button" aria-expanded="${open}">▶</button><b>Уровень ${item.level}</b></td>
+        <td>${fmt(item.count)}</td>
+        <td>—</td>
+        <td>${up.length ? `<span class="level-up">+${up.length}</span>` : ""}${down.length ? `<span class="level-down">−${down.length}</span>` : ""}${!up.length && !down.length ? "—" : ""}</td>
+      </tr>
+      <tr class="level-detail-row ${open ? "" : "hidden"}" data-level-detail="${item.level}"><td colspan="4"><div class="level-changes">${upText}${downText}</div><div class="level-players-wrap">${open ? '<div class="level-loading">Загрузка игроков уровня…</div>' : ""}</div></td></tr>`;
+    }).join("");
 
-  state.pages = 1;
-  $("tableTitle").textContent = "Едина по уровням";
-  $("resultCount").textContent = `${fmt(data.total)} игроков`;
-  $("rankingTable").className = "level-groups-table";
-  $("tableHead").innerHTML = '<tr><th>Уровень</th><th>Игроков</th><th>Сила</th><th>Статус</th></tr>';
-  $("pageText").textContent = "Все уровни";
-  $("prev").disabled = true;
-  $("next").disabled = true;
+    document.querySelectorAll(".level-group-row").forEach(row => {
+      row.querySelector(".level-toggle").addEventListener("click", async () => {
+        const level = Number(row.dataset.level);
+        const detail = document.querySelector(`[data-level-detail="${level}"]`);
+        const button = row.querySelector(".level-toggle");
+        const willOpen = detail.classList.contains("hidden");
+        button.setAttribute("aria-expanded", String(willOpen));
+        button.textContent = willOpen ? "▼" : "▶";
+        row.classList.toggle("open", willOpen);
+        detail.classList.toggle("hidden", !willOpen);
+        if (willOpen) {
+          levelGroupState.open.add(level);
+          await loadLevelPlayers(level, detail.querySelector(".level-players-wrap"), data.date_to);
+        } else {
+          levelGroupState.open.delete(level);
+        }
+      });
+    });
 
-  if (!data.ready) {
-    $("rows").innerHTML = '<tr><td colspan="4" class="loading">Для сравнения уровней нужен предыдущий снимок статистики</td></tr>';
-    return;
+    // Открытые уровни не закрываем при обновлении/фильтрации.
+    for (const level of levelGroupState.open) {
+      const detail = document.querySelector(`[data-level-detail="${level}"]`);
+      if (detail) loadLevelPlayers(level, detail.querySelector(".level-players-wrap"), data.date_to);
+    }
+  } catch (error) {
+    $("rows").innerHTML = '<tr><td colspan="4" class="loading">Не удалось загрузить уровни</td></tr>';
   }
-
-  $("rows").innerHTML = data.levels.length ? data.levels.map((group, i) => {
-    const joined = group.joined?.length ? `
-      <div class="level-change joined"><strong>🟢 Поднялись:</strong>
-        ${group.joined.map(p => `<a class="game-profile-link" href="${escapeHtml(p.profile_url)}">${escapeHtml(p.nickname)}</a>`).join(", ")}
-      </div>` : "";
-    const left = group.left?.length ? `
-      <div class="level-change left"><strong>🔴 Ушли:</strong>
-        ${group.left.map(p => `<a class="game-profile-link" href="${escapeHtml(p.profile_url)}">${escapeHtml(p.nickname)}</a>`).join(", ")}
-      </div>` : "";
-    const players = group.members.map((p, index) => `
-      <div class="level-player">
-        <span class="level-place">${index + 1}</span>
-        <a class="level-player-name game-profile-link" href="${escapeHtml(p.profile_url)}">${escapeHtml(p.nickname)}</a>
-        <b>${fmt(p.power)}</b>
-        <button class="show-stats" data-player-id="${p.id}" title="Показать статистику" aria-label="Показать статистику игрока">▥</button>
-      </div>`).join("");
-    const status = `${group.joined_count ? `<span class="change-up">+${group.joined_count}</span>` : ""}${group.left_count ? ` <span class="change-down">−${group.left_count}</span>` : ""}` || '<span class="change-zero">—</span>';
-    return `<tr class="level-group-row" data-level-index="${i}">
-      <td class="level-group-title"><button class="level-group-toggle" aria-expanded="false"><span>▶</span><b>Уровень ${group.level}</b></button></td>
-      <td class="level-group-count">${group.count}</td>
-      <td class="level-group-status">${status}</td>
-      <td class="level-group-hint">по силе ↓</td>
-    </tr>
-    <tr class="level-group-members hidden" data-level-members-index="${i}">
-      <td colspan="4">
-        <div class="level-change-list">${joined}${left}</div>
-        <div class="level-player-list">${players}</div>
-      </td>
-    </tr>`;
-  }).join("") : '<tr><td colspan="4" class="loading">Уровни не найдены</td></tr>';
-  hidePlayerDetail();
 }
 
 async function loadPlayers() {
-  if (state.mode === "stats") return loadLevelGroups();
   if (isOrganizationMode()) return loadOrganizations();
-  const sort = state.mode === "stats" ? "power" : $("sort").value;
+  if (state.mode === "stats") return loadLevelGroups();
+  const sort = $("sort").value;
   const params = new URLSearchParams({ page: state.page, per_page: 50, sort, mode: state.mode });
   if ($("query").value.trim()) params.set("q", $("query").value.trim());
   if ($("level").value) params.set("level", $("level").value);
@@ -334,32 +374,19 @@ async function loadPlayers() {
   state.pages = Math.max(1, data.pages);
   $("resultCount").textContent = `${fmt(data.total)} игроков`;
   const statsMode = state.mode === "stats";
-  const prefix = state.mode === "general" ? "Рейтинг" : state.mode === "growth" ? "Прирост" : state.mode === "best" ? "Лучшие приросты" : "Все параметры";
-  $("tableTitle").textContent = statsMode
-    ? "Параметры всех игроков"
-    : state.mode === "general" && sort === "power" ? "Рейтинг по силе" : `${prefix}: ${metricNames[sort]}`;
-  $("rankingTable").classList.remove("organization-table");
-  $("rankingTable").classList.toggle("stats-table", statsMode);
-  $("tableHead").innerHTML = statsMode
-    ? '<tr><th>№</th><th>Игрок</th><th>Сила</th><th>Защита</th><th>Ловкость</th><th>Мастерство</th><th>Живучесть</th></tr>'
-    : `<tr><th>№</th><th>Игрок</th><th>Ур.</th><th>Братство</th><th>Клан</th><th id="metricTitle">${state.mode === "general" ? metricNames[sort] : "Прирост"}</th><th>Прирост</th></tr>`;
+  const prefix = state.mode === "general" ? "Рейтинг" : state.mode === "growth" ? "Прирост" : state.mode === "best" ? "Лучшие приросты" : "Едина по уровням";
+  if (statsMode) {
+    return loadLevelGroups();
+  }
+  $("tableTitle").textContent = state.mode === "general" && sort === "power" ? "Рейтинг по силе" : `${prefix}: ${metricNames[sort]}`;
+  $("rankingTable").classList.remove("organization-table", "stats-table", "levels-table");
+  $("tableHead").innerHTML = `<tr><th>№</th><th>Игрок</th><th>Ур.</th><th>Братство</th><th>Клан</th><th id="metricTitle">${state.mode === "general" ? metricNames[sort] : "Прирост"}</th><th>Прирост</th></tr>`;
   $("pageText").textContent = `Страница ${data.page} из ${state.pages}`;
   $("prev").disabled = state.page <= 1;
   $("next").disabled = state.page >= state.pages;
   $("rows").innerHTML = data.players.length ? data.players.map((p, i) => {
     const rank = (state.page - 1) * 50 + i + 1;
     const medal = rankBadge(rank);
-    if (statsMode) {
-      return `<tr class="stats-row">
-        <td class="rank">${medal}</td>
-        <td class="player-name"><a href="${escapeHtml(p.profile_url)}" class="game-profile-link">${escapeHtml(p.nickname)}</a><button class="show-stats" data-player-id="${p.id}" title="Показать статистику" aria-label="Показать статистику игрока">▥</button><small>${p.level ?? "—"}</small></td>
-        <td class="stat-number">${fmt(p.power)}</td>
-        <td class="stat-number">${fmt(p.defense)}</td>
-        <td class="stat-number">${fmt(p.agility)}</td>
-        <td class="stat-number">${fmt(p.mastery)}</td>
-        <td class="stat-number">${fmt(p.vitality)}</td>
-      </tr>`;
-    }
     const mainValue = state.mode === "general" ? p[sort] : p.gain;
     const gain = p.gain;
     return `<tr>
@@ -385,43 +412,71 @@ async function loadPlayers() {
 }
 
 
-const todayTopsState = { loaded: false };
-async function loadTodayTops() {
-  $("todayTopsGrid").innerHTML = '<p class="life-empty">Считаем топы за сегодня…</p>';
-  const data = await fetch(`/api/today-tops?_=${Date.now()}`, { cache: "no-store" }).then(r => r.json());
-  if (!data.ready) {
-    $("todayTopsDate").textContent = "Нужно минимум два снимка за сегодняшний день";
-    $("todayHero").innerHTML = "";
-    $("todayTopsGrid").innerHTML = '<p class="life-empty">Пока недостаточно данных за сегодня.</p>';
-    return;
+const lifeState = { period: "now", loaded: false };
+function lifeDateText(value) {
+  return new Date(value).toLocaleString("ru-RU",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"});
+}
+async function loadLife(period=lifeState.period) {
+  lifeState.period=period;
+  document.querySelectorAll("[data-life-period]").forEach(b=>b.classList.toggle("active",b.dataset.lifePeriod===period));
+  $("lifeEvents").innerHTML='<p class="life-empty">Собираем события…</p>';
+  const data=await fetch(`/api/life?period=${encodeURIComponent(period)}`).then(r=>r.json());
+  if(!data.ready){$("lifeRange").textContent="Нужно минимум два завершённых снимка";$("lifeHeroes").innerHTML="";$("lifeEvents").innerHTML='<p class="life-empty">Пока недостаточно данных.</p>';return;}
+  $("lifeRange").textContent=`${lifeDateText(data.from_date)} → ${lifeDateText(data.to_date)}`;
+  $("lifeHeroes").innerHTML=data.heroes?.length?data.heroes.slice(0,4).map(h=>`<article class="life-hero"><span>${h.icon} ${escapeHtml(h.label)}</span><strong>${escapeHtml(h.nickname)}</strong><b>+${fmt(h.gain)}</b></article>`).join(""):"";
+  $("lifeEvents").innerHTML=data.events?.length?data.events.map(e=>`<article class="life-event"><span class="life-event-icon">${e.icon}</span><div><a class="game-profile-link" href="https://playwekings.mobi/hero/detail?player=${e.player_id}">${escapeHtml(e.nickname)}</a><p>${escapeHtml(e.text)}</p></div></article>`).join(""):'<p class="life-empty">За выбранный период заметных изменений нет.</p>';
+  lifeState.loaded=true;
+}
+
+async function loadLifeSummary() {
+  const data = await fetch("/api/life-summary").then(r => r.json());
+  if (!data.ready) return;
+  const s = data.summary || {};
+  $("lifeDailySummary").innerHTML = `
+    <div><b>📊 ${fmt(s.active_players)}</b><span>активных игроков</span></div>`;
+  const h = data.hero;
+  if (h) {
+    const achievements = [];
+    if (h.bandit_gain) achievements.push(`⚔️ ${fmt(h.bandit_gain)} побед над наёмниками`);
+    if (h.stat_gain) achievements.push(`💪 +${fmt(h.stat_gain)} характеристик`);
+    if (h.mine_gain) achievements.push(`⛏️ +${fmt(h.mine_gain)} шахта`);
+    if (h.power_gain) achievements.push(`⚡ +${fmt(h.power_gain)} силы`);
+    if (h.dragon_gain) achievements.push(`🐉 ${fmt(h.dragon_gain)} побед над Драконом`);
+    if (h.serpent_gain) achievements.push(`🐍 ${fmt(h.serpent_gain)} побед над Змеем`);
+    if (h.quests_gain) achievements.push(`📜 +${fmt(h.quests_gain)} заданий`);
+    if (h.wins_gain) achievements.push(`🏆 +${fmt(h.wins_gain)} побед`);
+    $("lifeHeroDay").innerHTML = `
+      <header><span>👑</span><div><small>ГЕРОЙ ДНЯ</small><strong>${escapeHtml(h.nickname)}</strong></div></header>
+      <div class="life-hero-reasons">${achievements.slice(0,4).map(x => `<div>${x}</div>`).join("")}</div>
+      <p><b>За наибольшую активность сегодня</b></p>
+      <a class="game-profile-link" href="https://playwekings.mobi/hero/detail?player=${h.player_id}">Открыть игрока →</a>`;
+  } else {
+    $("lifeHeroDay").innerHTML = `<header><span>👑</span><div><small>ГЕРОЙ ДНЯ</small><strong>Пока определяется</strong></div></header>`;
   }
-  const d = new Date(data.date + "T12:00:00");
-  $("todayTopsDate").textContent = `Результаты за ${d.toLocaleDateString("ru-RU")} • обновлено по последнему снимку`;
-  const hero = data.hero;
-  $("todayHero").innerHTML = hero ? `
-    <span>👑 Герой сегодняшнего дня</span>
-    <a class="game-profile-link" href="https://playwekings.mobi/hero/detail?player=${hero.player_id}">${escapeHtml(hero.nickname)}</a>
-    <b>${hero.first_places} ${hero.first_places === 1 ? "первое место" : "первых места"}</b>` : "";
-  $("todayTopsGrid").innerHTML = data.tops?.length ? data.tops.map(x => `
-    <article class="yesterday-top-card">
-      <span>${x.icon} ${escapeHtml(x.label)}</span>
-      <a class="game-profile-link" href="https://playwekings.mobi/hero/detail?player=${x.player_id}">${escapeHtml(x.nickname)}</a>
-      <b class="${["losses","silver_lost","crystals_lost"].includes(x.metric) ? "yesterday-negative" : ""}">${["losses","silver_lost","crystals_lost"].includes(x.metric) ? "−" : "+"}${fmt(x.gain)}</b>
-    </article>`).join("") : '<p class="life-empty">Сегодня пока нет прироста по этим показателям.</p>';
-  todayTopsState.loaded = true;
+
+  const topRows = (items, emptyText) => items?.length
+    ? items.slice(0,5).map((x, i) => `
+        <div class="life-contributor-row">
+          <span class="life-contributor-rank">${i + 1}</span>
+          <div><a class="game-profile-link" href="https://playwekings.mobi/hero/detail?player=${x.player_id}">${escapeHtml(x.nickname)}</a>
+          <small>${escapeHtml(x.organization)}</small></div>
+          <b>+${fmt(x.gain)}</b>
+        </div>`).join("")
+    : `<p class="life-empty">${emptyText}</p>`;
+  $("lifeContributorTops").innerHTML = `
+    <div class="life-contributor-section">
+      <header><span>🛡️</span><div><small>ТОП В БРАТСТВАХ</small><strong>Прирост характеристик</strong></div></header>
+      ${topRows(data.top_brotherhood, "Пока нет прироста")}
+    </div>
+    <div class="life-contributor-section">
+      <header><span>🏰</span><div><small>ТОП В КЛАНАХ</small><strong>Прирост характеристик</strong></div></header>
+      ${topRows(data.top_clan, "Пока нет прироста")}
+    </div>`;
 }
-function openTodayTops(){
-  $("todayTopsPanel").classList.remove("hidden");
-  $("todayTopsToggle").classList.add("active");
-  $("todayTopsToggle").setAttribute("aria-expanded","true");
-  loadTodayTops().catch(()=>{$("todayTopsGrid").innerHTML='<p class="life-empty">Не удалось загрузить топы.</p>';});
-  $("todayTopsPanel").scrollIntoView({behavior:"smooth",block:"start"});
-}
-function closeTodayTops(){
-  $("todayTopsPanel").classList.add("hidden");
-  $("todayTopsToggle").classList.remove("active");
-  $("todayTopsToggle").setAttribute("aria-expanded","false");
-}
+
+function openLife(){$("lifePanel").classList.remove("hidden");$("lifeToggle").classList.add("active");$("lifeToggle").setAttribute("aria-expanded","true");if(!lifeState.loaded)loadLife().catch(()=>{$("lifeEvents").innerHTML='<p class="life-empty">Не удалось загрузить события.</p>';});loadLifeSummary().catch(()=>{});$("lifePanel").scrollIntoView({behavior:"smooth",block:"start"});}
+function closeLife(){$("lifePanel").classList.add("hidden");$("lifeToggle").classList.remove("active");$("lifeToggle").setAttribute("aria-expanded","false");}
+
 
 const yesterdayTopsState = { loaded: false };
 async function loadYesterdayTops() {
@@ -444,7 +499,7 @@ async function loadYesterdayTops() {
     <article class="yesterday-top-card">
       <span>${x.icon} ${escapeHtml(x.label)}</span>
       <a class="game-profile-link" href="https://playwekings.mobi/hero/detail?player=${x.player_id}">${escapeHtml(x.nickname)}</a>
-      <b class="${["losses","silver_lost","crystals_lost"].includes(x.metric) ? "yesterday-negative" : ""}">${["losses","silver_lost","crystals_lost"].includes(x.metric) ? "−" : "+"}${fmt(x.gain)}</b>
+      <b>+${fmt(x.gain)}</b>
     </article>`).join("") : '<p class="life-empty">За вчера прироста по этим показателям нет.</p>';
   yesterdayTopsState.loaded = true;
 }
@@ -528,16 +583,6 @@ document.addEventListener("click", event => {
     organizationToggle.querySelector("span").textContent = willOpen ? "▼" : "▶";
     return;
   }
-  const levelToggle = event.target.closest(".level-group-toggle");
-  if (levelToggle) {
-    const row = levelToggle.closest(".level-group-row");
-    const membersRow = document.querySelector(`[data-level-members-index="${row.dataset.levelIndex}"]`);
-    const willOpen = membersRow.classList.contains("hidden");
-    membersRow.classList.toggle("hidden", !willOpen);
-    levelToggle.setAttribute("aria-expanded", String(willOpen));
-    levelToggle.querySelector("span").textContent = willOpen ? "▼" : "▶";
-    return;
-  }
 });
 document.addEventListener("keydown", event => {
   if (event.key === "Escape" && !$("playerDetail").classList.contains("hidden")) hidePlayerDetail();
@@ -560,10 +605,11 @@ $("mobilePlayer").onclick = () => {
 };
 
 
-$("todayTopsToggle").onclick=()=>{$("todayTopsPanel").classList.contains("hidden")?openTodayTops():closeTodayTops();};
-$("todayTopsClose").onclick=closeTodayTops;
+$("lifeToggle").onclick=()=>{$("lifePanel").classList.contains("hidden")?openLife():closeLife();};
+$("lifeClose").onclick=closeLife;
 $("yesterdayTopsToggle").onclick=()=>{$("yesterdayTopsPanel").classList.contains("hidden")?openYesterdayTops():closeYesterdayTops();};
 $("yesterdayTopsClose").onclick=closeYesterdayTops;
+document.querySelectorAll("[data-life-period]").forEach(b=>{b.onclick=()=>loadLife(b.dataset.lifePeriod).catch(()=>{$("lifeEvents").innerHTML='<p class="life-empty">Не удалось загрузить события.</p>';});});
 
 $("todayBadge").textContent = new Date().toLocaleDateString("ru-RU", {
   day: "2-digit", month: "short"
