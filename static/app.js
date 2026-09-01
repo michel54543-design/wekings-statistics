@@ -671,8 +671,10 @@ $("mobilePlayer").onclick = () => {
 };
 
 
-$("lifeToggle").onclick=()=>{$("lifePanel").classList.contains("hidden")?openLife():closeLife();};
-$("lifeClose").onclick=closeLife;
+if ($("lifeToggle") && $("lifePanel")) {
+  $("lifeToggle").onclick=()=>{$("lifePanel").classList.contains("hidden")?openLife():closeLife();};
+}
+if ($("lifeClose")) $("lifeClose").onclick=closeLife;
 $("todayTopsToggle").onclick=()=>{$("todayTopsPanel").classList.contains("hidden")?openTodayTops():closeTodayTops();};
 $("todayTopsClose").onclick=closeTodayTops;
 $("yesterdayTopsToggle").onclick=()=>{$("yesterdayTopsPanel").classList.contains("hidden")?openYesterdayTops():closeYesterdayTops();};
