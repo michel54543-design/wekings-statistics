@@ -4,6 +4,7 @@ import base64
 import logging
 import os
 import re
+import time
 from datetime import datetime, timedelta, timezone
 from urllib.parse import urljoin
 from zoneinfo import ZoneInfo
@@ -444,8 +445,13 @@ def fetch_attack_schedule():
 
         found_monk = _link_by_text(city.text, "Монах", BASE_URL)
         monk_url = found_monk or urljoin(BASE_URL + "/", "monastic")
+        # Принудительно обходим кэш страницы Монаха. Это особенно важно для
+        # прогноза Плаваний: игра может отдавать сохранённую HTML-страницу,
+        # хотя в браузере прогноз уже изменился.
+        cache_sep = "&" if "?" in monk_url else "?"
+        monk_request_url = f"{monk_url}{cache_sep}_={int(time.time())}"
         logger.warning("[ATTACKS] Monk link=%s source=%s", monk_url, "page" if found_monk else "fallback")
-        monk = s.get(monk_url, timeout=TIMEOUT, allow_redirects=True)
+        monk = s.get(monk_request_url, timeout=TIMEOUT, allow_redirects=True)
         logger.warning("[ATTACKS] Monk status=%s url=%s bytes=%s", monk.status_code, monk.url, len(monk.content))
         monk.raise_for_status()
         if "/login" in monk.url or "/start" in monk.url:
@@ -491,25 +497,25 @@ def fetch_attack_schedule():
         # Игра сейчас выводит прогноз как "... ожидается 18:30 28.08.26"
         # (сначала время, затем дата). Поддерживаем также старый формат
         # "28.08.26 18:30", чтобы обновление игры снова не сломало прогноз.
-        weather_match = re.search(
-            r"(?:по\s+прогнозу\s+)?(?:подходящая|хорошая)\s+погода"
-            r".{0,120}?"
+        weather_patterns = [
+            # Текущий формат игры: "подходящая погода ожидается 12:00 02.09.26"
+            r"(?:по\s+прогнозу\s+)?(?:подходящая|хорошая)\s+погода.{0,160}?"
             r"(\d{1,2})\s*:\s*(\d{2})\s+"
             r"(\d{1,2})\s*[./-]\s*(\d{1,2})"
             r"(?:\s*[./-]\s*(\d{2,4}))?",
-            monk_text, re.I
-        )
-        weather_time_first = bool(weather_match)
-        if not weather_match:
-            weather_match = re.search(
-                r"(?:по\s+прогнозу\s+)?(?:подходящая|хорошая)\s+погода"
-                r".{0,120}?"
-                r"(\d{1,2})\s*[./-]\s*(\d{1,2})"
-                r"(?:\s*[./-]\s*(\d{2,4}))?\s+"
-                r"(\d{1,2})\s*:\s*(\d{2})",
-                monk_text, re.I
-            )
-            weather_time_first = False
+            # Старый формат: "подходящая погода ... 02.09.26 12:00"
+            r"(?:по\s+прогнозу\s+)?(?:подходящая|хорошая)\s+погода.{0,160}?"
+            r"(\d{1,2})\s*[./-]\s*(\d{1,2})"
+            r"(?:\s*[./-]\s*(\d{2,4}))?\s+"
+            r"(\d{1,2})\s*:\s*(\d{2})",
+        ]
+        weather_match = None
+        weather_time_first = False
+        for weather_pattern in weather_patterns:
+            weather_match = re.search(weather_pattern, monk_text, re.I)
+            if weather_match:
+                weather_time_first = weather_pattern is weather_patterns[0]
+                break
         if weather_match:
             if weather_time_first:
                 hour, minute, day, month, year = weather_match.groups()
