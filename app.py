@@ -449,6 +449,16 @@ def old_wekings_scan_now():
     return redirect("/admin/wekings-login")
 
 
+
+
+def parse_date_for_api(value, fallback):
+    if not value:
+        return fallback
+    try:
+        return datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return fallback
+
 @app.get("/api/players")
 def api_players():
     page = max(1, request.args.get("page", 1, type=int))
@@ -732,6 +742,123 @@ def api_players():
 
 
 
+
+
+@app.get("/api/level-groups")
+def api_level_groups():
+    """Сводка Едины по уровням. Игроки внутри уровня подгружаются лениво."""
+    dates = completed_snapshot_dates()
+    if not dates:
+        return jsonify(ready=False, levels=[])
+
+    date_to = parse_date_for_api(request.args.get("to"), dates[0])
+    previous_date = dates[1] if len(dates) > 1 else None
+    query = request.args.get("q", "").strip().lower()
+
+    current_rows = db.session.query(
+        PlayerSnapshot.player_id,
+        PlayerSnapshot.nickname,
+        PlayerSnapshot.level,
+        PlayerSnapshot.power,
+    ).filter(PlayerSnapshot.batch_at == date_to).all()
+
+    previous_rows = []
+    if previous_date:
+        previous_rows = db.session.query(
+            PlayerSnapshot.player_id,
+            PlayerSnapshot.nickname,
+            PlayerSnapshot.level,
+        ).filter(PlayerSnapshot.batch_at == previous_date).all()
+
+    current_by_id = {row.player_id: row for row in current_rows}
+    previous_by_id = {row.player_id: row for row in previous_rows}
+
+    levels = {}
+    for row in current_rows:
+        if row.level is None:
+            continue
+        if query and query not in (row.nickname or "").lower():
+            continue
+        levels.setdefault(int(row.level), {"count": 0, "up": [], "down": []})["count"] += 1
+
+    if previous_date:
+        for player_id, cur in current_by_id.items():
+            prev = previous_by_id.get(player_id)
+            if not prev or cur.level is None or prev.level is None or cur.level <= prev.level:
+                continue
+            if query and query not in (cur.nickname or "").lower():
+                continue
+            levels.setdefault(int(cur.level), {"count": 0, "up": [], "down": []})["up"].append(cur.nickname)
+
+        for player_id, prev in previous_by_id.items():
+            if prev.level is None:
+                continue
+            cur = current_by_id.get(player_id)
+            left_level = cur is None or cur.level != prev.level
+            if not left_level:
+                continue
+            nickname = cur.nickname if cur else prev.nickname
+            if query and query not in (nickname or "").lower():
+                continue
+            levels.setdefault(int(prev.level), {"count": 0, "up": [], "down": []})["down"].append(nickname)
+
+    result = []
+    for level_value in sorted(levels.keys(), reverse=True):
+        item = levels[level_value]
+        item["up"].sort(key=str.casefold)
+        item["down"].sort(key=str.casefold)
+        result.append({
+            "level": level_value,
+            "count": item["count"],
+            "up": item["up"],
+            "down": item["down"],
+        })
+
+    return jsonify(
+        ready=True,
+        levels=result,
+        dates=[value.isoformat() for value in dates],
+        date_from=previous_date.isoformat() if previous_date else date_to.isoformat(),
+        date_to=date_to.isoformat(),
+        previous_date=previous_date.isoformat() if previous_date else None,
+    )
+
+
+@app.get("/api/level-players")
+def api_level_players():
+    """Полные параметры игроков выбранного уровня, отсортированные по Силе."""
+    dates = completed_snapshot_dates()
+    if not dates:
+        return jsonify(ready=False, players=[])
+    level = request.args.get("level", type=int)
+    if level is None:
+        return jsonify(ready=False, players=[]), 400
+    date_to = parse_date_for_api(request.args.get("to"), dates[0])
+    query = request.args.get("q", "").strip()
+
+    rows = PlayerSnapshot.query.filter(
+        PlayerSnapshot.batch_at == date_to,
+        PlayerSnapshot.level == level,
+    )
+    if query:
+        rows = rows.filter(PlayerSnapshot.nickname.ilike(f"%{query}%"))
+    rows = rows.order_by(PlayerSnapshot.power.desc().nullslast(), PlayerSnapshot.nickname.asc()).all()
+
+    return jsonify(
+        ready=True,
+        level=level,
+        players=[{
+            "id": p.player_id,
+            "nickname": p.nickname,
+            "level": p.level,
+            "power": p.power,
+            "defense": p.defense,
+            "agility": p.agility,
+            "mastery": p.mastery,
+            "vitality": p.vitality,
+            "profile_url": f"https://playwekings.mobi/hero/detail?player={p.player_id}",
+        } for p in rows],
+    )
 # Готовые результаты "Жизнь WEKINGS" держим в памяти до следующего снимка.
 # Поэтому посетители не заставляют сервер повторно пересчитывать тысячи игроков.
 _life_cache = {}
@@ -1261,115 +1388,6 @@ def api_organizations():
         date_to=date_to.isoformat(),
         ready=True,
         type=organization_type,
-    )
-
-
-@app.get("/api/level-groups")
-def api_level_groups():
-    """Едина: текущие игроки сгруппированы по уровням.
-
-    Для каждого уровня показываем количество игроков и изменения относительно
-    предыдущего снимка. Внутри уровня игроки всегда идут по Силе от большей к
-    меньшей, поэтому первым стоит самый сильный игрок уровня.
-    """
-    dates = completed_snapshot_dates()
-    if not dates:
-        return jsonify(levels=[], dates=[], date_from=None, date_to=None, ready=False)
-
-    def parse_date(value, fallback):
-        if not value:
-            return fallback
-        try:
-            parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
-            return parsed if parsed in dates else fallback
-        except ValueError:
-            return fallback
-
-    date_to = parse_date(request.args.get("to"), dates[0])
-    date_to_index = dates.index(date_to)
-    date_from = dates[min(date_to_index + 1, len(dates) - 1)]
-
-    rows = (
-        db.session.query(
-            PlayerSnapshot.player_id,
-            PlayerSnapshot.nickname,
-            PlayerSnapshot.level,
-            PlayerSnapshot.power,
-            PlayerSnapshot.stat_sum,
-            PlayerSnapshot.batch_at,
-        )
-        .filter(PlayerSnapshot.batch_at.in_([date_from, date_to]))
-        .all()
-    )
-
-    current = {}
-    previous = {}
-    for row in rows:
-        if row.level is None:
-            continue
-        target = current if row.batch_at == date_to else previous
-        target[row.player_id] = {
-            "id": row.player_id,
-            "nickname": row.nickname,
-            "level": row.level,
-            "power": row.power or 0,
-            "stat_sum": row.stat_sum or 0,
-            "profile_url": f"https://playwekings.mobi/hero/detail?player={row.player_id}",
-        }
-
-    level_numbers = sorted({p["level"] for p in current.values()}, reverse=True)
-    levels = []
-    for level_number in level_numbers:
-        members = [p for p in current.values() if p["level"] == level_number]
-        current_ids = {p["id"] for p in members}
-        previous_level = {
-            player_id: p for player_id, p in previous.items()
-            if p["level"] == level_number
-        }
-        previous_ids = set(previous_level)
-
-        # Плюс/минус считаем только для игроков, которые есть в обоих
-        # снимках и действительно сменили уровень. Так новый игрок не
-        # становится ложным "+", а исчезнувший из базы — ложным "−".
-        common_ids = current_ids & set(previous)
-        joined_ids = {
-            player_id for player_id in common_ids
-            if previous[player_id]["level"] != level_number
-            and previous[player_id]["level"] < level_number
-        }
-        left_ids = {
-            player_id for player_id in previous_ids & set(current)
-            if current[player_id]["level"] != level_number
-        }
-
-        # Внутри уровня — строго по Силе: первый самый сильный.
-        members.sort(key=lambda p: (-p["power"], p["nickname"].lower()))
-        joined = sorted(
-            (current[player_id] for player_id in joined_ids),
-            key=lambda p: (-p["power"], p["nickname"].lower()),
-        )
-        left = sorted(
-            (previous[player_id] for player_id in left_ids),
-            key=lambda p: (-p["power"], p["nickname"].lower()),
-        )
-
-        levels.append({
-            "level": level_number,
-            "count": len(members),
-            "joined_count": len(joined),
-            "left_count": len(left),
-            "members": members,
-            "joined": joined,
-            "left": left,
-        })
-
-    return jsonify(
-        levels=levels,
-        total=sum(level["count"] for level in levels),
-        dates=[value.isoformat() for value in dates],
-        date_from=date_from.isoformat(),
-        date_to=date_to.isoformat(),
-        ready=len(dates) >= 2,
     )
 
 

@@ -251,4 +251,32 @@ body.modal-open{overflow:hidden}
 .yesterday-top-card span{display:block;color:#9f988d;font-size:9px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .yesterday-top-card a{display:block;margin-top:5px;color:#f3d47c;text-decoration:none;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .yesterday-top-card b{display:block;margin-top:4px;color:#68cf8f;font-size:14px}
+.yesterday-top-card b.yesterday-negative{color:#ff5b55}
 @media(max-width:760px){.yesterday-tops-panel{padding:11px}.yesterday-tops-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.yesterday-hero{align-items:flex-start;flex-wrap:wrap}.yesterday-hero b{margin-left:0;width:100%}}
+
+/* Едина по уровням: раскрытие уровня с 5 параметрами */
+table.levels-table{border-collapse:separate;border-spacing:0}
+table.levels-table th,table.levels-table td{padding:12px 14px}
+table.levels-table .level-group-row{cursor:default}
+table.levels-table .level-group-row.open td{border-bottom-color:transparent}
+.level-group-title{display:flex;align-items:center;gap:9px;color:var(--text)}
+.level-toggle{border:0;background:transparent;color:var(--gold-bright);font-size:13px;padding:2px 4px;cursor:pointer}
+.level-up{color:#38c77b;font-weight:800;margin-right:8px}.level-down{color:#ef6868;font-weight:800}
+.level-detail-row.hidden{display:none}.level-detail-row>td{padding:0 14px 14px!important}
+.level-changes{display:flex;flex-wrap:wrap;gap:6px 18px;padding:8px 12px 12px;border-bottom:1px solid var(--line);font-size:12px}
+.level-change.up{color:#5bd38d}.level-change.down{color:#f07a7a}
+.level-players-wrap{display:grid;gap:6px;padding-top:10px}
+.level-player-header,.level-player-card{display:grid;grid-template-columns:minmax(190px,1.8fr) repeat(5,minmax(75px,1fr));align-items:center;gap:8px}
+.level-player-header{padding:0 12px 5px;color:var(--muted);font-size:10px;font-weight:800;text-transform:uppercase}
+.level-player-card{padding:8px 12px;border:1px solid var(--line);border-radius:9px;background:rgba(255,255,255,.025)}
+.level-player-name{display:flex;align-items:center;gap:10px;min-width:0}.level-player-name>span{width:22px;color:var(--muted);font-variant-numeric:tabular-nums;text-align:right}.level-player-name a{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.level-player-stat{display:flex;flex-direction:column;align-items:center;gap:2px}.level-player-stat small{display:none;color:var(--muted);font-size:9px}.level-player-stat b{font-variant-numeric:tabular-nums}
+.level-loading{text-align:center;color:var(--muted);padding:16px}
+@media(max-width:760px){
+  table.levels-table{display:table;min-width:0;width:100%}table.levels-table thead{display:table-header-group}table.levels-table tbody{display:table-row-group}
+  table.levels-table tr{display:table-row;padding:0;background:transparent}table.levels-table th{display:table-cell;font-size:9px;padding:8px 5px}table.levels-table td{display:table-cell!important;padding:9px 5px;border-top:1px solid var(--line);font-size:11px}
+  .level-group-title{font-size:12px;gap:3px}.level-toggle{font-size:12px;padding:2px}
+  .level-detail-row>td{padding:0 5px 10px!important}.level-changes{display:block;font-size:11px;padding:7px 6px 10px}.level-change+.level-change{margin-top:5px}
+  .level-player-header{display:grid;grid-template-columns:minmax(105px,1.6fr) repeat(5,minmax(43px,1fr));gap:3px;padding:0 4px 4px;font-size:7px}.level-player-header span:not(:first-child){text-align:center}
+  .level-player-card{grid-template-columns:minmax(105px,1.6fr) repeat(5,minmax(43px,1fr));gap:3px;padding:7px 4px;font-size:10px}.level-player-name{gap:4px}.level-player-name>span{width:16px;font-size:9px}.level-player-name a{font-size:10px}.level-player-stat b{font-size:10px}
+}

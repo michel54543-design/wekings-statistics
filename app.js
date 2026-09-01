@@ -259,8 +259,106 @@ async function loadOrganizations() {
   hidePlayerDetail();
 }
 
+
+const levelGroupState = { open: new Set(), cache: new Map() };
+
+function levelPlayerCard(player, index) {
+  return `<div class="level-player-card">
+    <div class="level-player-name"><span>${index + 1}</span><a class="game-profile-link" href="${escapeHtml(player.profile_url)}">${escapeHtml(player.nickname)}</a></div>
+    <div class="level-player-stat"><small>Сила</small><b>${fmt(player.power)}</b></div>
+    <div class="level-player-stat"><small>Защита</small><b>${fmt(player.defense)}</b></div>
+    <div class="level-player-stat"><small>Ловкость</small><b>${fmt(player.agility)}</b></div>
+    <div class="level-player-stat"><small>Мастерство</small><b>${fmt(player.mastery)}</b></div>
+    <div class="level-player-stat"><small>Живучесть</small><b>${fmt(player.vitality)}</b></div>
+  </div>`;
+}
+
+async function loadLevelPlayers(level, target, toDate) {
+  target.innerHTML = '<div class="level-loading">Загрузка игроков уровня…</div>';
+  try {
+    const params = new URLSearchParams({ level, to: toDate || "" });
+    const q = $("query").value.trim();
+    if (q) params.set("q", q);
+    const data = await fetch(`/api/level-players?${params}`).then(r => r.json());
+    if (!data.players?.length) {
+      target.innerHTML = '<div class="level-loading">Игроки не найдены</div>';
+      return;
+    }
+    target.innerHTML = `<div class="level-player-header"><span>Игрок</span><span>Сила</span><span>Защита</span><span>Ловкость</span><span>Мастерство</span><span>Живучесть</span></div>${data.players.map(levelPlayerCard).join("")}`;
+    levelGroupState.cache.set(level, data.players);
+  } catch (error) {
+    target.innerHTML = '<div class="level-loading">Не удалось загрузить игроков</div>';
+  }
+}
+
+async function loadLevelGroups() {
+  $("tableTitle").textContent = "Едина по уровням";
+  $("resultCount").textContent = "";
+  $("rankingTable").className = "levels-table";
+  $("tableHead").innerHTML = '<tr><th>Уровень</th><th>Игроков</th><th>Сила</th><th>Статус</th></tr>';
+  $("rows").innerHTML = '<tr><td colspan="4" class="loading">Загружаем уровни…</td></tr>';
+  const params = new URLSearchParams();
+  if (state.datesLoaded && $("dateTo").value) params.set("to", $("dateTo").value);
+  const q = $("query").value.trim();
+  if (q) params.set("q", q);
+  try {
+    const data = await fetch(`/api/level-groups?${params}`).then(r => r.json());
+    if (!state.datesLoaded && data.dates?.length) fillDates(data.dates, data.date_from, data.date_to);
+    if (!data.levels?.length) {
+      $("rows").innerHTML = '<tr><td colspan="4" class="loading">Уровни не найдены</td></tr>';
+      return;
+    }
+    $("resultCount").textContent = `${fmt(data.levels.reduce((sum, x) => sum + x.count, 0))} игроков`;
+    $("pageText").textContent = `${data.levels.length} уровней`;
+    $("prev").disabled = true;
+    $("next").disabled = true;
+    $("rows").innerHTML = data.levels.map(item => {
+      const open = levelGroupState.open.has(item.level);
+      const up = item.up || [];
+      const down = item.down || [];
+      const upText = up.length ? `<div class="level-change up"><b>🟢 Поднялись:</b> ${up.map(escapeHtml).join(", ")}</div>` : "";
+      const downText = down.length ? `<div class="level-change down"><b>🔴 Ушли:</b> ${down.map(escapeHtml).join(", ")}</div>` : "";
+      return `<tr class="level-group-row ${open ? "open" : ""}" data-level="${item.level}">
+        <td class="level-group-title"><button class="level-toggle" type="button" aria-expanded="${open}">▶</button><b>Уровень ${item.level}</b></td>
+        <td>${fmt(item.count)}</td>
+        <td>—</td>
+        <td>${up.length ? `<span class="level-up">+${up.length}</span>` : ""}${down.length ? `<span class="level-down">−${down.length}</span>` : ""}${!up.length && !down.length ? "—" : ""}</td>
+      </tr>
+      <tr class="level-detail-row ${open ? "" : "hidden"}" data-level-detail="${item.level}"><td colspan="4"><div class="level-changes">${upText}${downText}</div><div class="level-players-wrap">${open ? '<div class="level-loading">Загрузка игроков уровня…</div>' : ""}</div></td></tr>`;
+    }).join("");
+
+    document.querySelectorAll(".level-group-row").forEach(row => {
+      row.querySelector(".level-toggle").addEventListener("click", async () => {
+        const level = Number(row.dataset.level);
+        const detail = document.querySelector(`[data-level-detail="${level}"]`);
+        const button = row.querySelector(".level-toggle");
+        const willOpen = detail.classList.contains("hidden");
+        button.setAttribute("aria-expanded", String(willOpen));
+        button.textContent = willOpen ? "▼" : "▶";
+        row.classList.toggle("open", willOpen);
+        detail.classList.toggle("hidden", !willOpen);
+        if (willOpen) {
+          levelGroupState.open.add(level);
+          await loadLevelPlayers(level, detail.querySelector(".level-players-wrap"), data.date_to);
+        } else {
+          levelGroupState.open.delete(level);
+        }
+      });
+    });
+
+    // Открытые уровни не закрываем при обновлении/фильтрации.
+    for (const level of levelGroupState.open) {
+      const detail = document.querySelector(`[data-level-detail="${level}"]`);
+      if (detail) loadLevelPlayers(level, detail.querySelector(".level-players-wrap"), data.date_to);
+    }
+  } catch (error) {
+    $("rows").innerHTML = '<tr><td colspan="4" class="loading">Не удалось загрузить уровни</td></tr>';
+  }
+}
+
 async function loadPlayers() {
   if (isOrganizationMode()) return loadOrganizations();
+  if (state.mode === "stats") return loadLevelGroups();
   const sort = $("sort").value;
   const params = new URLSearchParams({ page: state.page, per_page: 50, sort, mode: state.mode });
   if ($("query").value.trim()) params.set("q", $("query").value.trim());
@@ -276,32 +374,19 @@ async function loadPlayers() {
   state.pages = Math.max(1, data.pages);
   $("resultCount").textContent = `${fmt(data.total)} игроков`;
   const statsMode = state.mode === "stats";
-  const prefix = state.mode === "general" ? "Рейтинг" : state.mode === "growth" ? "Прирост" : state.mode === "best" ? "Лучшие приросты" : "Все параметры";
-  $("tableTitle").textContent = statsMode
-    ? "Параметры всех игроков"
-    : state.mode === "general" && sort === "power" ? "Рейтинг по силе" : `${prefix}: ${metricNames[sort]}`;
-  $("rankingTable").classList.remove("organization-table");
-  $("rankingTable").classList.toggle("stats-table", statsMode);
-  $("tableHead").innerHTML = statsMode
-    ? '<tr><th>№</th><th>Игрок</th><th>Сила</th><th>Защита</th><th>Ловкость</th><th>Мастерство</th><th>Живучесть</th></tr>'
-    : `<tr><th>№</th><th>Игрок</th><th>Ур.</th><th>Братство</th><th>Клан</th><th id="metricTitle">${state.mode === "general" ? metricNames[sort] : "Прирост"}</th><th>Прирост</th></tr>`;
+  const prefix = state.mode === "general" ? "Рейтинг" : state.mode === "growth" ? "Прирост" : state.mode === "best" ? "Лучшие приросты" : "Едина по уровням";
+  if (statsMode) {
+    return loadLevelGroups();
+  }
+  $("tableTitle").textContent = state.mode === "general" && sort === "power" ? "Рейтинг по силе" : `${prefix}: ${metricNames[sort]}`;
+  $("rankingTable").classList.remove("organization-table", "stats-table", "levels-table");
+  $("tableHead").innerHTML = `<tr><th>№</th><th>Игрок</th><th>Ур.</th><th>Братство</th><th>Клан</th><th id="metricTitle">${state.mode === "general" ? metricNames[sort] : "Прирост"}</th><th>Прирост</th></tr>`;
   $("pageText").textContent = `Страница ${data.page} из ${state.pages}`;
   $("prev").disabled = state.page <= 1;
   $("next").disabled = state.page >= state.pages;
   $("rows").innerHTML = data.players.length ? data.players.map((p, i) => {
     const rank = (state.page - 1) * 50 + i + 1;
     const medal = rankBadge(rank);
-    if (statsMode) {
-      return `<tr class="stats-row">
-        <td class="rank">${medal}</td>
-        <td class="player-name"><a href="${escapeHtml(p.profile_url)}" class="game-profile-link">${escapeHtml(p.nickname)}</a><button class="show-stats" data-player-id="${p.id}" title="Показать статистику" aria-label="Показать статистику игрока">▥</button><small>${p.level ?? "—"}</small></td>
-        <td class="stat-number">${fmt(p.power)}</td>
-        <td class="stat-number">${fmt(p.defense)}</td>
-        <td class="stat-number">${fmt(p.agility)}</td>
-        <td class="stat-number">${fmt(p.mastery)}</td>
-        <td class="stat-number">${fmt(p.vitality)}</td>
-      </tr>`;
-    }
     const mainValue = state.mode === "general" ? p[sort] : p.gain;
     const gain = p.gain;
     return `<tr>
