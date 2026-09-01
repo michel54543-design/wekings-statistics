@@ -1045,6 +1045,8 @@ def api_today_tops():
         _life_cache_put(cache_key, payload)
         return jsonify(payload)
 
+    # Список отсортирован по времени по возрастанию: первый снимок дня
+    # является началом периода, последний — текущим состоянием.
     before_at = today_dates[0]
     current_at = today_dates[-1]
     tops, hero = _build_delta_tops(before_at, current_at)
@@ -1073,21 +1075,23 @@ def api_yesterday_tops():
         _life_cache_put(cache_key, payload)
         return jsonify(payload)
 
-    by_day = {}
-    for dt in sorted(dates):
-        day = moldova_date(dt)
-        if day not in by_day:
-            by_day[day] = dt
-
-    today = moldova_date(datetime.now(timezone.utc))
-    yesterday_day = today - timedelta(days=1)
-    if today not in by_day or yesterday_day not in by_day:
-        payload = {"ready": False, "tops": [], "date": yesterday_day.isoformat()}
+    # Для «Топы вчера» сравниваем начало и конец именно вчерашнего дня.
+    # Нельзя сравнивать вчера с сегодняшним снимком: это смешивает два периода.
+    yesterday_day = moldova_date(datetime.now(timezone.utc)) - timedelta(days=1)
+    yesterday_dates = sorted(
+        dt for dt in dates if moldova_date(dt) == yesterday_day
+    )
+    if len(yesterday_dates) < 2:
+        payload = {
+            "ready": False,
+            "tops": [],
+            "date": yesterday_day.isoformat(),
+        }
         _life_cache_put(cache_key, payload)
         return jsonify(payload)
 
-    before_at = by_day[yesterday_day]
-    current_at = by_day[today]
+    before_at = yesterday_dates[0]
+    current_at = yesterday_dates[-1]
     tops, hero = _build_delta_tops(before_at, current_at)
     payload = {
         "ready": True,
