@@ -1002,62 +1002,94 @@ YESTERDAY_TOP_METRICS = [
     ("serpent_kills", "Убийства Змея", "🌊"),
 ]
 
-@app.get("/api/today-tops")
-def api_today_tops():
-    # Результат пересчитываем только после появления нового завершённого снимка.
-    # Это не даёт каждому посетителю заново обходить тысячи игроков.
-    cache_key = "today:tops"
-    cached = _life_cache_get(cache_key)
-    if cached is not None:
-        return jsonify(cached)
+def _calculate_tops_between(before_at, current_at):
+    """Быстро считает все топы за один проход по двум снимкам.
 
-    # Топы текущего дня: первый завершённый снимок сегодня -> последний завершённый снимок сегодня.
-    # Используем тот же набор категорий, что и в «Топы вчера».
-    dates = _life_snapshot_dates()
-    today = moldova_date(datetime.now(timezone.utc))
-    today_dates = sorted([dt for dt in dates if moldova_date(dt) == today])
-    if len(today_dates) < 2:
-        return jsonify(ready=False, tops=[], date=today.isoformat())
+    Не загружаем 8k ORM-объектов и не делаем отдельный полный проход по игрокам
+    для каждой метрики. Берём только нужные столбцы и сравниваем их один раз.
+    """
+    keys = [key for key, _, _ in YESTERDAY_TOP_METRICS]
+    columns = [PlayerSnapshot.player_id, PlayerSnapshot.nickname] + [getattr(PlayerSnapshot, key) for key in keys]
 
-    before_at = today_dates[0]
-    current_at = today_dates[-1]
-    current = PlayerSnapshot.query.filter_by(batch_at=current_at).all()
-    before = {x.player_id: x for x in PlayerSnapshot.query.filter_by(batch_at=before_at).all()}
+    before_rows = db.session.query(*columns).filter(PlayerSnapshot.batch_at == before_at).all()
+    before = {row[0]: row for row in before_rows}
+    current_rows = db.session.query(*columns).filter(PlayerSnapshot.batch_at == current_at).all()
 
-    tops = []
+    best_by_key = {key: None for key in keys}
     first_counts = {}
     first_total_gain = {}
     first_players = {}
-    for key, label, icon in YESTERDAY_TOP_METRICS:
-        best = None
-        for player in current:
-            old = before.get(player.player_id)
-            if not old:
-                continue
-            a, b = getattr(player, key, None), getattr(old, key, None)
+
+    for row in current_rows:
+        old = before.get(row[0])
+        if old is None:
+            continue
+        for idx, key in enumerate(keys, start=2):
+            a, b = row[idx], old[idx]
             if a is None or b is None:
                 continue
             gain = int(a) - int(b)
             if gain <= 0:
                 continue
+            best = best_by_key[key]
             if best is None or gain > best[0]:
-                best = (gain, player)
-        if best:
-            gain, player = best
-            tops.append({"metric": key, "label": label, "icon": icon, "player_id": player.player_id, "nickname": player.nickname, "gain": gain})
-            first_counts[player.player_id] = first_counts.get(player.player_id, 0) + 1
-            first_total_gain[player.player_id] = first_total_gain.get(player.player_id, 0) + gain
-            first_players[player.player_id] = player.nickname
+                best_by_key[key] = (gain, row[0], row[1])
+
+    tops = []
+    for key, label, icon in YESTERDAY_TOP_METRICS:
+        best = best_by_key[key]
+        if not best:
+            continue
+        gain, player_id, nickname = best
+        tops.append({
+            "metric": key,
+            "label": label,
+            "icon": icon,
+            "player_id": player_id,
+            "nickname": nickname,
+            "gain": gain,
+        })
+        first_counts[player_id] = first_counts.get(player_id, 0) + 1
+        first_total_gain[player_id] = first_total_gain.get(player_id, 0) + gain
+        first_players[player_id] = nickname
 
     hero = None
     if first_counts:
         pid = max(first_counts, key=lambda x: (first_counts[x], first_total_gain[x]))
-        hero = {"player_id": pid, "nickname": first_players[pid], "first_places": first_counts[pid]}
+        hero = {
+            "player_id": pid,
+            "nickname": first_players[pid],
+            "first_places": first_counts[pid],
+        }
+    return tops, hero
 
-    payload = dict(ready=True, date=today.isoformat(), from_date=before_at.isoformat(),
-                   to_date=current_at.isoformat(), tops=tops, hero=hero)
+
+@app.get("/api/today-tops")
+def api_today_tops():
+    cache_key = "today:tops"
+    cached = _life_cache_get(cache_key)
+    if cached is not None:
+        return jsonify(cached)
+
+    dates = _life_snapshot_dates()
+    today = moldova_date(datetime.now(timezone.utc))
+    today_dates = sorted(dt for dt in dates if moldova_date(dt) == today)
+    if len(today_dates) < 2:
+        return jsonify(ready=False, tops=[], date=today.isoformat())
+
+    before_at, current_at = today_dates[0], today_dates[-1]
+    tops, hero = _calculate_tops_between(before_at, current_at)
+    payload = {
+        "ready": True,
+        "date": today.isoformat(),
+        "from_date": before_at.isoformat(),
+        "to_date": current_at.isoformat(),
+        "tops": tops,
+        "hero": hero,
+    }
     _life_cache_put(cache_key, payload)
     return jsonify(payload)
+
 
 @app.get("/api/yesterday-tops")
 def api_yesterday_tops():
@@ -1070,69 +1102,31 @@ def api_yesterday_tops():
     if len(dates) < 2:
         return jsonify(ready=False, tops=[])
 
-    # "Топы вчера" должны считать именно завершившиеся календарные сутки:
-    # первый готовый снимок СЕГОДНЯ минус первый готовый снимок ВЧЕРА.
-    # Раньше код при наличии сегодняшнего снимка сравнивал ВЧЕРА с ПОЗАВЧЕРА,
-    # поэтому результаты были сдвинуты на один день.
     by_day = {}
     for dt in sorted(dates):
         day = moldova_date(dt)
-        # sorted() идёт от старых к новым, поэтому сохраняем первый снимок дня
-        # (обычно ночной запуск около 00:15), ближайший к границе суток.
         if day not in by_day:
             by_day[day] = dt
 
     today = moldova_date(datetime.now(timezone.utc))
     yesterday_day = today - timedelta(days=1)
     if today not in by_day or yesterday_day not in by_day:
-        # Пока сегодняшнего контрольного снимка нет, вчерашние сутки ещё нельзя
-        # посчитать корректно. Лучше показать "недостаточно данных", чем топы
-        # позавчера под подписью "вчера".
         return jsonify(ready=False, tops=[], date=yesterday_day.isoformat())
 
     before_at = by_day[yesterday_day]
     current_at = by_day[today]
-
-    current = PlayerSnapshot.query.filter_by(batch_at=current_at).all()
-    before = {x.player_id: x for x in PlayerSnapshot.query.filter_by(batch_at=before_at).all()}
-    tops = []
-    first_counts = {}
-    first_total_gain = {}
-    first_players = {}
-
-    for key, label, icon in YESTERDAY_TOP_METRICS:
-        best = None
-        for player in current:
-            old = before.get(player.player_id)
-            if not old:
-                continue
-            a, b = getattr(player, key, None), getattr(old, key, None)
-            if a is None or b is None:
-                continue
-            gain = int(a) - int(b)
-            if gain <= 0:
-                continue
-            if best is None or gain > best[0]:
-                best = (gain, player)
-        if best:
-            gain, player = best
-            tops.append({"metric": key, "label": label, "icon": icon, "player_id": player.player_id, "nickname": player.nickname, "gain": gain})
-            first_counts[player.player_id] = first_counts.get(player.player_id, 0) + 1
-            first_total_gain[player.player_id] = first_total_gain.get(player.player_id, 0) + gain
-            first_players[player.player_id] = player.nickname
-
-    hero = None
-    if first_counts:
-        pid = max(first_counts, key=lambda x: (first_counts[x], first_total_gain[x]))
-        hero = {"player_id": pid, "nickname": first_players[pid], "first_places": first_counts[pid]}
-
+    tops, hero = _calculate_tops_between(before_at, current_at)
     payload = {
-        "ready": True, "date": yesterday_day.isoformat(),
-        "from_date": before_at.isoformat(), "to_date": current_at.isoformat(),
-        "tops": tops, "hero": hero,
+        "ready": True,
+        "date": yesterday_day.isoformat(),
+        "from_date": before_at.isoformat(),
+        "to_date": current_at.isoformat(),
+        "tops": tops,
+        "hero": hero,
     }
     _life_cache_put(cache_key, payload)
     return jsonify(payload)
+
 
 @app.get("/api/life-summary")
 def api_life_summary():

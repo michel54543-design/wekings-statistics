@@ -478,6 +478,46 @@ function openLife(){$("lifePanel").classList.remove("hidden");$("lifeToggle").cl
 function closeLife(){$("lifePanel").classList.add("hidden");$("lifeToggle").classList.remove("active");$("lifeToggle").setAttribute("aria-expanded","false");}
 
 
+const todayTopsState = { loaded: false };
+async function loadTodayTops() {
+  $("todayTopsGrid").innerHTML = '<p class="life-empty">Считаем сегодняшние топы…</p>';
+  const response = await fetch('/api/today-tops', { cache: 'default' });
+  if (!response.ok) throw new Error(`HTTP ${response.status}`);
+  const data = await response.json();
+  if (!data.ready) {
+    $("todayTopsDate").textContent = "Нужно минимум два снимка за сегодня";
+    $("todayHero").innerHTML = "";
+    $("todayTopsGrid").innerHTML = '<p class="life-empty">Пока недостаточно данных за сегодня.</p>';
+    return;
+  }
+  const d = new Date(data.date + "T12:00:00");
+  $("todayTopsDate").textContent = `Итоги за ${d.toLocaleDateString("ru-RU")}`;
+  const hero = data.hero;
+  $("todayHero").innerHTML = hero ? `
+    <span>👑 Герой сегодняшнего дня</span>
+    <a class="game-profile-link" href="https://playwekings.mobi/hero/detail?player=${hero.player_id}">${escapeHtml(hero.nickname)}</a>
+    <b>${hero.first_places} ${hero.first_places === 1 ? "первое место" : "первых мест"}</b>` : "";
+  $("todayTopsGrid").innerHTML = data.tops?.length ? data.tops.map(x => `
+    <article class="yesterday-top-card">
+      <span>${x.icon} ${escapeHtml(x.label)}</span>
+      <a class="game-profile-link" href="https://playwekings.mobi/hero/detail?player=${x.player_id}">${escapeHtml(x.nickname)}</a>
+      <b>+${fmt(x.gain)}</b>
+    </article>`).join("") : '<p class="life-empty">За сегодня прироста по этим показателям нет.</p>';
+  todayTopsState.loaded = true;
+}
+function openTodayTops(){
+  $("todayTopsPanel").classList.remove("hidden");
+  $("todayTopsToggle").classList.add("active");
+  $("todayTopsToggle").setAttribute("aria-expanded","true");
+  loadTodayTops().catch(()=>{$("todayTopsGrid").innerHTML='<p class="life-empty">Не удалось загрузить топы.</p>';});
+  $("todayTopsPanel").scrollIntoView({behavior:"smooth",block:"start"});
+}
+function closeTodayTops(){
+  $("todayTopsPanel").classList.add("hidden");
+  $("todayTopsToggle").classList.remove("active");
+  $("todayTopsToggle").setAttribute("aria-expanded","false");
+}
+
 const yesterdayTopsState = { loaded: false };
 async function loadYesterdayTops() {
   $("yesterdayTopsGrid").innerHTML = '<p class="life-empty">Считаем вчерашние топы…</p>';
@@ -607,6 +647,8 @@ $("mobilePlayer").onclick = () => {
 
 $("lifeToggle").onclick=()=>{$("lifePanel").classList.contains("hidden")?openLife():closeLife();};
 $("lifeClose").onclick=closeLife;
+$("todayTopsToggle").onclick=()=>{$("todayTopsPanel").classList.contains("hidden")?openTodayTops():closeTodayTops();};
+$("todayTopsClose").onclick=closeTodayTops;
 $("yesterdayTopsToggle").onclick=()=>{$("yesterdayTopsPanel").classList.contains("hidden")?openYesterdayTops():closeYesterdayTops();};
 $("yesterdayTopsClose").onclick=closeYesterdayTops;
 document.querySelectorAll("[data-life-period]").forEach(b=>{b.onclick=()=>loadLife(b.dataset.lifePeriod).catch(()=>{$("lifeEvents").innerHTML='<p class="life-empty">Не удалось загрузить события.</p>';});});
