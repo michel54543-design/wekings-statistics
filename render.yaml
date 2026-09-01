@@ -38,7 +38,7 @@ services:
       - key: DB_INIT_ON_BOOT
         value: "false"
       - key: DB_MAINTENANCE_ON_BOOT
-        value: "false"
+        value: "true"
 
 databases:
   - name: wekings-statistics-db
