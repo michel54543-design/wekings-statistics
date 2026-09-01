@@ -479,11 +479,18 @@ function closeLife(){$("lifePanel").classList.add("hidden");$("lifeToggle").clas
 
 
 const todayTopsState = { loaded: false };
-async function loadTodayTops() {
+async function loadTodayTops(force = false) {
+  if (todayTopsState.loaded && !force) return;
   $("todayTopsGrid").innerHTML = '<p class="life-empty">Считаем сегодняшние топы…</p>';
-  const response = await fetch('/api/today-tops', { cache: 'default' });
-  if (!response.ok) throw new Error(`HTTP ${response.status}`);
-  const data = await response.json();
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 15000);
+  try {
+    const response = await fetch(`/api/today-tops?_=${Date.now()}`, {
+      cache: "no-store",
+      signal: controller.signal
+    });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const data = await response.json();
   if (!data.ready) {
     $("todayTopsDate").textContent = "Нужно минимум два снимка за сегодня";
     $("todayHero").innerHTML = "";
@@ -503,13 +510,18 @@ async function loadTodayTops() {
       <a class="game-profile-link" href="https://playwekings.mobi/hero/detail?player=${x.player_id}">${escapeHtml(x.nickname)}</a>
       <b>+${fmt(x.gain)}</b>
     </article>`).join("") : '<p class="life-empty">За сегодня прироста по этим показателям нет.</p>';
-  todayTopsState.loaded = true;
+    todayTopsState.loaded = true;
+  } finally {
+    clearTimeout(timer);
+  }
 }
 function openTodayTops(){
   $("todayTopsPanel").classList.remove("hidden");
   $("todayTopsToggle").classList.add("active");
   $("todayTopsToggle").setAttribute("aria-expanded","true");
-  loadTodayTops().catch(()=>{$("todayTopsGrid").innerHTML='<p class="life-empty">Не удалось загрузить топы.</p>';});
+  loadTodayTops().catch(error=>{
+    $("todayTopsGrid").innerHTML = `<p class="life-empty">Не удалось загрузить топы. ${error?.name === "AbortError" ? "Сервер отвечает слишком долго." : "Проверьте соединение или попробуйте ещё раз."}</p>`;
+  });
   $("todayTopsPanel").scrollIntoView({behavior:"smooth",block:"start"});
 }
 function closeTodayTops(){
@@ -519,9 +531,18 @@ function closeTodayTops(){
 }
 
 const yesterdayTopsState = { loaded: false };
-async function loadYesterdayTops() {
+async function loadYesterdayTops(force = false) {
+  if (yesterdayTopsState.loaded && !force) return;
   $("yesterdayTopsGrid").innerHTML = '<p class="life-empty">Считаем вчерашние топы…</p>';
-  const data = await fetch(`/api/yesterday-tops?_=${Date.now()}`, { cache: "no-store" }).then(r => r.json());
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 15000);
+  try {
+    const response = await fetch(`/api/yesterday-tops?_=${Date.now()}`, {
+      cache: "no-store",
+      signal: controller.signal
+    });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const data = await response.json();
   if (!data.ready) {
     $("yesterdayTopsDate").textContent = "Нужно минимум три дневных снимка";
     $("yesterdayHero").innerHTML = "";
@@ -541,13 +562,18 @@ async function loadYesterdayTops() {
       <a class="game-profile-link" href="https://playwekings.mobi/hero/detail?player=${x.player_id}">${escapeHtml(x.nickname)}</a>
       <b>+${fmt(x.gain)}</b>
     </article>`).join("") : '<p class="life-empty">За вчера прироста по этим показателям нет.</p>';
-  yesterdayTopsState.loaded = true;
+    yesterdayTopsState.loaded = true;
+  } finally {
+    clearTimeout(timer);
+  }
 }
 function openYesterdayTops(){
   $("yesterdayTopsPanel").classList.remove("hidden");
   $("yesterdayTopsToggle").classList.add("active");
   $("yesterdayTopsToggle").setAttribute("aria-expanded","true");
-  loadYesterdayTops().catch(()=>{$("yesterdayTopsGrid").innerHTML='<p class="life-empty">Не удалось загрузить топы.</p>';});
+  loadYesterdayTops().catch(error=>{
+    $("yesterdayTopsGrid").innerHTML = `<p class="life-empty">Не удалось загрузить топы. ${error?.name === "AbortError" ? "Сервер отвечает слишком долго." : "Проверьте соединение или попробуйте ещё раз."}</p>`;
+  });
   $("yesterdayTopsPanel").scrollIntoView({behavior:"smooth",block:"start"});
 }
 function closeYesterdayTops(){
