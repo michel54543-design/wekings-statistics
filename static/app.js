@@ -259,7 +259,65 @@ async function loadOrganizations() {
   hidePlayerDetail();
 }
 
+async function loadLevelGroups() {
+  const params = new URLSearchParams();
+  if (state.datesLoaded && $("dateTo").value) params.set("to", $("dateTo").value);
+  $("rows").innerHTML = '<tr><td colspan="6" class="loading">Считаем уровни…</td></tr>';
+  const data = await fetch(`/api/level-groups?${params}`).then(r => {
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    return r.json();
+  });
+  if (!state.datesLoaded && data.dates?.length) fillDates(data.dates, data.date_from, data.date_to);
+
+  state.pages = 1;
+  $("tableTitle").textContent = "Едина по уровням";
+  $("resultCount").textContent = `${fmt(data.total)} игроков`;
+  $("rankingTable").className = "level-groups-table";
+  $("tableHead").innerHTML = '<tr><th>Уровень</th><th>Игроков</th><th>Сила</th><th>Статус</th></tr>';
+  $("pageText").textContent = "Все уровни";
+  $("prev").disabled = true;
+  $("next").disabled = true;
+
+  if (!data.ready) {
+    $("rows").innerHTML = '<tr><td colspan="4" class="loading">Для сравнения уровней нужен предыдущий снимок статистики</td></tr>';
+    return;
+  }
+
+  $("rows").innerHTML = data.levels.length ? data.levels.map((group, i) => {
+    const joined = group.joined?.length ? `
+      <div class="level-change joined"><strong>🟢 Поднялись:</strong>
+        ${group.joined.map(p => `<a class="game-profile-link" href="${escapeHtml(p.profile_url)}">${escapeHtml(p.nickname)}</a>`).join(", ")}
+      </div>` : "";
+    const left = group.left?.length ? `
+      <div class="level-change left"><strong>🔴 Ушли:</strong>
+        ${group.left.map(p => `<a class="game-profile-link" href="${escapeHtml(p.profile_url)}">${escapeHtml(p.nickname)}</a>`).join(", ")}
+      </div>` : "";
+    const players = group.members.map((p, index) => `
+      <div class="level-player">
+        <span class="level-place">${index + 1}</span>
+        <a class="level-player-name game-profile-link" href="${escapeHtml(p.profile_url)}">${escapeHtml(p.nickname)}</a>
+        <b>${fmt(p.power)}</b>
+        <button class="show-stats" data-player-id="${p.id}" title="Показать статистику" aria-label="Показать статистику игрока">▥</button>
+      </div>`).join("");
+    const status = `${group.joined_count ? `<span class="change-up">+${group.joined_count}</span>` : ""}${group.left_count ? ` <span class="change-down">−${group.left_count}</span>` : ""}` || '<span class="change-zero">—</span>';
+    return `<tr class="level-group-row" data-level-index="${i}">
+      <td class="level-group-title"><button class="level-group-toggle" aria-expanded="false"><span>▶</span><b>Уровень ${group.level}</b></button></td>
+      <td class="level-group-count">${group.count}</td>
+      <td class="level-group-status">${status}</td>
+      <td class="level-group-hint">по силе ↓</td>
+    </tr>
+    <tr class="level-group-members hidden" data-level-members-index="${i}">
+      <td colspan="4">
+        <div class="level-change-list">${joined}${left}</div>
+        <div class="level-player-list">${players}</div>
+      </td>
+    </tr>`;
+  }).join("") : '<tr><td colspan="4" class="loading">Уровни не найдены</td></tr>';
+  hidePlayerDetail();
+}
+
 async function loadPlayers() {
+  if (state.mode === "stats") return loadLevelGroups();
   if (isOrganizationMode()) return loadOrganizations();
   const sort = state.mode === "stats" ? "power" : $("sort").value;
   const params = new URLSearchParams({ page: state.page, per_page: 50, sort, mode: state.mode });
@@ -468,6 +526,16 @@ document.addEventListener("click", event => {
     membersRow.classList.toggle("hidden", !willOpen);
     organizationToggle.setAttribute("aria-expanded", String(willOpen));
     organizationToggle.querySelector("span").textContent = willOpen ? "▼" : "▶";
+    return;
+  }
+  const levelToggle = event.target.closest(".level-group-toggle");
+  if (levelToggle) {
+    const row = levelToggle.closest(".level-group-row");
+    const membersRow = document.querySelector(`[data-level-members-index="${row.dataset.levelIndex}"]`);
+    const willOpen = membersRow.classList.contains("hidden");
+    membersRow.classList.toggle("hidden", !willOpen);
+    levelToggle.setAttribute("aria-expanded", String(willOpen));
+    levelToggle.querySelector("span").textContent = willOpen ? "▼" : "▶";
     return;
   }
 });
