@@ -288,7 +288,7 @@ SORT_FIELDS = {
 
 @app.get("/")
 def index():
-    return render_template("index.html")
+    return render_template("index.html", is_admin=_admin_allowed())
 
 
 @app.get("/health")
@@ -1385,6 +1385,37 @@ def api_status():
         last_error=state.last_error,
         total_players=total_players,
     )
+
+
+@app.post("/api/attacks/refresh")
+def api_attacks_refresh():
+    """Запускает только обновление прогноза Монаха в фоне.
+
+    Доступно только администратору после входа через /wekings-login.
+    Основная статистика игроков при этом не запускается и загрузку страницы
+    не блокирует. Повторный ручной запрос ограничен двумя минутами.
+    """
+    if not _admin_allowed():
+        return jsonify(ok=False, error="Требуется вход администратора"), 403
+
+    global _last_attack_refresh_request
+
+    now = datetime.now(timezone.utc)
+    with _attack_refresh_lock:
+        if (
+            _last_attack_refresh_request is not None
+            and now - _last_attack_refresh_request < timedelta(minutes=2)
+        ):
+            wait_seconds = max(1, int(120 - (now - _last_attack_refresh_request).total_seconds()))
+            return jsonify(ok=False, busy=True, message=f"Подождите ещё {wait_seconds} сек."), 429
+
+        if _attack_lock.locked():
+            return jsonify(ok=False, busy=True, message="Прогноз уже обновляется."), 409
+
+        _last_attack_refresh_request = now
+
+    start_attack_thread()
+    return jsonify(ok=True, started=True)
 
 
 @app.get("/api/attacks")
