@@ -877,6 +877,13 @@ YESTERDAY_TOP_METRICS = [
 
 @app.get("/api/today-tops")
 def api_today_tops():
+    # Результат пересчитываем только после появления нового завершённого снимка.
+    # Это не даёт каждому посетителю заново обходить тысячи игроков.
+    cache_key = "today:tops"
+    cached = _life_cache_get(cache_key)
+    if cached is not None:
+        return jsonify(cached)
+
     # Топы текущего дня: первый завершённый снимок сегодня -> последний завершённый снимок сегодня.
     # Используем тот же набор категорий, что и в «Топы вчера».
     dates = _life_snapshot_dates()
@@ -920,8 +927,10 @@ def api_today_tops():
         pid = max(first_counts, key=lambda x: (first_counts[x], first_total_gain[x]))
         hero = {"player_id": pid, "nickname": first_players[pid], "first_places": first_counts[pid]}
 
-    return jsonify(ready=True, date=today.isoformat(), from_date=before_at.isoformat(),
+    payload = dict(ready=True, date=today.isoformat(), from_date=before_at.isoformat(),
                    to_date=current_at.isoformat(), tops=tops, hero=hero)
+    _life_cache_put(cache_key, payload)
+    return jsonify(payload)
 
 @app.get("/api/yesterday-tops")
 def api_yesterday_tops():
