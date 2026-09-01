@@ -123,6 +123,40 @@ function weatherTimeText(value) {
   return date.toLocaleString("ru-RU", {day:"2-digit", month:"2-digit", hour:"2-digit", minute:"2-digit"});
 }
 
+async function refreshAttacks() {
+  const button = $("attackRefresh");
+  if (!button) return;
+
+  const before = window.__attacksFetchedAt || null;
+  button.disabled = true;
+  button.textContent = "Обновляем…";
+
+  try {
+    const response = await fetch("/api/attacks/refresh", { method: "POST", cache: "no-store" });
+    let data = null;
+    try { data = await response.json(); } catch (_) {}
+    if (!response.ok) throw new Error(data?.message || `HTTP ${response.status}`);
+
+    for (let i = 0; i < 20; i++) {
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      const check = await fetch(`/api/attacks?_=${Date.now()}`, { cache: "no-store" });
+      if (!check.ok) continue;
+      const fresh = await check.json();
+      if (fresh.fetched_at && fresh.fetched_at !== before) {
+        await loadAttacks();
+        return;
+      }
+    }
+    await loadAttacks();
+  } catch (error) {
+    button.title = error?.message || "Не удалось обновить прогноз";
+  } finally {
+    button.disabled = false;
+    button.textContent = "↻ Обновить";
+  }
+}
+
+
 async function loadAttacks() {
   const box = $("attackSchedule");
   try {
@@ -132,6 +166,7 @@ async function loadAttacks() {
     $("dragonTime").textContent = attackTimeText(data.dragon_at, 60);
     $("serpentTime").textContent = attackTimeText(data.serpent_at, 90);
     $("weatherTime").textContent = weatherTimeText(data.weather_at);
+    window.__attacksFetchedAt = data.fetched_at || null;
     if (data.fetched_at) {
       $("attackUpdated").textContent = `обновлено ${new Date(data.fetched_at).toLocaleTimeString("ru-RU", {hour:"2-digit", minute:"2-digit"})}`;
     } else {
@@ -685,6 +720,7 @@ $("todayBadge").textContent = new Date().toLocaleDateString("ru-RU", {
   day: "2-digit", month: "short"
 }).replace(".", "").toUpperCase();
 syncMobileNav();
+if ($("attackRefresh")) $("attackRefresh").onclick = refreshAttacks;
 loadStatus().catch(() => {});
 loadAttacks().catch(() => {});
 loadPlayers().catch(() => $("rows").innerHTML = '<tr><td colspan="7" class="loading">Не удалось загрузить данные</td></tr>');
