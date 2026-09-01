@@ -248,6 +248,12 @@ with app.app_context():
             "CREATE INDEX IF NOT EXISTS ix_snapshot_batch_level_power "
             "ON player_snapshot (batch_at, level, power DESC)"
         ))
+        # Быстрые сортировки главной страницы по переключателю «Показатель».
+        for _field in ("glory", "defense", "agility", "mastery", "vitality", "stat_sum"):
+            db.session.execute(db.text(
+                f"CREATE INDEX IF NOT EXISTS ix_snapshot_batch_{_field} "
+                f"ON player_snapshot (batch_at, {_field} DESC)"
+            ))
         db.session.commit()
     except Exception:
         db.session.rollback()
@@ -565,12 +571,28 @@ def api_players():
         if level:
             current_query = current_query.filter(PlayerSnapshot.level == level)
         sort_column = getattr(PlayerSnapshot, field_name)
-        result = current_query.order_by(
-            sort_column.desc().nullslast()
-        ).paginate(page=page, per_page=per_page, error_out=False)
+        # Главная страница открывается без фильтров. SQLAlchemy paginate()
+        # сначала делает тяжёлый COUNT(*) по всему снимку ~8 тыс. строк.
+        # Для обычного рейтинга количество уже известно из ScanState, поэтому
+        # используем LIMIT/OFFSET и не выполняем отдельный COUNT.
+        if not query and not level and page >= 1:
+            offset = (page - 1) * per_page
+            items = (current_query.order_by(sort_column.desc().nullslast())
+                     .offset(offset).limit(per_page).all())
+            total = int((db.session.get(ScanState, 1).found_players or 0))
+            pages = max(1, (total + per_page - 1) // per_page)
+            result_page = page
+        else:
+            result = current_query.order_by(
+                sort_column.desc().nullslast()
+            ).paginate(page=page, per_page=per_page, error_out=False)
+            items = result.items
+            total = result.total
+            pages = result.pages
+            result_page = result.page
 
         previous_date = dates[1] if len(dates) > 1 else dates[0]
-        player_ids = [player.player_id for player in result.items]
+        player_ids = [player.player_id for player in items]
         previous_values = {}
         if player_ids:
             previous_values = dict(
@@ -641,10 +663,10 @@ def api_players():
             }
 
         return jsonify(
-            players=[player_payload(player) for player in result.items],
-            page=result.page,
-            pages=result.pages,
-            total=result.total,
+            players=[player_payload(player) for player in items],
+            page=result_page,
+            pages=pages,
+            total=total,
             dates=[value.isoformat() for value in dates],
             date_from=previous_date.isoformat(),
             date_to=date_to.isoformat(),
@@ -1242,7 +1264,7 @@ def completed_snapshot_dates():
     if (
         cached["dates"] is not None
         and cached["finished_at"] == finished_at
-        and now - cached["at"] < 30
+        and now - cached["at"] < 300
     ):
         return list(cached["dates"])
     query = db.session.query(PlayerSnapshot.batch_at).distinct()
@@ -1395,12 +1417,14 @@ def api_organizations():
 def api_status():
     try:
         state = db.session.get(ScanState, 1)
-        total_players = Player.query.count()
+        # Не делаем COUNT(*) по всей таблице на каждом открытии сайта.
+        # Количество игроков уже хранится в состоянии последнего сканирования.
+        total_players = int(state.found_players or 0)
     except Exception:
         db.session.rollback()
         db.engine.dispose()
         state = db.session.get(ScanState, 1)
-        total_players = Player.query.count()
+        total_players = int(state.found_players or 0)
     trusted_dates = completed_snapshot_dates()
     published_at = trusted_dates[0] if trusted_dates else state.finished_at
     return jsonify(
