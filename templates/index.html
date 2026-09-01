@@ -8,7 +8,7 @@
   <link rel="icon" href="/static/favicon.ico?v=41" sizes="any">
   <link rel="icon" href="/static/favicon.svg?v=41" type="image/svg+xml">
   <link rel="apple-touch-icon" href="/static/apple-touch-icon.png?v=41">
-  <link rel="stylesheet" href="/static/style.css?v=77">
+  <link rel="stylesheet" href="/static/style.css?v=79">
 </head>
 <body class="dark">
   <main class="page">
@@ -27,6 +27,7 @@
       <span class="attack-event serpent">🐍 <b>Змей</b><strong id="serpentTime">Ожидаем новое время</strong></span>
       <span class="attack-event weather">⚓ <b>Плавания</b><strong id="weatherTime">Нет прогноза</strong></span>
       <small id="attackUpdated"></small>
+      {% if is_admin %}<button id="attackRefresh" class="attack-refresh" type="button">↻ Обновить</button>{% endif %}
     </section>
 
     <nav class="modes" aria-label="Режим статистики">
