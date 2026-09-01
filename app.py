@@ -954,62 +954,111 @@ YESTERDAY_TOP_METRICS = [
     ("serpent_kills", "Убийства Змея", "🌊"),
 ]
 
+def _build_delta_tops(before_at, current_at):
+    """Calculate tops from one SQL join instead of loading two ORM snapshots.
+
+    The old implementation materialized ~8k PlayerSnapshot objects twice and then
+    walked them once for every metric. That made the first click on Top Today/
+    Yesterday expensive and could hold the only web worker busy for a long time.
+    """
+    current = aliased(PlayerSnapshot)
+    previous = aliased(PlayerSnapshot)
+    metrics = YESTERDAY_TOP_METRICS
+    columns = [current.player_id, current.nickname]
+    for key, _label, _icon in metrics:
+        columns.extend([getattr(current, key), getattr(previous, key)])
+
+    rows = (
+        db.session.query(*columns)
+        .join(
+            previous,
+            and_(
+                previous.player_id == current.player_id,
+                previous.batch_at == before_at,
+            ),
+        )
+        .filter(current.batch_at == current_at)
+        .all()
+    )
+
+    best = {key: None for key, _label, _icon in metrics}
+    first_counts = {}
+    first_total_gain = {}
+    first_players = {}
+
+    for row in rows:
+        player_id = row[0]
+        nickname = row[1]
+        for i, (key, label, icon) in enumerate(metrics):
+            current_value = row[2 + i * 2]
+            previous_value = row[3 + i * 2]
+            if current_value is None or previous_value is None:
+                continue
+            gain = int(current_value) - int(previous_value)
+            if gain <= 0:
+                continue
+            old_best = best[key]
+            if old_best is None or gain > old_best[0]:
+                best[key] = (gain, player_id, nickname, label, icon)
+
+    tops = []
+    for key, label, icon in metrics:
+        item = best[key]
+        if not item:
+            continue
+        gain, player_id, nickname, label, icon = item
+        tops.append({
+            "metric": key,
+            "label": label,
+            "icon": icon,
+            "player_id": player_id,
+            "nickname": nickname,
+            "gain": gain,
+        })
+        first_counts[player_id] = first_counts.get(player_id, 0) + 1
+        first_total_gain[player_id] = first_total_gain.get(player_id, 0) + gain
+        first_players[player_id] = nickname
+
+    hero = None
+    if first_counts:
+        pid = max(first_counts, key=lambda x: (first_counts[x], first_total_gain[x]))
+        hero = {
+            "player_id": pid,
+            "nickname": first_players[pid],
+            "first_places": first_counts[pid],
+        }
+    return tops, hero
+
+
 @app.get("/api/today-tops")
 def api_today_tops():
-    # Результат пересчитываем только после появления нового завершённого снимка.
-    # Это не даёт каждому посетителю заново обходить тысячи игроков.
     cache_key = "today:tops"
     cached = _life_cache_get(cache_key)
     if cached is not None:
         return jsonify(cached)
 
-    # Топы текущего дня: первый завершённый снимок сегодня -> последний завершённый снимок сегодня.
-    # Используем тот же набор категорий, что и в «Топы вчера».
     dates = _life_snapshot_dates()
     today = moldova_date(datetime.now(timezone.utc))
     today_dates = sorted([dt for dt in dates if moldova_date(dt) == today])
     if len(today_dates) < 2:
-        return jsonify(ready=False, tops=[], date=today.isoformat())
+        payload = {"ready": False, "tops": [], "date": today.isoformat()}
+        _life_cache_put(cache_key, payload)
+        return jsonify(payload)
 
     before_at = today_dates[0]
     current_at = today_dates[-1]
-    current = PlayerSnapshot.query.filter_by(batch_at=current_at).all()
-    before = {x.player_id: x for x in PlayerSnapshot.query.filter_by(batch_at=before_at).all()}
-
-    tops = []
-    first_counts = {}
-    first_total_gain = {}
-    first_players = {}
-    for key, label, icon in YESTERDAY_TOP_METRICS:
-        best = None
-        for player in current:
-            old = before.get(player.player_id)
-            if not old:
-                continue
-            a, b = getattr(player, key, None), getattr(old, key, None)
-            if a is None or b is None:
-                continue
-            gain = int(a) - int(b)
-            if gain <= 0:
-                continue
-            if best is None or gain > best[0]:
-                best = (gain, player)
-        if best:
-            gain, player = best
-            tops.append({"metric": key, "label": label, "icon": icon, "player_id": player.player_id, "nickname": player.nickname, "gain": gain})
-            first_counts[player.player_id] = first_counts.get(player.player_id, 0) + 1
-            first_total_gain[player.player_id] = first_total_gain.get(player.player_id, 0) + gain
-            first_players[player.player_id] = player.nickname
-
-    hero = None
-    if first_counts:
-        pid = max(first_counts, key=lambda x: (first_counts[x], first_total_gain[x]))
-        hero = {"player_id": pid, "nickname": first_players[pid], "first_places": first_counts[pid]}
-
-    payload = dict(ready=True, date=today.isoformat(), from_date=before_at.isoformat(),
-                   to_date=current_at.isoformat(), tops=tops, hero=hero)
+    tops, hero = _build_delta_tops(before_at, current_at)
+    payload = dict(
+        ready=True,
+        date=today.isoformat(),
+        from_date=before_at.isoformat(),
+        to_date=current_at.isoformat(),
+        tops=tops,
+        hero=hero,
+    )
     _life_cache_put(cache_key, payload)
     return jsonify(payload)
+
 
 @app.get("/api/yesterday-tops")
 def api_yesterday_tops():
@@ -1020,68 +1069,33 @@ def api_yesterday_tops():
 
     dates = _life_snapshot_dates()
     if len(dates) < 2:
-        return jsonify(ready=False, tops=[])
+        payload = {"ready": False, "tops": []}
+        _life_cache_put(cache_key, payload)
+        return jsonify(payload)
 
-    # "Топы вчера" должны считать именно завершившиеся календарные сутки:
-    # первый готовый снимок СЕГОДНЯ минус первый готовый снимок ВЧЕРА.
-    # Раньше код при наличии сегодняшнего снимка сравнивал ВЧЕРА с ПОЗАВЧЕРА,
-    # поэтому результаты были сдвинуты на один день.
     by_day = {}
     for dt in sorted(dates):
         day = moldova_date(dt)
-        # sorted() идёт от старых к новым, поэтому сохраняем первый снимок дня
-        # (обычно ночной запуск около 00:15), ближайший к границе суток.
         if day not in by_day:
             by_day[day] = dt
 
     today = moldova_date(datetime.now(timezone.utc))
     yesterday_day = today - timedelta(days=1)
     if today not in by_day or yesterday_day not in by_day:
-        # Пока сегодняшнего контрольного снимка нет, вчерашние сутки ещё нельзя
-        # посчитать корректно. Лучше показать "недостаточно данных", чем топы
-        # позавчера под подписью "вчера".
-        return jsonify(ready=False, tops=[], date=yesterday_day.isoformat())
+        payload = {"ready": False, "tops": [], "date": yesterday_day.isoformat()}
+        _life_cache_put(cache_key, payload)
+        return jsonify(payload)
 
     before_at = by_day[yesterday_day]
     current_at = by_day[today]
-
-    current = PlayerSnapshot.query.filter_by(batch_at=current_at).all()
-    before = {x.player_id: x for x in PlayerSnapshot.query.filter_by(batch_at=before_at).all()}
-    tops = []
-    first_counts = {}
-    first_total_gain = {}
-    first_players = {}
-
-    for key, label, icon in YESTERDAY_TOP_METRICS:
-        best = None
-        for player in current:
-            old = before.get(player.player_id)
-            if not old:
-                continue
-            a, b = getattr(player, key, None), getattr(old, key, None)
-            if a is None or b is None:
-                continue
-            gain = int(a) - int(b)
-            if gain <= 0:
-                continue
-            if best is None or gain > best[0]:
-                best = (gain, player)
-        if best:
-            gain, player = best
-            tops.append({"metric": key, "label": label, "icon": icon, "player_id": player.player_id, "nickname": player.nickname, "gain": gain})
-            first_counts[player.player_id] = first_counts.get(player.player_id, 0) + 1
-            first_total_gain[player.player_id] = first_total_gain.get(player.player_id, 0) + gain
-            first_players[player.player_id] = player.nickname
-
-    hero = None
-    if first_counts:
-        pid = max(first_counts, key=lambda x: (first_counts[x], first_total_gain[x]))
-        hero = {"player_id": pid, "nickname": first_players[pid], "first_places": first_counts[pid]}
-
+    tops, hero = _build_delta_tops(before_at, current_at)
     payload = {
-        "ready": True, "date": yesterday_day.isoformat(),
-        "from_date": before_at.isoformat(), "to_date": current_at.isoformat(),
-        "tops": tops, "hero": hero,
+        "ready": True,
+        "date": yesterday_day.isoformat(),
+        "from_date": before_at.isoformat(),
+        "to_date": current_at.isoformat(),
+        "tops": tops,
+        "hero": hero,
     }
     _life_cache_put(cache_key, payload)
     return jsonify(payload)

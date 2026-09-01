@@ -34,14 +34,14 @@ services:
       - key: SAVE_EVERY
         value: "20"
       - key: START_SCAN_ON_BOOT
-        value: "true"
+        value: "false"
       - key: DB_INIT_ON_BOOT
         value: "false"
       - key: DB_MAINTENANCE_ON_BOOT
-        value: "true"
+        value: "false"
 
 databases:
   - name: wekings-statistics-db
-    plan: free
+    plan: starter
     databaseName: wekings
     user: wekings

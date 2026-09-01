@@ -478,9 +478,11 @@ function openLife(){$("lifePanel").classList.remove("hidden");$("lifeToggle").cl
 function closeLife(){$("lifePanel").classList.add("hidden");$("lifeToggle").classList.remove("active");$("lifeToggle").setAttribute("aria-expanded","false");}
 
 
-const todayTopsState = { loaded: false };
+const todayTopsState = { loaded: false, loading: false };
 async function loadTodayTops(force = false) {
+  if (todayTopsState.loading) return;
   if (todayTopsState.loaded && !force) return;
+  todayTopsState.loading = true;
   $("todayTopsGrid").innerHTML = '<p class="life-empty">Считаем сегодняшние топы…</p>';
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 15000);
@@ -513,6 +515,7 @@ async function loadTodayTops(force = false) {
     todayTopsState.loaded = true;
   } finally {
     clearTimeout(timer);
+    todayTopsState.loading = false;
   }
 }
 function openTodayTops(){
@@ -530,9 +533,11 @@ function closeTodayTops(){
   $("todayTopsToggle").setAttribute("aria-expanded","false");
 }
 
-const yesterdayTopsState = { loaded: false };
+const yesterdayTopsState = { loaded: false, loading: false };
 async function loadYesterdayTops(force = false) {
+  if (yesterdayTopsState.loading) return;
   if (yesterdayTopsState.loaded && !force) return;
+  yesterdayTopsState.loading = true;
   $("yesterdayTopsGrid").innerHTML = '<p class="life-empty">Считаем вчерашние топы…</p>';
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 15000);
@@ -565,6 +570,7 @@ async function loadYesterdayTops(force = false) {
     yesterdayTopsState.loaded = true;
   } finally {
     clearTimeout(timer);
+    yesterdayTopsState.loading = false;
   }
 }
 function openYesterdayTops(){

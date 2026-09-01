@@ -325,7 +325,10 @@ def scan_all_players(db, Player, PlayerSnapshot, ScanState, LowLevelPlayer):
 
     # На Render/PostgreSQL длинная ORM-транзакция иногда обрывала соединение.
     # Поэтому пишем короткими пакетами и каждый пакет можем безопасно повторить.
-    chunk_size = 100
+    # 500 rows per transaction: 8k players become ~16 commits instead of ~80.
+    # This greatly reduces PostgreSQL lock/commit overhead while keeping each
+    # transaction small enough for the paid Starter database.
+    chunk_size = 500
     for offset in range(0, len(rows), chunk_size):
         chunk = rows[offset:offset + chunk_size]
         chunk_ids = [x["id"] for x in chunk]
