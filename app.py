@@ -1425,6 +1425,12 @@ def api_attacks():
     state = db.session.get(GameAttackState, 1)
     # Только отдаём сохранённое расписание.
     # Просмотр сайта НЕ запускает повторное сканирование Монаха.
+    # Резерв: если парсер уже доказал прогноз в диагностике, но старое
+    # значение weather_at по какой-либо причине не попало в БД, отдаём
+    # распознанное значение напрямую через API. Это не влияет на Dragon/Serpent.
+    weather_value = state.weather_at.isoformat() if state and state.weather_at else None
+    if not weather_value and _last_attack_debug.get("parsed"):
+        weather_value = _last_attack_debug.get("parsed")
     return jsonify(
         fetched_at=state.fetched_at.isoformat() if state and state.fetched_at else None,
         game_time=state.game_time.isoformat() if state and state.game_time else None,
@@ -1432,7 +1438,7 @@ def api_attacks():
         serpent_at=state.serpent_at.isoformat() if state and state.serpent_at else None,
         dragon_status=state.dragon_raw if state and not state.dragon_at else None,
         serpent_status=state.serpent_raw if state and not state.serpent_at else None,
-        weather_at=state.weather_at.isoformat() if state and state.weather_at else None,
+        weather_at=weather_value,
         weather_status=state.weather_raw if state else None,
         error=state.last_error if state else None,
         debug=_last_attack_debug if _admin_allowed() else None,
