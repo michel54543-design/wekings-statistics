@@ -1482,6 +1482,8 @@ def api_debug_wekings_player(player_id):
         return jsonify(error=str(exc)), 500
 
 
+
+
 @app.get("/api/arena/players")
 def api_arena_players():
     """Compact current player data used by the virtual arena."""
@@ -1496,7 +1498,6 @@ def api_arena_players():
         "wins": p.wins or 0, "losses": p.losses or 0,
         "clan": p.clan, "brotherhood": p.brotherhood,
     } for p in players])
-
 
 @app.get("/api/player/<int:player_id>")
 def api_player_detail(player_id):
