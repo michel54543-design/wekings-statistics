@@ -8,7 +8,7 @@
   <link rel="icon" href="/static/favicon.ico?v=41" sizes="any">
   <link rel="icon" href="/static/favicon.svg?v=41" type="image/svg+xml">
   <link rel="apple-touch-icon" href="/static/apple-touch-icon.png?v=41">
-  <link rel="stylesheet" href="/static/style.css?v=81">
+  <link rel="stylesheet" href="/static/style.css?v=79">
 </head>
 <body class="dark">
   <main class="page">
@@ -70,6 +70,24 @@
         <button id="arenaSwap" class="arena-swap" type="button" title="Поменять местами">⇄</button>
         <label><span>ВИКИНГ 2</span><select id="arenaFighterB"></select></label>
         <button id="arenaStart" class="arena-start" type="button">⚔ НАЧАТЬ БОЙ</button>
+      </div>
+      <div class="arena-loadout">
+        <div class="arena-loadout-card">
+          <div class="arena-loadout-title">⚔ СНАРЯЖЕНИЕ ВИКИНГА 1</div>
+          <label><span>Оружие</span><select id="arenaWeaponA"><option value="axe">🪓 Боевой топор</option><option value="sword">⚔ Меч</option><option value="spear">🔱 Копьё</option></select></label>
+          <label><span>Стиль</span><select id="arenaStyleA"><option value="berserker">Берсерк</option><option value="shield">Щитоносец</option><option value="hunter">Охотник</option><option value="jarl">Ярл</option></select></label>
+        </div>
+        <div class="arena-loadout-card">
+          <div class="arena-loadout-title">⚔ СНАРЯЖЕНИЕ ВИКИНГА 2</div>
+          <label><span>Оружие</span><select id="arenaWeaponB"><option value="axe">🪓 Боевой топор</option><option value="sword">⚔ Меч</option><option value="spear">🔱 Копьё</option></select></label>
+          <label><span>Стиль</span><select id="arenaStyleB"><option value="berserker">Берсерк</option><option value="shield">Щитоносец</option><option value="hunter">Охотник</option><option value="jarl">Ярл</option></select></label>
+        </div>
+      </div>
+      <div class="arena-controls" aria-label="Боевые приёмы">
+        <button data-arena-action="quick" type="button">⚡ Быстрый удар</button>
+        <button data-arena-action="heavy" type="button">💥 Тяжёлый удар</button>
+        <button data-arena-action="block" type="button">🛡 Защита</button>
+        <button data-arena-action="special" type="button">🔥 Спецприём</button>
       </div>
       <div class="arena-stage">
         <div class="arena-sky">⚔　♜　⚔</div>
@@ -182,6 +200,6 @@
     <button data-mobile-mode="growth"><span class="nav-icon">↗</span>Прирост</button>
     <button id="mobilePlayer"><span class="nav-icon">♙</span>Игрок</button>
   </nav>
-  <script src="/static/app.js?v=81"></script>
+  <script src="/static/app.js?v=77"></script>
 </body>
 </html>
