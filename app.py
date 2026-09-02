@@ -1482,6 +1482,22 @@ def api_debug_wekings_player(player_id):
         return jsonify(error=str(exc)), 500
 
 
+@app.get("/api/arena/players")
+def api_arena_players():
+    """Compact current player data used by the virtual arena."""
+    players = (Player.query
+               .order_by(Player.power.desc().nullslast(), Player.nickname.asc())
+               .limit(200).all())
+    return jsonify(players=[{
+        "id": p.id, "nickname": p.nickname, "level": p.level,
+        "power": p.power or 0, "defense": p.defense or 0,
+        "agility": p.agility or 0, "mastery": p.mastery or 0,
+        "vitality": p.vitality or 0, "stat_sum": p.stat_sum or 0,
+        "wins": p.wins or 0, "losses": p.losses or 0,
+        "clan": p.clan, "brotherhood": p.brotherhood,
+    } for p in players])
+
+
 @app.get("/api/player/<int:player_id>")
 def api_player_detail(player_id):
     player = db.session.get(Player, player_id)
