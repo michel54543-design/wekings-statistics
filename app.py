@@ -1355,10 +1355,10 @@ def api_organizations():
             }
         )
 
-    # Небольшой ТОП-3 за неделю для каждого братства. Берём начало недели
+    # Небольшой ТОП-3 за неделю для каждого братства/клана. Берём начало недели
     # как ближайший доступный снимок не позже семи суток до выбранной даты.
     weekly_top_by_group = {}
-    if organization_type == "brotherhood":
+    if organization_type in ("brotherhood", "clan"):
         weekly_target = _as_utc(date_to) - timedelta(days=7)
         weekly_from = next((d for d in dates[date_to_index + 1:] if _as_utc(d) <= weekly_target), dates[-1])
         if weekly_from != date_to:
@@ -1368,6 +1368,7 @@ def api_organizations():
                     PlayerSnapshot.nickname,
                     PlayerSnapshot.stat_sum,
                     PlayerSnapshot.brotherhood,
+                    PlayerSnapshot.clan,
                     PlayerSnapshot.batch_at,
                 )
                 .filter(PlayerSnapshot.batch_at.in_([weekly_from, date_to]))
@@ -1381,13 +1382,14 @@ def api_organizations():
                 target = weekly_new if row.batch_at == date_to else weekly_old
                 target[row.player_id] = row
             for player_id, current in weekly_new.items():
-                if not valid_group_name(current.brotherhood):
+                group_value = current.brotherhood if organization_type == "brotherhood" else current.clan
+                if not valid_group_name(group_value):
                     continue
                 old_row = weekly_old.get(player_id)
                 gain = int(current.stat_sum or 0) - int(old_row.stat_sum or 0) if old_row else int(current.stat_sum or 0)
                 if gain <= 0:
                     continue
-                group_name = current.brotherhood.strip()
+                group_name = group_value.strip()
                 weekly_top_by_group.setdefault(group_name, []).append({
                     "player_id": player_id,
                     "nickname": current.nickname,

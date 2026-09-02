@@ -190,7 +190,7 @@ body.modal-open{overflow:hidden}
 .stats-bars i{display:block;width:3px;border-radius:1px 1px 0 0;background:currentColor}
 .stats-bars i:nth-child(1){height:6px}.stats-bars i:nth-child(2){height:11px}.stats-bars i:nth-child(3){height:8px}
 .org-player{grid-template-columns:27px minmax(0,1fr) auto 24px}
-.org-player-name{min-width:0;color:#fff;text-decoration:none;overflow:hidden}
+.org-player-name,.org-player-name:visited,.org-player-name:hover,.org-player-name:active{min-width:0;color:#fff!important;text-decoration:none;overflow:hidden}
 .org-player-name span{display:block}
 .org-player .show-stats{margin-left:0}
 @media(max-width:760px){
