@@ -123,40 +123,6 @@ function weatherTimeText(value) {
   return date.toLocaleString("ru-RU", {day:"2-digit", month:"2-digit", hour:"2-digit", minute:"2-digit"});
 }
 
-async function refreshAttacks() {
-  const button = $("attackRefresh");
-  if (!button) return;
-
-  const before = window.__attacksFetchedAt || null;
-  button.disabled = true;
-  button.textContent = "Обновляем…";
-
-  try {
-    const response = await fetch("/api/attacks/refresh", { method: "POST", cache: "no-store" });
-    let data = null;
-    try { data = await response.json(); } catch (_) {}
-    if (!response.ok) throw new Error(data?.message || `HTTP ${response.status}`);
-
-    for (let i = 0; i < 20; i++) {
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      const check = await fetch(`/api/attacks?_=${Date.now()}`, { cache: "no-store" });
-      if (!check.ok) continue;
-      const fresh = await check.json();
-      if (fresh.fetched_at && fresh.fetched_at !== before) {
-        await loadAttacks();
-        return;
-      }
-    }
-    await loadAttacks();
-  } catch (error) {
-    button.title = error?.message || "Не удалось обновить прогноз";
-  } finally {
-    button.disabled = false;
-    button.textContent = "↻ Обновить";
-  }
-}
-
-
 async function loadAttacks() {
   const box = $("attackSchedule");
   try {
@@ -166,7 +132,6 @@ async function loadAttacks() {
     $("dragonTime").textContent = attackTimeText(data.dragon_at, 60);
     $("serpentTime").textContent = attackTimeText(data.serpent_at, 90);
     $("weatherTime").textContent = weatherTimeText(data.weather_at);
-    window.__attacksFetchedAt = data.fetched_at || null;
     if (data.fetched_at) {
       $("attackUpdated").textContent = `обновлено ${new Date(data.fetched_at).toLocaleTimeString("ru-RU", {hour:"2-digit", minute:"2-digit"})}`;
     } else {
@@ -513,9 +478,11 @@ function openLife(){$("lifePanel").classList.remove("hidden");$("lifeToggle").cl
 function closeLife(){$("lifePanel").classList.add("hidden");$("lifeToggle").classList.remove("active");$("lifeToggle").setAttribute("aria-expanded","false");}
 
 
-const todayTopsState = { loaded: false };
+const todayTopsState = { loaded: false, loading: false };
 async function loadTodayTops(force = false) {
+  if (todayTopsState.loading) return;
   if (todayTopsState.loaded && !force) return;
+  todayTopsState.loading = true;
   $("todayTopsGrid").innerHTML = '<p class="life-empty">Считаем сегодняшние топы…</p>';
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 15000);
@@ -548,6 +515,7 @@ async function loadTodayTops(force = false) {
     todayTopsState.loaded = true;
   } finally {
     clearTimeout(timer);
+    todayTopsState.loading = false;
   }
 }
 function openTodayTops(){
@@ -565,9 +533,11 @@ function closeTodayTops(){
   $("todayTopsToggle").setAttribute("aria-expanded","false");
 }
 
-const yesterdayTopsState = { loaded: false };
+const yesterdayTopsState = { loaded: false, loading: false };
 async function loadYesterdayTops(force = false) {
+  if (yesterdayTopsState.loading) return;
   if (yesterdayTopsState.loaded && !force) return;
+  yesterdayTopsState.loading = true;
   $("yesterdayTopsGrid").innerHTML = '<p class="life-empty">Считаем вчерашние топы…</p>';
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 15000);
@@ -600,6 +570,7 @@ async function loadYesterdayTops(force = false) {
     yesterdayTopsState.loaded = true;
   } finally {
     clearTimeout(timer);
+    yesterdayTopsState.loading = false;
   }
 }
 function openYesterdayTops(){
@@ -706,10 +677,8 @@ $("mobilePlayer").onclick = () => {
 };
 
 
-if ($("lifeToggle") && $("lifePanel")) {
-  $("lifeToggle").onclick=()=>{$("lifePanel").classList.contains("hidden")?openLife():closeLife();};
-}
-if ($("lifeClose")) $("lifeClose").onclick=closeLife;
+$("lifeToggle").onclick=()=>{$("lifePanel").classList.contains("hidden")?openLife():closeLife();};
+$("lifeClose").onclick=closeLife;
 $("todayTopsToggle").onclick=()=>{$("todayTopsPanel").classList.contains("hidden")?openTodayTops():closeTodayTops();};
 $("todayTopsClose").onclick=closeTodayTops;
 $("yesterdayTopsToggle").onclick=()=>{$("yesterdayTopsPanel").classList.contains("hidden")?openYesterdayTops():closeYesterdayTops();};
@@ -720,9 +689,57 @@ $("todayBadge").textContent = new Date().toLocaleDateString("ru-RU", {
   day: "2-digit", month: "short"
 }).replace(".", "").toUpperCase();
 syncMobileNav();
-if ($("attackRefresh")) $("attackRefresh").onclick = refreshAttacks;
 loadStatus().catch(() => {});
 loadAttacks().catch(() => {});
 loadPlayers().catch(() => $("rows").innerHTML = '<tr><td colspan="7" class="loading">Не удалось загрузить данные</td></tr>');
 setInterval(() => loadStatus().catch(() => {}), 30000);
 setInterval(() => loadAttacks().catch(() => {}), 60000);
+
+/* V81 — animated Viking Arena */
+const arenaState={players:[],a:null,b:null,hpA:100,hpB:100,timer:null,running:false,round:0};
+const arena$=id=>document.getElementById(id);
+const arenaFmt=n=>Number(n||0).toLocaleString("ru-RU");
+function arenaEscape(s){const d=document.createElement("div");d.textContent=s??"";return d.innerHTML;}
+function arenaRating(p){const vals=[p.power,p.defense,p.agility,p.mastery,p.vitality].map(Number);return Math.round(vals.reduce((a,b)=>a+b,0)/5);}
+function arenaFillSelects(){const opts=arenaState.players.map(p=>`<option value="${p.id}">${arenaEscape(p.nickname)} · ур. ${p.level??"—"} · ${arenaFmt(p.power)}</option>`).join("");arena$("arenaFighterA").innerHTML=opts;arena$("arenaFighterB").innerHTML=opts;if(arenaState.players.length>1){arena$("arenaFighterA").value=arenaState.players[0].id;arena$("arenaFighterB").value=arenaState.players[1].id;}arenaSyncFighters();}
+function arenaFind(id){return arenaState.players.find(p=>String(p.id)===String(id));}
+function arenaVikingSVG(side){
+  const red=side==='B';
+  const uid=red?'r':'b';
+  return `<svg class="viking-svg ${red?'viking-red':'viking-blue'}" viewBox="0 0 240 360" role="img" aria-label="Викинг">
+    <defs>
+      <linearGradient id="${uid}skin" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#e4ad78"/><stop offset=".55" stop-color="#a8643e"/><stop offset="1" stop-color="#6f3b29"/></linearGradient>
+      <linearGradient id="${uid}hair" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#d2aa70"/><stop offset=".5" stop-color="#82512f"/><stop offset="1" stop-color="#3c241b"/></linearGradient>
+      <linearGradient id="${uid}fur" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#5a4636"/><stop offset=".55" stop-color="#2b2522"/><stop offset="1" stop-color="#151414"/></linearGradient>
+      <linearGradient id="${uid}metal" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#e4e7df"/><stop offset=".35" stop-color="#929890"/><stop offset=".65" stop-color="#444a49"/><stop offset="1" stop-color="#1e2425"/></linearGradient>
+      <radialGradient id="${uid}shield"><stop stop-color="#d7b35a"/><stop offset=".12" stop-color="#513a25"/><stop offset=".17" stop-color="${red?'#5d2422':'#30445b'}"/><stop offset=".72" stop-color="${red?'#2d1718':'#202c3b'}"/><stop offset=".82" stop-color="#b17c30"/><stop offset="1" stop-color="#1b1512"/></radialGradient>
+      <filter id="${uid}shadow"><feDropShadow dx="0" dy="8" stdDeviation="7" flood-opacity=".65"/></filter>
+    </defs>
+    <ellipse class="v-shadow" cx="120" cy="345" rx="68" ry="13"/>
+    <g class="viking-rig" filter="url(#${uid}shadow)">
+      <g class="v-legs"><path d="M88 225 L78 322 Q77 334 88 337 L108 337 L121 250 Z" fill="#252321" stroke="#171313" stroke-width="7"/><path d="M119 248 L135 337 L158 337 Q166 330 160 320 L149 224 Z" fill="#171717" stroke="#171313" stroke-width="7"/><path d="M75 330 Q92 322 111 331 L111 345 L68 345 Q64 338 75 330Z" fill="#17100e"/><path d="M132 331 Q151 323 166 331 L175 345 L129 345 Q125 338 132 331Z" fill="#17100e"/></g>
+      <g class="v-body"><path d="M73 103 Q119 82 167 106 L176 222 Q148 244 93 226 L64 207 Z" fill="url(#${uid}fur)" stroke="#17120f" stroke-width="8"/><path d="M91 119 Q120 105 151 119 L151 211 Q121 222 91 209Z" fill="none" stroke="#a07b43" stroke-width="4" opacity=".8"/><path d="M82 151 L157 181 M78 177 L157 207" stroke="#9a7a4b" stroke-width="3" opacity=".45"/><path d="M94 112 Q119 128 151 112" fill="none" stroke="#d0ad68" stroke-width="5" opacity=".65"/></g>
+      <g class="v-arm v-arm-back"><path d="M79 120 Q55 144 48 182" fill="none" stroke="#241812" stroke-width="27" stroke-linecap="round"/><path d="M79 120 Q55 144 48 182" fill="none" stroke="url(#${uid}skin)" stroke-width="17" stroke-linecap="round"/></g>
+      <g class="v-arm v-arm-front"><path d="M158 116 Q180 138 187 173" fill="none" stroke="#241812" stroke-width="28" stroke-linecap="round"/><path d="M158 116 Q180 138 187 173" fill="none" stroke="url(#${uid}skin)" stroke-width="18" stroke-linecap="round"/></g>
+      <g class="v-shield"><circle cx="177" cy="179" r="47" fill="url(#${uid}shield)" stroke="#17120f" stroke-width="7"/><circle cx="177" cy="179" r="10" fill="#d4b35b" stroke="#342617" stroke-width="4"/><path d="M177 133 L177 225 M131 179 L223 179" stroke="#c0913d" stroke-width="3" opacity=".7"/></g>
+      <g class="v-axe"><path d="M180 169 L230 103" stroke="#3a2519" stroke-width="12" stroke-linecap="round"/><path d="M223 105 Q243 96 238 129 Q232 150 210 151 Q221 130 223 105Z" fill="url(#${uid}metal)" stroke="#222627" stroke-width="5"/></g>
+      <g class="v-head"><path d="M83 71 Q82 28 120 17 Q160 25 160 72 L151 110 Q119 129 88 107Z" fill="url(#${uid}skin)" stroke="#241711" stroke-width="7"/><path class="v-hair" d="M73 72 Q65 24 101 10 Q130 -3 158 19 Q180 37 165 83 L151 68 Q145 35 120 30 Q94 34 91 75Z" fill="url(#${uid}hair)" stroke="#291a14" stroke-width="7"/><path d="M83 53 Q67 31 53 43 Q69 59 87 66Z" fill="#d7d8cf" stroke="#282725" stroke-width="5"/><path d="M157 53 Q175 31 189 43 Q171 59 155 66Z" fill="#d7d8cf" stroke="#282725" stroke-width="5"/><ellipse cx="105" cy="71" rx="6" ry="8" fill="#16120f"/><ellipse cx="138" cy="71" rx="6" ry="8" fill="#16120f"/><path d="M111 91 Q121 97 132 90" fill="none" stroke="#5a2d22" stroke-width="5" stroke-linecap="round"/><path d="M96 96 Q119 129 146 97 L149 119 Q121 144 93 119Z" fill="url(#${uid}hair)" stroke="#291a14" stroke-width="5"/><path d="M91 103 L101 116 M105 110 L113 122 M121 113 L125 125 M136 109 L139 121" stroke="#d6a66b" stroke-width="2" opacity=".55"/></g>
+      <path class="v-belt" d="M75 201 Q121 218 167 202" fill="none" stroke="#b98a43" stroke-width="10"/><circle cx="120" cy="211" r="8" fill="#e1c06c" stroke="#49341e" stroke-width="3"/>
+    </g>
+  </svg>`;
+}
+function arenaRenderFighters(){arena$("fighterA").innerHTML=arenaVikingSVG('A');arena$("fighterB").innerHTML=arenaVikingSVG('B');}
+function arenaSyncFighters(){arenaState.a=arenaFind(arena$("arenaFighterA").value);arenaState.b=arenaFind(arena$("arenaFighterB").value);if(!arenaState.a||!arenaState.b)return;const a=arenaState.a,b=arenaState.b;arenaRenderFighters();arena$("arenaNameA").textContent=a.nickname;arena$("arenaNameB").textContent=b.nickname;arena$("arenaLevelA").textContent=`ур. ${a.level??"—"}`;arena$("arenaLevelB").textContent=`ур. ${b.level??"—"}`;arena$("arenaHpNameA").textContent=a.nickname;arena$("arenaHpNameB").textContent=b.nickname;arena$("arenaCardNameA").textContent=a.nickname;arena$("arenaCardNameB").textContent=b.nickname;arena$("arenaRatingA").textContent=`Рейтинг ${arenaFmt(arenaRating(a))}`;arena$("arenaRatingB").textContent=`Рейтинг ${arenaFmt(arenaRating(b))}`;const stats=p=>`<span>⚡ <b>${arenaFmt(p.power)}</b><small>Сила</small></span><span>🛡️ <b>${arenaFmt(p.defense)}</b><small>Защита</small></span><span>🌀 <b>${arenaFmt(p.agility)}</b><small>Ловкость</small></span><span>🎯 <b>${arenaFmt(p.mastery)}</b><small>Мастерство</small></span><span>❤️ <b>${arenaFmt(p.vitality)}</b><small>Живучесть</small></span>`;arena$("arenaStatsA").innerHTML=stats(a);arena$("arenaStatsB").innerHTML=stats(b);arenaResetStage();}
+function arenaResetStage(){clearTimeout(arenaState.timer);arenaState.running=false;arenaState.round=0;arenaState.hpA=100;arenaState.hpB=100;["fighterA","fighterB"].forEach(id=>arena$(id).classList.remove("attacking","hit","critical","dodging","ko"));arena$("arenaHpA").style.width="100%";arena$("arenaHpB").style.width="100%";arena$("arenaHpTextA").textContent="100 / 100";arena$("arenaHpTextB").textContent="100 / 100";arena$("arenaRound").textContent="ПОДГОТОВКА";arena$("arenaCommentary").textContent="Выберите двух викингов и нажмите «Начать бой»";arena$("arenaLog").innerHTML='<div class="arena-log-title">ЖУРНАЛ БОЯ</div><p>Бой ещё не начался.</p>';arena$("arenaResult").classList.add("hidden");}
+function arenaWrite(text){const p=document.createElement("p");p.innerHTML=text;arena$("arenaLog").appendChild(p);arena$("arenaLog").scrollTop=arena$("arenaLog").scrollHeight;}
+function arenaStatScore(p){return Number(p.power)*.36+Number(p.mastery)*.22+Number(p.agility)*.16+Number(p.defense)*.14+Number(p.vitality)*.12;}
+function arenaDamage(attacker,defender,heavy=false){const ar=arenaStatScore(attacker),dr=arenaStatScore(defender),ratio=ar/(ar+dr||1);const powerRatio=Number(attacker.power)/(Number(attacker.power)+Number(defender.defense)+1);const variance=.78+Math.random()*.52;const critical=Math.random()<Math.min(.28,.08+Number(attacker.mastery)/(Number(attacker.mastery)+Number(defender.mastery)+1)*.18);const dodge=Math.random()<Math.min(.22,.025+Number(defender.agility)/(Number(defender.agility)+Number(attacker.mastery)+1)*.15);if(dodge)return{damage:0,critical:false,dodge:true};let damage=(5.5+ratio*7+powerRatio*4)*variance*(heavy?1.25:1);if(critical)damage*=1.65;return{damage:Math.max(3,Math.round(damage)),critical,dodge:false};}
+function arenaAnimate(id,cls){const el=arena$(id);el.classList.remove("attacking","hit","critical","dodging","jumping","blocking");void el.offsetWidth;el.classList.add(cls);if(cls==="attacking"||cls==="critical")el.classList.add("attacking");setTimeout(()=>el.classList.remove("attacking","hit","critical","dodging","jumping","blocking"),780);}
+function arenaSetHp(side,hp){const safe=Math.max(0,Math.min(100,hp));arenaState[side]=safe;const id=side==="hpA"?"A":"B";arena$("arenaHp"+id).style.width=safe+"%";arena$("arenaHpText"+id).textContent=`${Math.round(safe)} / 100`;}
+function arenaStrike(attackerSide,heavy=false){const attacker=attackerSide==="A"?arenaState.a:arenaState.b,defender=attackerSide==="A"?arenaState.b:arenaState.a,targetSide=attackerSide==="A"?"B":"A",targetHp=attackerSide==="A"?arenaState.hpB:arenaState.hpA;arena$("arenaRound").textContent=`РАУНД ${arenaState.round}`;arenaAnimate("fighter"+attackerSide,"attacking");if(heavy){const ael=arena$("fighter"+attackerSide);ael.classList.add("jumping");setTimeout(()=>ael.classList.remove("jumping"),780);}setTimeout(()=>{const result=arenaDamage(attacker,defender,heavy),targetId="fighter"+targetSide;if(result.dodge){arenaAnimate(targetId,"dodging");arenaWrite(`<b>${arenaEscape(defender.nickname)}</b> уклонился от удара <b>${arenaEscape(attacker.nickname)}</b>!`);arena$("arenaCommentary").textContent=`💨 ${defender.nickname} УКЛОНИЛСЯ!`;return;}arenaAnimate(targetId,result.critical?"critical":"hit");const flash=arena$("arenaHitFlash");flash.classList.remove("show");void flash.offsetWidth;flash.classList.add("show");const next=targetHp-result.damage;if(targetSide==="A")arenaSetHp("hpA",next);else arenaSetHp("hpB",next);const verb=result.critical?"КРИТИЧЕСКИЙ УДАР":"УДАР";arena$("arenaCommentary").textContent=`${result.critical?"💥":"⚔️"} ${attacker.nickname}: ${verb} −${result.damage} HP`;arenaWrite(`<b>${arenaEscape(attacker.nickname)}</b> — ${verb.toLowerCase()} <strong>−${result.damage}</strong> HP`);if(next<=0)arenaFinish(attackerSide);},360);}
+function arenaFinish(winnerSide){arenaState.running=false;clearTimeout(arenaState.timer);arena$("fighter"+(winnerSide==="A"?"B":"A")).classList.add("ko");const winner=winnerSide==="A"?arenaState.a:arenaState.b,loser=winnerSide==="A"?arenaState.b:arenaState.a;arena$("arenaRound").textContent="НОКАУТ";arena$("arenaCommentary").textContent=`🏆 ${winner.nickname} ПОБЕЖДАЕТ!`;arenaWrite(`<strong>🏆 ${arenaEscape(winner.nickname)} побеждает ${arenaEscape(loser.nickname)}!</strong>`);arena$("arenaResultTitle").textContent=`🏆 ${winner.nickname.toUpperCase()} ПОБЕЖДАЕТ`;arena$("arenaResultText").textContent=`Нокаут в ${arenaState.round}-м раунде · сила ${arenaFmt(winner.power)} · мастерство ${arenaFmt(winner.mastery)}`;arena$("arenaResult").classList.remove("hidden");}
+function arenaRoundStep(){if(!arenaState.running)return;arenaState.round++;const side=arenaState.round%2?"A":"B";arenaStrike(side,Math.random()<.28);arenaState.timer=setTimeout(arenaRoundStep,1050);}
+async function openArena(){arena$("arenaPanel").classList.remove("hidden");arena$("arenaToggle").setAttribute("aria-expanded","true");if(!arenaState.players.length){arena$("arenaCommentary").textContent="Загрузка бойцов из статистики…";try{const r=await fetch(`/api/arena/players?_=${Date.now()}`,{cache:"no-store"});const data=await r.json();arenaState.players=data.players||[];arenaFillSelects();}catch(e){arena$("arenaCommentary").textContent="Не удалось загрузить игроков.";}}else arenaSyncFighters();arena$("arenaPanel").scrollIntoView({behavior:"smooth",block:"start"});}
+function closeArena(){clearTimeout(arenaState.timer);arenaState.running=false;arena$("arenaPanel").classList.add("hidden");arena$("arenaToggle").setAttribute("aria-expanded","false");}
+function startArena(){if(!arenaState.a||!arenaState.b||arenaState.a.id===arenaState.b.id){arena$("arenaCommentary").textContent="Нужно выбрать двух разных викингов.";return;}arenaResetStage();arenaState.running=true;arena$("arenaCommentary").textContent="🔥 БОЙ НАЧИНАЕТСЯ!";arena$("arenaLog").innerHTML='<div class="arena-log-title">ЖУРНАЛ БОЯ</div><p>⚔️ Арена открыта!</p>';setTimeout(arenaRoundStep,700);}
+arena$("arenaToggle")?.addEventListener("click",openArena);arena$("arenaClose")?.addEventListener("click",closeArena);arena$("arenaStart")?.addEventListener("click",startArena);arena$("arenaAgain")?.addEventListener("click",startArena);arena$("arenaFighterA")?.addEventListener("change",arenaSyncFighters);arena$("arenaFighterB")?.addEventListener("change",arenaSyncFighters);arena$("arenaSwap")?.addEventListener("click",()=>{const a=arena$("arenaFighterA").value;arena$("arenaFighterA").value=arena$("arenaFighterB").value;arena$("arenaFighterB").value=a;arenaSyncFighters();});
