@@ -4,6 +4,7 @@ import base64
 import logging
 import os
 import re
+import html as html_lib
 import time
 from datetime import datetime, timedelta, timezone
 from urllib.parse import urljoin
@@ -459,6 +460,12 @@ def fetch_attack_schedule():
 
         soup = BeautifulSoup(monk.text, "html.parser")
         text = soup.get_text("\n", strip=True)
+        weather_debug = {
+            "monk_url": monk_url, "final_url": monk.url,
+            "http_status": monk.status_code, "response_bytes": len(monk.content),
+            "weather_marker": False, "source": None, "snippet": None,
+            "parsed": None, "game_now": None,
+        }
         # ВАЖНО: таймер каждого босса ищем только в его собственной строке.
         # Нельзя брать ближайший таймер из соседней строки: когда написано
         # "Дракон уже улетел", следующий таймер относится к Морскому Змею.
@@ -489,74 +496,55 @@ def fetch_attack_schedule():
                 game_now = datetime.strptime(meta["content"].strip(), "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc).astimezone(ZoneInfo("Europe/Chisinau"))
             except ValueError:
                 logger.warning("[ATTACKS] bad server-time=%r", meta.get("content"))
-        # Необязательный прогноз хорошей погоды для плавания.
+        # Диагностика и разбор прогноза плавания.
         weather_at = None
         weather_raw = None
-        # Прогноз Плаваний. Берём его непосредственно из текста страницы Монаха.
-        # Игра показывает, например: "По прогнозу подходящая погода ожидается 12:00 02.09.26".
-        # Не привязываем разбор к точному HTML и не отбрасываем прогноз из-за
-        # небольшого расхождения часов сервера игры и сервера статистики.
-        weather_at = None
-        weather_raw = None
-
         monk_text = re.sub(r"\s+", " ", text.replace("\xa0", " ")).strip()
-        html_text = re.sub(
-            r"\s+", " ",
-            BeautifulSoup(monk.text, "html.parser").get_text(" ", strip=True)
-        ).strip()
-
-        def parse_weather(source):
-            if not source:
-                return None
-
-            # Сначала ищем именно фразу прогноза. Это исключает таймеры
-            # Дракона/Змея и другие даты на странице.
-            marker_re = re.compile(r"(?:подходящая|хорошая)\s+погода|погода\s+ожидается|плаван", re.I)
-            time_first = re.compile(
-                r"(?P<h>\d{1,2})\s*:\s*(?P<m>\d{2})"
-                r"(?:\s*(?:в|,|-)?\s*)"
-                r"(?P<d>\d{1,2})\s*[./-]\s*(?P<mo>\d{1,2})"
-                r"(?:\s*[./-]\s*(?P<y>\d{2,4}))?", re.I)
-            date_first = re.compile(
-                r"(?P<d>\d{1,2})\s*[./-]\s*(?P<mo>\d{1,2})"
-                r"(?:\s*[./-]\s*(?P<y>\d{2,4}))?"
-                r"(?:\s*(?:в|,|-)?\s*)"
-                r"(?P<h>\d{1,2})\s*:\s*(?P<m>\d{2})", re.I)
-
-            candidates = []
-            for marker in marker_re.finditer(source):
-                part = source[max(0, marker.start() - 80):min(len(source), marker.end() + 500)]
-                for pattern in (time_first, date_first):
-                    for match in pattern.finditer(part):
-                        g = match.groupdict()
-                        try:
-                            year = int(g["y"]) if g.get("y") else game_now.year
-                            if year < 100:
-                                year += 2000
-                            value = datetime(
-                                year, int(g["mo"]), int(g["d"]),
-                                int(g["h"]), int(g["m"]),
-                                tzinfo=ZoneInfo("Europe/Chisinau"),
-                            )
-                            candidates.append((value, match.group(0)))
-                        except (TypeError, ValueError):
-                            continue
-
-            if not candidates:
-                return None
-
-            # Если найдено несколько совпадений, предпочитаем ближайшее к
-            # текущему игровому времени; это важно после полуночи.
-            future = [c for c in candidates if c[0] >= game_now - timedelta(minutes=5)]
-            pool = future if future else candidates
-            return min(pool, key=lambda c: abs((c[0] - game_now).total_seconds()))
-
-        parsed = parse_weather(monk_text) or parse_weather(html_text)
-        if parsed:
-            weather_at, weather_raw = parsed
-            logger.warning("[ATTACKS] sailing weather found: %s -> %s", weather_raw, weather_at)
+        raw_html = html_lib.unescape(monk.text.replace("\xa0", " "))
+        script_text = " ".join(re.sub(r"\s+", " ", tag.get_text(" ", strip=True)) for tag in soup.find_all("script"))
+        sources = [("visible_text", monk_text), ("raw_html", re.sub(r"\s+", " ", raw_html).strip()), ("scripts", script_text)]
+        marker_re = re.compile(r"(?:подходящая|хорошая)\s+погода|погода\s+ожидается|плаван", re.I)
+        for source_name, source_text in sources:
+            marker = marker_re.search(source_text)
+            if marker:
+                weather_debug["weather_marker"] = True
+                weather_debug["source"] = source_name
+                weather_debug["snippet"] = source_text[max(0, marker.start()-120):marker.end()+420][:650]
+                break
+        weather_patterns = [
+            r"(?:по\s+прогнозу\s+)?(?:подходящая|хорошая)\s+погода.{0,220}?(\d{1,2})\s*:\s*(\d{2})\s+(\d{1,2})\s*[./-]\s*(\d{1,2})(?:\s*[./-]\s*(\d{2,4}))?",
+            r"(?:по\s+прогнозу\s+)?(?:подходящая|хорошая)\s+погода.{0,220}?(\d{1,2})\s*[./-]\s*(\d{1,2})(?:\s*[./-]\s*(\d{2,4}))?\s+(\d{1,2})\s*:\s*(\d{2})",
+            r"погода\s+ожидается.{0,220}?(\d{1,2})\s*:\s*(\d{2})\s+(\d{1,2})\s*[./-]\s*(\d{1,2})(?:\s*[./-]\s*(\d{2,4}))?",
+        ]
+        weather_match = None
+        weather_time_first = False
+        matched_source = None
+        for source_name, source_text in sources:
+            for idx, pattern in enumerate(weather_patterns):
+                m = re.search(pattern, source_text, re.I)
+                if m:
+                    weather_match, matched_source, weather_time_first = m, source_name, idx in (0,2)
+                    break
+            if weather_match: break
+        if weather_match:
+            if weather_time_first:
+                hour, minute, day, month, year = weather_match.groups()
+            else:
+                day, month, year, hour, minute = weather_match.groups()
+            year = int(year) if year else game_now.year
+            if year < 100: year += 2000
+            try:
+                weather_at = datetime(year, int(month), int(day), int(hour), int(minute), tzinfo=ZoneInfo("Europe/Chisinau"))
+                weather_raw = weather_match.group(0)[:240]
+                weather_debug["parsed"] = weather_at.isoformat()
+                weather_debug["source"] = matched_source
+                if not weather_debug.get("snippet"): weather_debug["snippet"] = weather_raw
+                logger.warning("[ATTACKS] sailing weather found source=%s value=%s raw=%s", matched_source, weather_at, weather_raw)
+            except ValueError:
+                logger.warning("[ATTACKS] bad weather forecast=%r", weather_match.group(0))
         else:
-            logger.warning("[ATTACKS] sailing weather not parsed from Monk page")
+            logger.warning("[ATTACKS] sailing weather NOT parsed marker=%s source=%s snippet=%r", weather_debug["weather_marker"], weather_debug["source"], weather_debug["snippet"])
+        weather_debug["game_now"] = game_now.isoformat()
 
         _save(s)
         result = {
@@ -567,6 +555,7 @@ def fetch_attack_schedule():
             "serpent_raw": "Морской Змей уже напал — сражайся!" if serpent_active else serpent_raw,
             "weather_at": weather_at,
             "weather_raw": weather_raw,
+            "weather_debug": weather_debug,
         }
         logger.warning("[ATTACKS] success dragon_at=%s serpent_at=%s", result["dragon_at"], result["serpent_at"])
         return result

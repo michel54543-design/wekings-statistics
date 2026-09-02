@@ -61,6 +61,8 @@ if database_url.startswith("postgresql"):
     }
 db = SQLAlchemy(app)
 
+_last_attack_debug = {}
+
 
 class Player(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -1433,6 +1435,7 @@ def api_attacks():
         weather_at=state.weather_at.isoformat() if state and state.weather_at else None,
         weather_status=state.weather_raw if state else None,
         error=state.last_error if state else None,
+        debug=_last_attack_debug if _admin_allowed() else None,
     )
 
 
@@ -1480,22 +1483,6 @@ def api_debug_wekings_player(player_id):
     except Exception as exc:
         app.logger.exception("WEKINGS debug player failed: %r", exc)
         return jsonify(error=str(exc)), 500
-
-
-@app.get("/api/arena/players")
-def api_arena_players():
-    """Read-only player feed for the isolated virtual arena."""
-    players = (Player.query
-               .order_by(Player.power.desc().nullslast(), Player.nickname.asc())
-               .limit(200).all())
-    return jsonify(players=[{
-        "id": p.id, "nickname": p.nickname, "level": p.level,
-        "power": p.power or 0, "defense": p.defense or 0,
-        "agility": p.agility or 0, "mastery": p.mastery or 0,
-        "vitality": p.vitality or 0, "stat_sum": p.stat_sum or 0,
-        "wins": p.wins or 0, "losses": p.losses or 0,
-        "clan": p.clan, "brotherhood": p.brotherhood,
-    } for p in players])
 
 
 @app.get("/api/player/<int:player_id>")
@@ -1780,6 +1767,7 @@ def request_attack_refresh_if_needed(state):
 
 
 def update_attack_schedule():
+    global _last_attack_debug
     if not _attack_lock.acquire(blocking=False):
         return
     try:
@@ -1789,6 +1777,7 @@ def update_attack_schedule():
             state = db.session.get(GameAttackState, 1)
             try:
                 result = fetch_attack_schedule()
+                _last_attack_debug = result.get("weather_debug") or {}
                 for field in (
                     "fetched_at", "game_time", "dragon_at", "serpent_at",
                     "dragon_raw", "serpent_raw", "weather_at", "weather_raw",
@@ -1797,6 +1786,7 @@ def update_attack_schedule():
                 state.last_error = None
                 db.session.commit()
             except Exception as exc:
+                _last_attack_debug = {"error": str(exc)[:500]}
                 db.session.rollback()
                 app.logger.exception("Wekings attack schedule update failed")
                 state = db.session.get(GameAttackState, 1)
