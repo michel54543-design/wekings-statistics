@@ -489,49 +489,43 @@ def fetch_attack_schedule():
                 game_now = datetime.strptime(meta["content"].strip(), "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc).astimezone(ZoneInfo("Europe/Chisinau"))
             except ValueError:
                 logger.warning("[ATTACKS] bad server-time=%r", meta.get("content"))
-        # Прогноз хорошей погоды для Плаваний.
-        #
-        # В игре этот блок иногда приходит с немного другим HTML/форматированием
-        # (переносы, NBSP, "в", запятая и т.п.). Поэтому сначала пробуем
-        # точные варианты, а затем более широкий поиск даты/времени рядом
-        # со словами "погода"/"плаван". Это не влияет на Дракона и Змея.
+        # Необязательный прогноз хорошей погоды для плавания.
+        weather_at = None
+        weather_raw = None
+        # Прогноз Плаваний. Берём его непосредственно из текста страницы Монаха.
+        # Игра показывает, например: "По прогнозу подходящая погода ожидается 12:00 02.09.26".
+        # Не привязываем разбор к точному HTML и не отбрасываем прогноз из-за
+        # небольшого расхождения часов сервера игры и сервера статистики.
         weather_at = None
         weather_raw = None
 
         monk_text = re.sub(r"\s+", " ", text.replace("\xa0", " ")).strip()
-        html_text = re.sub(r"\s+", " ", BeautifulSoup(monk.text, "html.parser").get_text(" ", strip=True))
+        html_text = re.sub(
+            r"\s+", " ",
+            BeautifulSoup(monk.text, "html.parser").get_text(" ", strip=True)
+        ).strip()
 
-        def _weather_candidates(source):
-            candidates = []
+        def parse_weather(source):
+            if not source:
+                return None
 
-            # Формат: 12:00 02.09.26 / 12:00, 02.09.26 / 12:00 в 02.09.26
+            # Сначала ищем именно фразу прогноза. Это исключает таймеры
+            # Дракона/Змея и другие даты на странице.
+            marker_re = re.compile(r"(?:подходящая|хорошая)\s+погода|погода\s+ожидается|плаван", re.I)
             time_first = re.compile(
                 r"(?P<h>\d{1,2})\s*:\s*(?P<m>\d{2})"
                 r"(?:\s*(?:в|,|-)?\s*)"
                 r"(?P<d>\d{1,2})\s*[./-]\s*(?P<mo>\d{1,2})"
-                r"(?:\s*[./-]\s*(?P<y>\d{2,4}))?",
-                re.I,
-            )
-            # Формат: 02.09.26 12:00 / 02.09.26 в 12:00
+                r"(?:\s*[./-]\s*(?P<y>\d{2,4}))?", re.I)
             date_first = re.compile(
                 r"(?P<d>\d{1,2})\s*[./-]\s*(?P<mo>\d{1,2})"
                 r"(?:\s*[./-]\s*(?P<y>\d{2,4}))?"
                 r"(?:\s*(?:в|,|-)?\s*)"
-                r"(?P<h>\d{1,2})\s*:\s*(?P<m>\d{2})",
-                re.I,
-            )
+                r"(?P<h>\d{1,2})\s*:\s*(?P<m>\d{2})", re.I)
 
-            # Ищем только в окрестности прогноза, чтобы не взять дату другого
-            # события на странице Монаха.
-            markers = list(re.finditer(r"(?:погода|плаван)", source, re.I))
-            windows = []
-            for marker in markers:
-                windows.append((max(0, marker.start() - 80), min(len(source), marker.end() + 500)))
-            if not windows:
-                return candidates
-
-            for start, end in windows:
-                part = source[start:end]
+            candidates = []
+            for marker in marker_re.finditer(source):
+                part = source[max(0, marker.start() - 80):min(len(source), marker.end() + 500)]
                 for pattern in (time_first, date_first):
                     for match in pattern.finditer(part):
                         g = match.groupdict()
@@ -544,37 +538,25 @@ def fetch_attack_schedule():
                                 int(g["h"]), int(g["m"]),
                                 tzinfo=ZoneInfo("Europe/Chisinau"),
                             )
-                            # Прогноз должен быть будущим (не старше суток от
-                            # текущего игрового времени).
-                            if value >= game_now - timedelta(minutes=2):
-                                candidates.append((value, match.group(0)))
+                            candidates.append((value, match.group(0)))
                         except (TypeError, ValueError):
                             continue
-            return candidates
 
-        weather_candidates = _weather_candidates(monk_text)
-        if not weather_candidates and html_text != monk_text:
-            weather_candidates = _weather_candidates(html_text)
+            if not candidates:
+                return None
 
-        if weather_candidates:
-            # Если в блоке несколько дат, берём ближайший будущий прогноз.
-            weather_at, weather_raw = min(
-                weather_candidates,
-                key=lambda item: abs((item[0] - game_now).total_seconds())
-                    if item[0] >= game_now
-                    else 10**12,
-            )
+            # Если найдено несколько совпадений, предпочитаем ближайшее к
+            # текущему игровому времени; это важно после полуночи.
+            future = [c for c in candidates if c[0] >= game_now - timedelta(minutes=5)]
+            pool = future if future else candidates
+            return min(pool, key=lambda c: abs((c[0] - game_now).total_seconds()))
+
+        parsed = parse_weather(monk_text) or parse_weather(html_text)
+        if parsed:
+            weather_at, weather_raw = parsed
             logger.warning("[ATTACKS] sailing weather found: %s -> %s", weather_raw, weather_at)
         else:
-            # Дополнительный диагностический лог. Само обновление при этом не
-            # считается ошибкой: отсутствие прогноза не должно ломать Дракона
-            # и Змея.
-            marker = re.search(r"(?:погода|плаван)", monk_text, re.I)
-            if marker:
-                logger.warning(
-                    "[ATTACKS] sailing weather marker found, but date/time not parsed: %s",
-                    monk_text[max(0, marker.start()-120):marker.start()+500],
-                )
+            logger.warning("[ATTACKS] sailing weather not parsed from Monk page")
 
         _save(s)
         result = {
