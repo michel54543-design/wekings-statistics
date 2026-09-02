@@ -175,8 +175,6 @@ async function loadAttacks() {
     // Основной источник — БД. Резерв — parsed из диагностического ответа.
     // Это закрывает случай, когда парсер уже нашёл прогноз, а запись БД ещё
     // не успела попасть в JSON-ответ.
-    const weatherValue = (data.debug && data.debug.parsed) || data.weather_at || null;
-    $("weatherTime").textContent = weatherTimeText(weatherValue);
     const debugBox = $("attackDebug");
     if (debugBox && data.debug) {
       const d = data.debug;
