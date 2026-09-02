@@ -286,3 +286,15 @@ table.levels-table .level-group-row.open td{border-bottom-color:transparent}
 
 /* V80 — вклад игроков в братство и ТОП-3 недели */
 .organization-contribution-head{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:0 0 10px;padding:8px 10px;border:1px solid #3b3428;border-radius:9px;background:#171510}.organization-contribution-head span{font-size:12px;color:#d9c58b;font-weight:800}.organization-contribution-head b{font-size:13px}.organization-contribution-head small{color:var(--muted);font-size:10px}.org-player-gain{margin-left:5px;color:#55cf8a;font-style:normal;font-weight:850}.org-player-gain.zero{color:var(--muted)}.org-weekly-top{margin:0 0 10px;padding:9px 10px;border:1px solid #4a3b22;border-radius:10px;background:linear-gradient(145deg,#1d1911,#11110f)}.org-weekly-top.empty{opacity:.8}.org-weekly-title{display:flex;align-items:center;gap:8px;margin-bottom:7px}.org-weekly-title>span{font-size:20px}.org-weekly-title strong{display:block;color:#f2d178;font-size:12px}.org-weekly-title small{display:block;color:var(--muted);font-size:9px;margin-top:2px}.org-weekly-list{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}.org-weekly-item{display:grid;grid-template-columns:20px minmax(0,1fr) auto;align-items:center;gap:6px;padding:7px 8px;border:1px solid #342d22;border-radius:7px;background:#161510}.org-weekly-item>b{color:#c7c0b3;text-align:center;font-size:11px}.org-weekly-item a{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#fff;text-decoration:none;font-size:11px;font-weight:750}.org-weekly-item strong{color:#55cf8a;font-size:11px}@media(max-width:760px){.org-weekly-list{grid-template-columns:1fr}.organization-contribution-head{gap:6px}.organization-contribution-head small{width:100%}}
+
+/* V83 — аккуратный блок вклада и белые имена ТОП-3 */
+.organization-contribution-head{display:block!important;padding:9px 12px!important;margin:0 0 10px!important}
+.organization-contribution-main{display:flex;align-items:center;gap:8px;min-height:20px}
+.organization-contribution-main span{font-size:12px;color:#d9c58b;font-weight:800}
+.organization-contribution-main b{font-size:13px}
+.organization-contribution-head>small{display:block!important;margin-top:4px!important;color:var(--muted);font-size:10px;line-height:1.25}
+.org-weekly-title-text{min-width:0}
+.org-weekly-title-text strong{display:block!important;line-height:1.2}
+.org-weekly-title-text small{display:block!important;margin-top:3px!important;line-height:1.2}
+.org-weekly-item .org-weekly-player,.org-weekly-item .org-weekly-player:visited,.org-weekly-item .org-weekly-player:hover,.org-weekly-item .org-weekly-player:active{color:#fff!important;text-decoration:none!important}
+.org-weekly-item strong{color:#55cf8a!important}
