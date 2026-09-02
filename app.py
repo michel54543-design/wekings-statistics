@@ -1780,9 +1780,17 @@ def update_attack_schedule():
                 _last_attack_debug = result.get("weather_debug") or {}
                 for field in (
                     "fetched_at", "game_time", "dragon_at", "serpent_at",
-                    "dragon_raw", "serpent_raw", "weather_at", "weather_raw",
+                    "dragon_raw", "serpent_raw",
                 ):
                     setattr(state, field, result.get(field))
+
+                # Не затираем последний корректный прогноз плавания пустым
+                # результатом. Если Монах отдал прогноз, он сохраняется в БД;
+                # если следующий запрос временно не увидел строку прогноза,
+                # оставляем предыдущий валидный weather_at.
+                if result.get("weather_at") is not None:
+                    state.weather_at = result.get("weather_at")
+                    state.weather_raw = result.get("weather_raw")
                 state.last_error = None
                 db.session.commit()
             except Exception as exc:
