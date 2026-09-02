@@ -119,8 +119,15 @@ function attackTimeText(value, stayMinutes) {
 function weatherTimeText(value) {
   if (!value) return "Нет прогноза";
   const date = new Date(value);
-  if (Number.isNaN(date.getTime()) || new Date() > date) return "Нет прогноза";
-  return date.toLocaleString("ru-RU", {day:"2-digit", month:"2-digit", hour:"2-digit", minute:"2-digit"});
+  if (Number.isNaN(date.getTime())) return "Нет прогноза";
+  // Показываем именно время прогноза, полученное сервером.
+  // Не сравниваем его с часами браузера: прогноз может быть на текущее
+  // или уже начавшееся время, но он всё равно должен быть виден.
+  const hh = String(date.getHours()).padStart(2, "0");
+  const mm = String(date.getMinutes()).padStart(2, "0");
+  const dd = String(date.getDate()).padStart(2, "0");
+  const mo = String(date.getMonth() + 1).padStart(2, "0");
+  return `${hh}:${mm} ${dd}.${mo}`;
 }
 
 async function refreshAttacks() {
@@ -165,7 +172,11 @@ async function loadAttacks() {
     const data = await response.json();
     $("dragonTime").textContent = attackTimeText(data.dragon_at, 60);
     $("serpentTime").textContent = attackTimeText(data.serpent_at, 90);
-    $("weatherTime").textContent = weatherTimeText(data.weather_at);
+    // Основной источник — БД. Резерв — parsed из диагностического ответа.
+    // Это закрывает случай, когда парсер уже нашёл прогноз, а запись БД ещё
+    // не успела попасть в JSON-ответ.
+    const weatherValue = data.weather_at || (data.debug && data.debug.parsed) || null;
+    $("weatherTime").textContent = weatherTimeText(weatherValue);
     const debugBox = $("attackDebug");
     if (debugBox && data.debug) {
       const d = data.debug;
