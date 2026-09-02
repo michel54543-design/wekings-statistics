@@ -489,48 +489,92 @@ def fetch_attack_schedule():
                 game_now = datetime.strptime(meta["content"].strip(), "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc).astimezone(ZoneInfo("Europe/Chisinau"))
             except ValueError:
                 logger.warning("[ATTACKS] bad server-time=%r", meta.get("content"))
-        # Необязательный прогноз хорошей погоды для плавания.
+        # Прогноз хорошей погоды для Плаваний.
+        #
+        # В игре этот блок иногда приходит с немного другим HTML/форматированием
+        # (переносы, NBSP, "в", запятая и т.п.). Поэтому сначала пробуем
+        # точные варианты, а затем более широкий поиск даты/времени рядом
+        # со словами "погода"/"плаван". Это не влияет на Дракона и Змея.
         weather_at = None
         weather_raw = None
-        # HTML Монаха может содержать переносы строк и NBSP между словами.
+
         monk_text = re.sub(r"\s+", " ", text.replace("\xa0", " ")).strip()
-        # Игра сейчас выводит прогноз как "... ожидается 18:30 28.08.26"
-        # (сначала время, затем дата). Поддерживаем также старый формат
-        # "28.08.26 18:30", чтобы обновление игры снова не сломало прогноз.
-        weather_patterns = [
-            # Текущий формат игры: "подходящая погода ожидается 12:00 02.09.26"
-            r"(?:по\s+прогнозу\s+)?(?:подходящая|хорошая)\s+погода.{0,160}?"
-            r"(\d{1,2})\s*:\s*(\d{2})\s+"
-            r"(\d{1,2})\s*[./-]\s*(\d{1,2})"
-            r"(?:\s*[./-]\s*(\d{2,4}))?",
-            # Старый формат: "подходящая погода ... 02.09.26 12:00"
-            r"(?:по\s+прогнозу\s+)?(?:подходящая|хорошая)\s+погода.{0,160}?"
-            r"(\d{1,2})\s*[./-]\s*(\d{1,2})"
-            r"(?:\s*[./-]\s*(\d{2,4}))?\s+"
-            r"(\d{1,2})\s*:\s*(\d{2})",
-        ]
-        weather_match = None
-        weather_time_first = False
-        for weather_pattern in weather_patterns:
-            weather_match = re.search(weather_pattern, monk_text, re.I)
-            if weather_match:
-                weather_time_first = weather_pattern is weather_patterns[0]
-                break
-        if weather_match:
-            if weather_time_first:
-                hour, minute, day, month, year = weather_match.groups()
-            else:
-                day, month, year, hour, minute = weather_match.groups()
-            year = int(year) if year else game_now.year
-            if year < 100:
-                year += 2000
-            try:
-                weather_at = datetime(year, int(month), int(day), int(hour), int(minute),
-                                      tzinfo=ZoneInfo("Europe/Chisinau"))
-                weather_raw = weather_match.group(0)[:240]
-                logger.info("[ATTACKS] sailing weather found: %s", weather_raw)
-            except ValueError:
-                logger.warning("[ATTACKS] bad weather forecast=%r", weather_match.group(0))
+        html_text = re.sub(r"\s+", " ", BeautifulSoup(monk.text, "html.parser").get_text(" ", strip=True))
+
+        def _weather_candidates(source):
+            candidates = []
+
+            # Формат: 12:00 02.09.26 / 12:00, 02.09.26 / 12:00 в 02.09.26
+            time_first = re.compile(
+                r"(?P<h>\d{1,2})\s*:\s*(?P<m>\d{2})"
+                r"(?:\s*(?:в|,|-)?\s*)"
+                r"(?P<d>\d{1,2})\s*[./-]\s*(?P<mo>\d{1,2})"
+                r"(?:\s*[./-]\s*(?P<y>\d{2,4}))?",
+                re.I,
+            )
+            # Формат: 02.09.26 12:00 / 02.09.26 в 12:00
+            date_first = re.compile(
+                r"(?P<d>\d{1,2})\s*[./-]\s*(?P<mo>\d{1,2})"
+                r"(?:\s*[./-]\s*(?P<y>\d{2,4}))?"
+                r"(?:\s*(?:в|,|-)?\s*)"
+                r"(?P<h>\d{1,2})\s*:\s*(?P<m>\d{2})",
+                re.I,
+            )
+
+            # Ищем только в окрестности прогноза, чтобы не взять дату другого
+            # события на странице Монаха.
+            markers = list(re.finditer(r"(?:погода|плаван)", source, re.I))
+            windows = []
+            for marker in markers:
+                windows.append((max(0, marker.start() - 80), min(len(source), marker.end() + 500)))
+            if not windows:
+                return candidates
+
+            for start, end in windows:
+                part = source[start:end]
+                for pattern in (time_first, date_first):
+                    for match in pattern.finditer(part):
+                        g = match.groupdict()
+                        try:
+                            year = int(g["y"]) if g.get("y") else game_now.year
+                            if year < 100:
+                                year += 2000
+                            value = datetime(
+                                year, int(g["mo"]), int(g["d"]),
+                                int(g["h"]), int(g["m"]),
+                                tzinfo=ZoneInfo("Europe/Chisinau"),
+                            )
+                            # Прогноз должен быть будущим (не старше суток от
+                            # текущего игрового времени).
+                            if value >= game_now - timedelta(minutes=2):
+                                candidates.append((value, match.group(0)))
+                        except (TypeError, ValueError):
+                            continue
+            return candidates
+
+        weather_candidates = _weather_candidates(monk_text)
+        if not weather_candidates and html_text != monk_text:
+            weather_candidates = _weather_candidates(html_text)
+
+        if weather_candidates:
+            # Если в блоке несколько дат, берём ближайший будущий прогноз.
+            weather_at, weather_raw = min(
+                weather_candidates,
+                key=lambda item: abs((item[0] - game_now).total_seconds())
+                    if item[0] >= game_now
+                    else 10**12,
+            )
+            logger.warning("[ATTACKS] sailing weather found: %s -> %s", weather_raw, weather_at)
+        else:
+            # Дополнительный диагностический лог. Само обновление при этом не
+            # считается ошибкой: отсутствие прогноза не должно ломать Дракона
+            # и Змея.
+            marker = re.search(r"(?:погода|плаван)", monk_text, re.I)
+            if marker:
+                logger.warning(
+                    "[ATTACKS] sailing weather marker found, but date/time not parsed: %s",
+                    monk_text[max(0, marker.start()-120):marker.start()+500],
+                )
 
         _save(s)
         result = {
