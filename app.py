@@ -1305,6 +1305,11 @@ def api_organizations():
         .all()
     )
 
+    # Для раскрытого братства показываем вклад каждого игрока за выбранный
+    # период. Для новых участников считаем их текущие статы вкладом, потому
+    # что именно они добавили эту сумму в рейтинг организации.
+    current_member_gains = {}
+
     current_groups = {}
     previous_groups = {}
     for row in rows:
@@ -1328,10 +1333,15 @@ def api_organizations():
         previous_stat_sum = sum(member["stat_sum"] for member in previous_members.values())
         joined = [current_members[player_id] for player_id in current_ids - previous_ids]
         left = [previous_members[player_id] for player_id in previous_ids - current_ids]
-        members = sorted(
-            current_members.values(),
-            key=lambda member: (-member["stat_sum"], member["nickname"].lower()),
-        )
+        members = []
+        for member in current_members.values():
+            previous = previous_members.get(member["id"])
+            gain = (int(member["stat_sum"] or 0) - int(previous["stat_sum"] or 0)) if previous else int(member["stat_sum"] or 0)
+            item = dict(member)
+            item["stat_gain"] = gain
+            members.append(item)
+        members.sort(key=lambda member: (-member["stat_sum"], member["nickname"].lower()))
+
         organizations.append(
             {
                 "name": name,
@@ -1344,6 +1354,50 @@ def api_organizations():
                 "left": sorted(left, key=lambda member: member["nickname"].lower()),
             }
         )
+
+    # Небольшой ТОП-3 за неделю для каждого братства. Берём начало недели
+    # как ближайший доступный снимок не позже семи суток до выбранной даты.
+    weekly_top_by_group = {}
+    if organization_type == "brotherhood":
+        weekly_target = _as_utc(date_to) - timedelta(days=7)
+        weekly_from = next((d for d in dates[date_to_index + 1:] if _as_utc(d) <= weekly_target), dates[-1])
+        if weekly_from != date_to:
+            weekly_rows = (
+                db.session.query(
+                    PlayerSnapshot.player_id,
+                    PlayerSnapshot.nickname,
+                    PlayerSnapshot.stat_sum,
+                    PlayerSnapshot.brotherhood,
+                    PlayerSnapshot.batch_at,
+                )
+                .filter(PlayerSnapshot.batch_at.in_([weekly_from, date_to]))
+                .all()
+            )
+            weekly_old = {}
+            weekly_new = {}
+            for row in weekly_rows:
+                if not valid_group_name(row.brotherhood):
+                    continue
+                target = weekly_new if row.batch_at == date_to else weekly_old
+                target[row.player_id] = row
+            for player_id, current in weekly_new.items():
+                if not valid_group_name(current.brotherhood):
+                    continue
+                old_row = weekly_old.get(player_id)
+                gain = int(current.stat_sum or 0) - int(old_row.stat_sum or 0) if old_row else int(current.stat_sum or 0)
+                if gain <= 0:
+                    continue
+                group_name = current.brotherhood.strip()
+                weekly_top_by_group.setdefault(group_name, []).append({
+                    "player_id": player_id,
+                    "nickname": current.nickname,
+                    "gain": gain,
+                })
+            for group_name in weekly_top_by_group:
+                weekly_top_by_group[group_name].sort(key=lambda x: (-x["gain"], x["nickname"].lower()))
+
+    for group in organizations:
+        group["weekly_top"] = weekly_top_by_group.get(group["name"], [])[:3]
 
     organizations.sort(key=lambda group: (-group["stat_sum"], group["name"].lower()))
     total = len(organizations)
