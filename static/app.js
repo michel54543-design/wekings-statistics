@@ -123,40 +123,6 @@ function weatherTimeText(value) {
   return date.toLocaleString("ru-RU", {day:"2-digit", month:"2-digit", hour:"2-digit", minute:"2-digit"});
 }
 
-async function refreshAttacks() {
-  const button = $("attackRefresh");
-  if (!button) return;
-
-  const before = window.__attacksFetchedAt || null;
-  button.disabled = true;
-  button.textContent = "Обновляем…";
-
-  try {
-    const response = await fetch("/api/attacks/refresh", { method: "POST", cache: "no-store" });
-    let data = null;
-    try { data = await response.json(); } catch (_) {}
-    if (!response.ok) throw new Error(data?.message || `HTTP ${response.status}`);
-
-    for (let i = 0; i < 20; i++) {
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      const check = await fetch(`/api/attacks?_=${Date.now()}`, { cache: "no-store" });
-      if (!check.ok) continue;
-      const fresh = await check.json();
-      if (fresh.fetched_at && fresh.fetched_at !== before) {
-        await loadAttacks();
-        return;
-      }
-    }
-    await loadAttacks();
-  } catch (error) {
-    button.title = error?.message || "Не удалось обновить прогноз";
-  } finally {
-    button.disabled = false;
-    button.textContent = "↻ Обновить";
-  }
-}
-
-
 async function loadAttacks() {
   const box = $("attackSchedule");
   try {
@@ -166,7 +132,6 @@ async function loadAttacks() {
     $("dragonTime").textContent = attackTimeText(data.dragon_at, 60);
     $("serpentTime").textContent = attackTimeText(data.serpent_at, 90);
     $("weatherTime").textContent = weatherTimeText(data.weather_at);
-    window.__attacksFetchedAt = data.fetched_at || null;
     if (data.fetched_at) {
       $("attackUpdated").textContent = `обновлено ${new Date(data.fetched_at).toLocaleTimeString("ru-RU", {hour:"2-digit", minute:"2-digit"})}`;
     } else {
@@ -513,9 +478,11 @@ function openLife(){$("lifePanel").classList.remove("hidden");$("lifeToggle").cl
 function closeLife(){$("lifePanel").classList.add("hidden");$("lifeToggle").classList.remove("active");$("lifeToggle").setAttribute("aria-expanded","false");}
 
 
-const todayTopsState = { loaded: false };
+const todayTopsState = { loaded: false, loading: false };
 async function loadTodayTops(force = false) {
+  if (todayTopsState.loading) return;
   if (todayTopsState.loaded && !force) return;
+  todayTopsState.loading = true;
   $("todayTopsGrid").innerHTML = '<p class="life-empty">Считаем сегодняшние топы…</p>';
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 15000);
@@ -548,6 +515,7 @@ async function loadTodayTops(force = false) {
     todayTopsState.loaded = true;
   } finally {
     clearTimeout(timer);
+    todayTopsState.loading = false;
   }
 }
 function openTodayTops(){
@@ -565,9 +533,11 @@ function closeTodayTops(){
   $("todayTopsToggle").setAttribute("aria-expanded","false");
 }
 
-const yesterdayTopsState = { loaded: false };
+const yesterdayTopsState = { loaded: false, loading: false };
 async function loadYesterdayTops(force = false) {
+  if (yesterdayTopsState.loading) return;
   if (yesterdayTopsState.loaded && !force) return;
+  yesterdayTopsState.loading = true;
   $("yesterdayTopsGrid").innerHTML = '<p class="life-empty">Считаем вчерашние топы…</p>';
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 15000);
@@ -600,6 +570,7 @@ async function loadYesterdayTops(force = false) {
     yesterdayTopsState.loaded = true;
   } finally {
     clearTimeout(timer);
+    yesterdayTopsState.loading = false;
   }
 }
 function openYesterdayTops(){
@@ -706,10 +677,8 @@ $("mobilePlayer").onclick = () => {
 };
 
 
-if ($("lifeToggle") && $("lifePanel")) {
-  $("lifeToggle").onclick=()=>{$("lifePanel").classList.contains("hidden")?openLife():closeLife();};
-}
-if ($("lifeClose")) $("lifeClose").onclick=closeLife;
+$("lifeToggle").onclick=()=>{$("lifePanel").classList.contains("hidden")?openLife():closeLife();};
+$("lifeClose").onclick=closeLife;
 $("todayTopsToggle").onclick=()=>{$("todayTopsPanel").classList.contains("hidden")?openTodayTops():closeTodayTops();};
 $("todayTopsClose").onclick=closeTodayTops;
 $("yesterdayTopsToggle").onclick=()=>{$("yesterdayTopsPanel").classList.contains("hidden")?openYesterdayTops():closeYesterdayTops();};
@@ -720,100 +689,102 @@ $("todayBadge").textContent = new Date().toLocaleDateString("ru-RU", {
   day: "2-digit", month: "short"
 }).replace(".", "").toUpperCase();
 syncMobileNav();
-if ($("attackRefresh")) $("attackRefresh").onclick = refreshAttacks;
 loadStatus().catch(() => {});
 loadAttacks().catch(() => {});
 loadPlayers().catch(() => $("rows").innerHTML = '<tr><td colspan="7" class="loading">Не удалось загрузить данные</td></tr>');
 setInterval(() => loadStatus().catch(() => {}), 30000);
 setInterval(() => loadAttacks().catch(() => {}), 60000);
 
-/* V83 — cinematic Viking Arena: weapons, styles and special attacks */
-const arenaState={players:[],a:null,b:null,hpA:100,hpB:100,timer:null,running:false,round:0,turn:'A',blockingA:false,blockingB:false,weaponA:'axe',weaponB:'axe',styleA:'berserker',styleB:'berserker'};
-const arena$=id=>document.getElementById(id);
-const arenaFmt=n=>Number(n||0).toLocaleString("ru-RU");
-function arenaEscape(s){const d=document.createElement("div");d.textContent=s??"";return d.innerHTML;}
-function arenaRating(p){const vals=[p.power,p.defense,p.agility,p.mastery,p.vitality].map(Number);return Math.round(vals.reduce((a,b)=>a+b,0)/5);}
-function arenaFillSelects(){const opts=arenaState.players.map(p=>`<option value="${p.id}">${arenaEscape(p.nickname)} · ур. ${p.level??"—"} · ${arenaFmt(p.power)}</option>`).join("");arena$("arenaFighterA").innerHTML=opts;arena$("arenaFighterB").innerHTML=opts;if(arenaState.players.length>1){arena$("arenaFighterA").value=arenaState.players[0].id;arena$("arenaFighterB").value=arenaState.players[1].id;}arenaSyncFighters();}
-function arenaFind(id){return arenaState.players.find(p=>String(p.id)===String(id));}
-function arenaStyleFor(p){const vals={berserker:Number(p.power||0),shield:Number(p.defense||0),hunter:Number(p.agility||0),jarl:Number(p.mastery||0)+Number(p.vitality||0)*.35};return Object.keys(vals).sort((a,b)=>vals[b]-vals[a])[0];}
-function arenaWeaponFor(p){const vals={axe:Number(p.power||0),sword:Number(p.mastery||0),spear:Number(p.agility||0)};return Object.keys(vals).sort((a,b)=>vals[b]-vals[a])[0];}
-function arenaSpecial(p){const power=Number(p.power||0),def=Number(p.defense||0),agi=Number(p.agility||0),mastery=Number(p.mastery||0),vit=Number(p.vitality||0);const vals={"Ярость Берсерка":power*1.25+vit*.3,"Сокрушение щитом":def*1.25+power*.2,"Охотничий выпад":agi*1.25+mastery*.35,"Удар в уязвимое место":mastery*1.35+agi*.25};return Object.keys(vals).sort((a,b)=>vals[b]-vals[a])[0];}
-function arenaVikingSVG(side){
-  const red=side==='B',uid=red?'r':'b';
-  const weapon=arenaState['weapon'+side]||'axe', style=arenaState['style'+side]||'berserker';
-  const armor=style==='berserker'?'#4a2924':style==='shield'?'#26394a':style==='hunter'?'#354a31':'#3b303f';
-  const accent=red?'#8f3834':'#345b7c';
-  const weaponSvg=weapon==='sword'
-    ? `<g class="v-weapon v-sword"><path d="M180 168 L230 78" stroke="#3a281c" stroke-width="10" stroke-linecap="round"/><path d="M224 87 L241 52" stroke="#dfe4df" stroke-width="8" stroke-linecap="round"/><path d="M217 98 L232 105" stroke="#d7b24e" stroke-width="5"/><path d="M211 109 L227 116" stroke="#d7b24e" stroke-width="5"/></g>`
-    : weapon==='spear'
-    ? `<g class="v-weapon v-spear"><path d="M184 181 L232 65" stroke="#5b3a21" stroke-width="9"/><path d="M226 70 L244 39 L235 78Z" fill="#e2e5df" stroke="#222" stroke-width="4"/></g>`
-    : `<g class="v-weapon v-axe"><path d="M180 169 L230 103" stroke="#3a2519" stroke-width="12" stroke-linecap="round"/><path d="M223 105 Q243 96 238 129 Q232 150 210 151 Q221 130 223 105Z" fill="url(#${uid}metal)" stroke="#222627" stroke-width="5"/></g>`;
-  return `<svg class="viking-svg ${red?'viking-red':'viking-blue'} style-${style} weapon-${weapon}" viewBox="0 0 240 360" role="img" aria-label="Викинг">
-    <defs>
-      <linearGradient id="${uid}skin" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#e4ad78"/><stop offset=".55" stop-color="#a8643e"/><stop offset="1" stop-color="#6f3b29"/></linearGradient>
-      <linearGradient id="${uid}hair" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#d2aa70"/><stop offset=".5" stop-color="#82512f"/><stop offset="1" stop-color="#3c241b"/></linearGradient>
-      <linearGradient id="${uid}fur" x1="0" y1="0" x2="1" y2="1"><stop stop-color="${armor}"/><stop offset=".55" stop-color="#211c1b"/><stop offset="1" stop-color="#101010"/></linearGradient>
-      <linearGradient id="${uid}metal" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#eef0eb"/><stop offset=".35" stop-color="#929890"/><stop offset=".65" stop-color="#444a49"/><stop offset="1" stop-color="#1e2425"/></linearGradient>
-      <radialGradient id="${uid}shield"><stop stop-color="#d7b35a"/><stop offset=".12" stop-color="#513a25"/><stop offset=".17" stop-color="${accent}"/><stop offset=".72" stop-color="${red?'#2d1718':'#202c3b'}"/><stop offset=".82" stop-color="#b17c30"/><stop offset="1" stop-color="#1b1512"/></radialGradient>
-      <filter id="${uid}shadow"><feDropShadow dx="0" dy="8" stdDeviation="7" flood-opacity=".65"/></filter>
-    </defs>
-    <ellipse class="v-shadow" cx="120" cy="345" rx="68" ry="13"/>
-    <g class="viking-rig" filter="url(#${uid}shadow)">
-      <g class="v-legs"><path d="M88 225 L78 322 Q77 334 88 337 L108 337 L121 250 Z" fill="#252321" stroke="#171313" stroke-width="7"/><path d="M119 248 L135 337 L158 337 Q166 330 160 320 L149 224 Z" fill="#171717" stroke="#171313" stroke-width="7"/><path d="M75 330 Q92 322 111 331 L111 345 L68 345 Q64 338 75 330Z" fill="#17100e"/><path d="M132 331 Q151 323 166 331 L175 345 L129 345 Q125 338 132 331Z" fill="#17100e"/></g>
-      <g class="v-body"><path d="M73 103 Q119 82 167 106 L176 222 Q148 244 93 226 L64 207 Z" fill="url(#${uid}fur)" stroke="#17120f" stroke-width="8"/><path d="M91 119 Q120 105 151 119 L151 211 Q121 222 91 209Z" fill="none" stroke="#a07b43" stroke-width="4" opacity=".8"/><path d="M82 151 L157 181 M78 177 L157 207" stroke="#9a7a4b" stroke-width="3" opacity=".45"/><path d="M94 112 Q119 128 151 112" fill="none" stroke="#d0ad68" stroke-width="5" opacity=".65"/></g>
-      <g class="v-arm v-arm-back"><path d="M79 120 Q55 144 48 182" fill="none" stroke="#241812" stroke-width="27" stroke-linecap="round"/><path d="M79 120 Q55 144 48 182" fill="none" stroke="url(#${uid}skin)" stroke-width="17" stroke-linecap="round"/></g>
-      <g class="v-arm v-arm-front"><path d="M158 116 Q180 138 187 173" fill="none" stroke="#241812" stroke-width="28" stroke-linecap="round"/><path d="M158 116 Q180 138 187 173" fill="none" stroke="url(#${uid}skin)" stroke-width="18" stroke-linecap="round"/></g>
-      <g class="v-shield"><circle cx="177" cy="179" r="47" fill="url(#${uid}shield)" stroke="#17120f" stroke-width="7"/><circle cx="177" cy="179" r="10" fill="#d4b35b" stroke="#342617" stroke-width="4"/><path d="M177 133 L177 225 M131 179 L223 179" stroke="#c0913d" stroke-width="3" opacity=".7"/></g>
-      ${weaponSvg}
-      <g class="v-head"><path d="M83 71 Q82 28 120 17 Q160 25 160 72 L151 110 Q119 129 88 107Z" fill="url(#${uid}skin)" stroke="#241711" stroke-width="7"/><path class="v-hair" d="M73 72 Q65 24 101 10 Q130 -3 158 19 Q180 37 165 83 L151 68 Q145 35 120 30 Q94 34 91 75Z" fill="url(#${uid}hair)" stroke="#291a14" stroke-width="7"/><path d="M83 53 Q67 31 53 43 Q69 59 87 66Z" fill="#d7d8cf" stroke="#282725" stroke-width="5"/><path d="M157 53 Q175 31 189 43 Q171 59 155 66Z" fill="#d7d8cf" stroke="#282725" stroke-width="5"/><ellipse cx="105" cy="71" rx="6" ry="8" fill="#16120f"/><ellipse cx="138" cy="71" rx="6" ry="8" fill="#16120f"/><path d="M111 91 Q121 97 132 90" fill="none" stroke="#5a2d22" stroke-width="5" stroke-linecap="round"/><path d="M96 96 Q119 129 146 97 L149 119 Q121 144 93 119Z" fill="url(#${uid}hair)" stroke="#291a14" stroke-width="5"/></g>
-      <path class="v-belt" d="M75 201 Q121 218 167 202" fill="none" stroke="#b98a43" stroke-width="10"/><circle cx="120" cy="211" r="8" fill="#e1c06c" stroke="#49341e" stroke-width="3"/>
-    </g>
-  </svg>`;
-}
-function arenaRenderFighters(){arena$("fighterA").innerHTML=arenaVikingSVG('A');arena$("fighterB").innerHTML=arenaVikingSVG('B');}
-function arenaSyncFighters(){
-  arenaState.a=arenaFind(arena$("arenaFighterA").value);arenaState.b=arenaFind(arena$("arenaFighterB").value);if(!arenaState.a||!arenaState.b)return;
-  arenaState.weaponA=arenaWeaponFor(arenaState.a);arenaState.weaponB=arenaWeaponFor(arenaState.b);arenaState.styleA=arenaStyleFor(arenaState.a);arenaState.styleB=arenaStyleFor(arenaState.b);
-  arena$("arenaWeaponA").value=arenaState.weaponA;arena$("arenaWeaponB").value=arenaState.weaponB;arena$("arenaStyleA").value=arenaState.styleA;arena$("arenaStyleB").value=arenaState.styleB;
-  const a=arenaState.a,b=arenaState.b;arenaRenderFighters();arena$("arenaNameA").textContent=a.nickname;arena$("arenaNameB").textContent=b.nickname;arena$("arenaLevelA").textContent=`ур. ${a.level??"—"}`;arena$("arenaLevelB").textContent=`ур. ${b.level??"—"}`;arena$("arenaHpNameA").textContent=a.nickname;arena$("arenaHpNameB").textContent=b.nickname;arena$("arenaCardNameA").textContent=a.nickname;arena$("arenaCardNameB").textContent=b.nickname;arena$("arenaRatingA").textContent=`Рейтинг ${arenaFmt(arenaRating(a))}`;arena$("arenaRatingB").textContent=`Рейтинг ${arenaFmt(arenaRating(b))}`;
-  const stats=p=>`<span>⚡ <b>${arenaFmt(p.power)}</b><small>Сила</small></span><span>🛡️ <b>${arenaFmt(p.defense)}</b><small>Защита</small></span><span>🌀 <b>${arenaFmt(p.agility)}</b><small>Ловкость</small></span><span>🎯 <b>${arenaFmt(p.mastery)}</b><small>Мастерство</small></span><span>❤️ <b>${arenaFmt(p.vitality)}</b><small>Живучесть</small></span><span>🔥 <b>${arenaEscape(arenaSpecial(p))}</b><small>Лучший спецприём</small></span>`;
-  arena$("arenaStatsA").innerHTML=stats(a);arena$("arenaStatsB").innerHTML=stats(b);arenaResetStage();
-}
-function arenaResetStage(){clearTimeout(arenaState.timer);arenaState.running=false;arenaState.round=0;arenaState.turn='A';arenaState.blockingA=false;arenaState.blockingB=false;["fighterA","fighterB"].forEach(id=>arena$(id).classList.remove("attacking","hit","critical","dodging","ko","jumping","blocking","winner"));arena$("arenaHpA").style.width="100%";arena$("arenaHpB").style.width="100%";arena$("arenaHpTextA").textContent="100 / 100";arena$("arenaHpTextB").textContent="100 / 100";arena$("arenaRound").textContent="ПОДГОТОВКА";arena$("arenaCommentary").textContent="Выберите приём или нажмите «Начать бой»";arena$("arenaLog").innerHTML='<div class="arena-log-title">ЖУРНАЛ БОЯ</div><p>Бой ещё не начался.</p>';arena$("arenaResult").classList.add("hidden");}
-function arenaWrite(text){const p=document.createElement("p");p.innerHTML=text;arena$("arenaLog").appendChild(p);arena$("arenaLog").scrollTop=arena$("arenaLog").scrollHeight;}
-function arenaStatScore(p){return Number(p.power)*.36+Number(p.mastery)*.22+Number(p.agility)*.16+Number(p.defense)*.14+Number(p.vitality)*.12;}
-function arenaDamage(attacker,defender,type){
-  const ar=arenaStatScore(attacker),dr=arenaStatScore(defender),ratio=ar/(ar+dr||1),weapon=attacker===arenaState.a?arenaState.weaponA:arenaState.weaponB,style=attacker===arenaState.a?arenaState.styleA:arenaState.styleB;
-  const variance=.82+Math.random()*.36;let base=5.5+ratio*8+Number(attacker.power)/(Number(attacker.power)+Number(defender.defense)+1)*5;
-  const weaponMod={axe:1.08,sword:1.0,spear:.94}[weapon],styleMod={berserker:1.12,shield:.98,hunter:1.02,jarl:1.05}[style];
-  if(type==='quick')base*=.82;if(type==='heavy')base*=1.35;if(type==='special')base*=1.58;
-  if(type==='block')return{damage:0,blocked:true};
-  const crit=Math.random()<Math.min(.32,.07+Number(attacker.mastery)/(Number(attacker.mastery)+Number(defender.mastery)+1)*.2+(type==='special'?.08:0));
-  const dodge=Math.random()<Math.min(.25,.025+Number(defender.agility)/(Number(defender.agility)+Number(attacker.mastery)+1)*.18-(type==='heavy'?.04:0));
-  if(dodge)return{damage:0,critical:false,dodge:true};
-  let damage=base*weaponMod*styleMod*variance*(crit?1.7:1);
-  const special=type==='special'?arenaSpecial(attacker):null;
-  return{damage:Math.max(2,Math.round(damage)),critical:crit,dodge:false,special};
-}
-function arenaAnimate(id,cls){const el=arena$(id);el.classList.remove("attacking","hit","critical","dodging","jumping","blocking","winner");void el.offsetWidth;el.classList.add(cls);setTimeout(()=>el.classList.remove("attacking","hit","critical","dodging","jumping","blocking"),900);}
-function arenaSetHp(side,hp){const safe=Math.max(0,Math.min(100,hp));arenaState[side]=safe;const id=side==="hpA"?"A":"B";arena$("arenaHp"+id).style.width=safe+"%";arena$("arenaHpText"+id).textContent=`${Math.round(safe)} / 100`;}
-function arenaStrike(attackerSide,type='quick'){
-  if(!arenaState.running)return;const attacker=attackerSide==='A'?arenaState.a:arenaState.b,defender=attackerSide==='A'?arenaState.b:arenaState.a,targetSide=attackerSide==='A'?'B':'A',targetHp=attackerSide==='A'?arenaState.hpB:arenaState.hpA;
-  arena$("arenaRound").textContent=`РАУНД ${arenaState.round}`;arenaAnimate("fighter"+attackerSide,type==='block'?"blocking":"attacking");if(type==='heavy'||type==='special'){const el=arena$("fighter"+attackerSide);el.classList.add("jumping");setTimeout(()=>el.classList.remove("jumping"),900);}
-  setTimeout(()=>{
-    const result=arenaDamage(attacker,defender,type),targetId="fighter"+targetSide;
-    if(result.blocked){arenaWrite(`<b>${arenaEscape(attacker.nickname)}</b> приготовился к защите.`);arena$("arenaCommentary").textContent=`🛡️ ${attacker.nickname}: ЗАЩИТА`;return;}
-    if(result.dodge){arenaAnimate(targetId,"dodging");arenaWrite(`<b>${arenaEscape(defender.nickname)}</b> уклонился от атаки <b>${arenaEscape(attacker.nickname)}</b>!`);arena$("arenaCommentary").textContent=`💨 ${defender.nickname} УКЛОНИЛСЯ!`;return;}
-    arenaAnimate(targetId,result.critical?"critical":"hit");const flash=arena$("arenaHitFlash");flash.classList.remove("show");void flash.offsetWidth;flash.classList.add("show");const next=targetHp-result.damage;targetSide==='A'?arenaSetHp('hpA',next):arenaSetHp('hpB',next);
-    const verb=result.special?result.special.toUpperCase():(result.critical?'КРИТИЧЕСКИЙ УДАР':type==='heavy'?'ТЯЖЁЛЫЙ УДАР':'УДАР');arena$("arenaCommentary").textContent=`${result.critical?'💥':'⚔️'} ${attacker.nickname}: ${verb} −${result.damage} HP`;arenaWrite(`<b>${arenaEscape(attacker.nickname)}</b> — ${arenaEscape(verb.toLowerCase())} <strong>−${result.damage}</strong> HP`);if(next<=0)arenaFinish(attackerSide);
-  },type==='special'?470:360);
-}
-function arenaFinish(winnerSide){arenaState.running=false;clearTimeout(arenaState.timer);const loserSide=winnerSide==='A'?'B':'A';arena$("fighter"+loserSide).classList.add("ko");arena$("fighter"+winnerSide).classList.add("winner");const winner=winnerSide==='A'?arenaState.a:arenaState.b,loser=winnerSide==='A'?arenaState.b:arenaState.a;arena$("arenaRound").textContent="НОКАУТ";arena$("arenaCommentary").textContent=`🏆 ${winner.nickname} ПОБЕЖДАЕТ!`;arenaWrite(`<strong>🏆 ${arenaEscape(winner.nickname)} побеждает ${arenaEscape(loser.nickname)}!</strong>`);arena$("arenaResultTitle").textContent=`🏆 ${winner.nickname.toUpperCase()} ПОБЕЖДАЕТ`;arena$("arenaResultText").textContent=`Нокаут в ${arenaState.round}-м раунде · спецприём: ${arenaSpecial(winner)} · рейтинг ${arenaFmt(arenaRating(winner))}`;arena$("arenaResult").classList.remove("hidden");}
-function arenaRoundStep(){if(!arenaState.running)return;arenaState.round++;const side=arenaState.turn;arenaState.turn=side==='A'?'B':'A';const roll=Math.random();const type=roll<.16?'special':roll<.36?'heavy':'quick';arenaStrike(side,type);arenaState.timer=setTimeout(arenaRoundStep,type==='special'?1350:1050);}
-async function openArena(){arena$("arenaPanel").classList.remove("hidden");arena$("arenaToggle").setAttribute("aria-expanded","true");if(!arenaState.players.length){arena$("arenaCommentary").textContent="Загрузка бойцов из статистики…";try{const r=await fetch(`/api/arena/players?_=${Date.now()}`,{cache:"no-store"});const data=await r.json();arenaState.players=data.players||[];arenaFillSelects();}catch(e){arena$("arenaCommentary").textContent="Не удалось загрузить игроков.";}}else arenaSyncFighters();arena$("arenaPanel").scrollIntoView({behavior:"smooth",block:"start"});}
-function closeArena(){clearTimeout(arenaState.timer);arenaState.running=false;arena$("arenaPanel").classList.add("hidden");arena$("arenaToggle").setAttribute("aria-expanded","false");}
-function startArena(){if(!arenaState.a||!arenaState.b||arenaState.a.id===arenaState.b.id){arena$("arenaCommentary").textContent="Нужно выбрать двух разных викингов.";return;}arenaResetStage();arenaState.running=true;arena$("arenaCommentary").textContent="🔥 БОЙ НАЧИНАЕТСЯ!";arena$("arenaLog").innerHTML='<div class="arena-log-title">ЖУРНАЛ БОЯ</div><p>⚔️ Арена открыта!</p>';setTimeout(arenaRoundStep,700);}
-function arenaManualAction(type){if(!arenaState.running)return;const side=arenaState.turn;arenaState.turn=side==='A'?'B':'A';arenaState.round++;arenaStrike(side,type);}
-arena$("arenaToggle")?.addEventListener("click",openArena);arena$("arenaClose")?.addEventListener("click",closeArena);arena$("arenaStart")?.addEventListener("click",startArena);arena$("arenaAgain")?.addEventListener("click",startArena);arena$("arenaFighterA")?.addEventListener("change",arenaSyncFighters);arena$("arenaFighterB")?.addEventListener("change",arenaSyncFighters);arena$("arenaSwap")?.addEventListener("click",()=>{const a=arena$("arenaFighterA").value;arena$("arenaFighterA").value=arena$("arenaFighterB").value;arena$("arenaFighterB").value=a;arenaSyncFighters();});
-["A","B"].forEach(side=>{arena$("arenaWeapon"+side)?.addEventListener("change",e=>{arenaState["weapon"+side]=e.target.value;arenaRenderFighters();});arena$("arenaStyle"+side)?.addEventListener("change",e=>{arenaState["style"+side]=e.target.value;arenaRenderFighters();});});
-document.querySelectorAll("[data-arena-action]").forEach(btn=>btn.addEventListener("click",()=>arenaManualAction(btn.dataset.arenaAction)));
+
+/* V85 — isolated Viking Arena. Does not alter the site's existing statistics logic. */
+(() => {
+  const $a = id => document.getElementById(id);
+  if (!$a('arenaPanel')) return;
+  const st = { players: [], a: null, b: null, hpA: 100, hpB: 100, timer: null, running: false, round: 0, queued: {A:null,B:null} };
+  const esc = s => { const d=document.createElement('div'); d.textContent=s ?? ''; return d.innerHTML; };
+  const num = n => Number(n || 0);
+  const fmt = n => num(n).toLocaleString('ru-RU');
+  const weaponFor = p => {
+    const power=num(p.power), agi=num(p.agility), mast=num(p.mastery);
+    if (power >= agi*1.15 && power >= mast*1.15) return ['axe','🪓 Боевой топор'];
+    if (agi >= mast*1.10) return ['spear','🔱 Копьё'];
+    return ['sword','⚔ Меч'];
+  };
+  const styleFor = p => {
+    const power=num(p.power), def=num(p.defense), agi=num(p.agility), vit=num(p.vitality);
+    if (power+vit > def+agi*1.35) return ['berserker','Берсерк'];
+    if (def >= power*1.08) return ['shield','Щитоносец'];
+    if (agi >= def*1.12) return ['hunter','Охотник'];
+    return ['jarl','Ярл'];
+  };
+  const rating = p => Math.round((num(p.power)+num(p.defense)+num(p.agility)+num(p.mastery)+num(p.vitality))/5);
+  const statScore = p => num(p.power)*.36+num(p.mastery)*.22+num(p.agility)*.16+num(p.defense)*.14+num(p.vitality)*.12;
+
+  function weaponSvg(type) {
+    if(type==='sword') return `<g class="vk-weapon vk-sword"><path d="M213 218 L280 91"/><path d="M204 224 L225 234" class="vk-grip"/><path d="M277 88 L291 62 L267 76 Z" class="vk-blade"/></g>`;
+    if(type==='spear') return `<g class="vk-weapon vk-spear"><path d="M210 224 L293 58"/><path d="M293 58 L308 31 L286 46 Z" class="vk-blade"/></g>`;
+    return `<g class="vk-weapon vk-axe"><path d="M210 224 L271 102"/><path d="M256 115 Q286 91 305 119 L291 153 Q273 137 256 115 Z" class="vk-blade"/></g>`;
+  }
+  function vikingSvg(side,p){
+    const red=side==='B', [weapon]=weaponFor(p), [style]=styleFor(p);
+    const armor=red?'#5a211c':'#233644', fur=red?'#3b231c':'#332a20', metal='#9a9a92', skin='#a96f4c', skin2='#c48a61', hair=red?'#17100c':'#251913';
+    const accent=style==='jarl'?'#d3a743':style==='shield'?'#648aa5':style==='hunter'?'#708d5c':'#a44734';
+    return `<svg class="viking-svg ${red?'red':''} weapon-${weapon} style-${style}" viewBox="0 0 360 480" preserveAspectRatio="xMidYMax meet" aria-label="Викинг">
+      <defs><linearGradient id="armor${side}" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="${armor}"/><stop offset="1" stop-color="#111820"/></linearGradient><filter id="shadow${side}"><feDropShadow dx="0" dy="10" stdDeviation="7" flood-opacity=".55"/></filter></defs>
+      <ellipse class="vk-shadow" cx="180" cy="458" rx="100" ry="16"/>
+      <g class="vk-rig" filter="url(#shadow${side})">
+        <g class="vk-legs"><path d="M143 326 L117 430 L146 439 L176 348" fill="#171a1d" stroke="#0b0c0d" stroke-width="8"/><path d="M190 347 L207 431 L238 428 L214 321" fill="#171a1d" stroke="#0b0c0d" stroke-width="8"/><path d="M112 428 Q134 420 151 437 L151 451 L102 451Z" fill="#3b261d"/><path d="M202 428 Q223 419 242 433 L245 450 L198 450Z" fill="#3b261d"/></g>
+        <g class="vk-body"><path d="M118 173 Q177 143 226 178 L235 309 Q177 340 108 306Z" fill="url(#armor${side})" stroke="#0d1012" stroke-width="9"/><path d="M121 184 Q177 208 224 184" fill="none" stroke="${accent}" stroke-width="7"/><path d="M112 270 Q176 294 232 269" fill="none" stroke="${fur}" stroke-width="18"/><path d="M122 210 L224 298" stroke="#70532d" stroke-width="5" opacity=".8"/><path d="M219 211 L127 294" stroke="#70532d" stroke-width="5" opacity=".8"/></g>
+        <g class="vk-head"><path d="M116 105 Q118 50 177 43 Q231 50 235 107 L217 170 Q176 192 135 166Z" fill="${skin}" stroke="#17100c" stroke-width="8"/><path d="M120 105 Q125 37 178 34 Q225 39 232 105 L213 89 Q178 72 132 90Z" fill="${hair}"/><path d="M126 103 Q176 80 228 102 L217 127 Q177 109 134 127Z" fill="#181716"/><path d="M134 134 Q177 169 218 133 Q208 182 177 184 Q145 181 134 134Z" fill="#2c1c16"/><path d="M146 120 Q154 114 162 120 M186 120 Q194 114 202 120" fill="none" stroke="#1a110d" stroke-width="5" stroke-linecap="round"/><path d="M164 138 Q177 145 190 137" fill="none" stroke="#714632" stroke-width="4"/><path d="M122 76 L176 47 L231 76 L218 102 L176 84 L135 103Z" fill="${metal}" stroke="#151617" stroke-width="6"/><path d="M119 78 L98 113 L127 121 L140 95Z" fill="#686b68" stroke="#151617" stroke-width="5"/><path d="M233 78 L254 113 L225 121 L212 95Z" fill="#686b68" stroke="#151617" stroke-width="5"/><circle cx="177" cy="54" r="8" fill="${accent}"/></g>
+        <g class="vk-arm-back"><path d="M117 184 Q88 208 87 271 L110 278 Q123 232 145 208Z" fill="${skin2}" stroke="#151515" stroke-width="8"/><path d="M84 263 Q101 257 115 273 L108 299 Q90 296 80 281Z" fill="${fur}"/></g>
+        <g class="vk-arm-front"><path d="M223 184 Q252 207 256 264 L231 272 Q216 231 195 207Z" fill="${skin2}" stroke="#151515" stroke-width="8"/><circle cx="249" cy="269" r="15" fill="${skin}" stroke="#151515" stroke-width="6"/>${weaponSvg(weapon)}</g>
+        <g class="vk-shield"><path d="M92 215 Q48 231 56 293 Q65 338 99 354 Q134 335 143 291 Q150 233 92 215Z" fill="#2c3438" stroke="#c39a4c" stroke-width="8"/><path d="M92 224 L92 345 M60 285 L126 285" stroke="${accent}" stroke-width="5"/><circle cx="92" cy="285" r="12" fill="#d2ad61" stroke="#6e532b" stroke-width="4"/></g>
+      </g></svg>`;
+  }
+  function render(){
+    if(!$a('fighterA')) return;
+    $a('fighterA').innerHTML=vikingSvg('A',st.a||{}); $a('fighterB').innerHTML=vikingSvg('B',st.b||{});
+  }
+  function find(id){return st.players.find(p=>String(p.id)===String(id));}
+  function sync(){
+    st.a=find($a('arenaFighterA').value); st.b=find($a('arenaFighterB').value); if(!st.a||!st.b) return;
+    const a=st.a,b=st.b, wa=weaponFor(a), wb=weaponFor(b), sa=styleFor(a), sb=styleFor(b);
+    [['arenaNameA',a.nickname],['arenaHpNameA',a.nickname],['arenaCardNameA',a.nickname],['arenaNameB',b.nickname],['arenaHpNameB',b.nickname],['arenaCardNameB',b.nickname]].forEach(([id,v])=>$a(id).textContent=v);
+    $a('arenaLevelA').textContent=`ур. ${a.level??'—'}`; $a('arenaLevelB').textContent=`ур. ${b.level??'—'}`;
+    $a('arenaLoadoutA').textContent=wa[1]; $a('arenaStyleA').textContent=sa[1]; $a('arenaLoadoutB').textContent=wb[1]; $a('arenaStyleB').textContent=sb[1];
+    $a('arenaRatingA').textContent=`Рейтинг ${fmt(rating(a))}`; $a('arenaRatingB').textContent=`Рейтинг ${fmt(rating(b))}`;
+    const stats=p=>`<span>⚡ <b>${fmt(p.power)}</b><small>Сила</small></span><span>🛡️ <b>${fmt(p.defense)}</b><small>Защита</small></span><span>🌀 <b>${fmt(p.agility)}</b><small>Ловкость</small></span><span>🎯 <b>${fmt(p.mastery)}</b><small>Мастерство</small></span><span>❤️ <b>${fmt(p.vitality)}</b><small>Живучесть</small></span>`;
+    $a('arenaStatsA').innerHTML=stats(a); $a('arenaStatsB').innerHTML=stats(b); render(); reset();
+  }
+  function reset(){ clearTimeout(st.timer); st.running=false; st.round=0; st.hpA=100; st.hpB=100; st.queued={A:null,B:null}; ['fighterA','fighterB'].forEach(id=>$a(id).classList.remove('attacking','jumping','blocking','hit','critical','dodging','ko','winner','loser')); setHp('A',100);setHp('B',100);$a('arenaRound').textContent='БОЙ 1';$a('arenaCommentary').textContent='Викинги готовы. Оружие и стиль выбраны автоматически.';$a('arenaResult').classList.add('hidden');$a('arenaLog').innerHTML='<div class="arena-log-title">ЖУРНАЛ БОЯ</div><p>Бой ещё не начался.</p>'; }
+  function setHp(side,hp){const safe=Math.max(0,Math.min(100,hp)); st[side==='A'?'hpA':'hpB']=safe; $a('arenaHp'+side).style.width=safe+'%';$a('arenaHpText'+side).textContent=`${Math.round(safe)} / 100`;}
+  function actionName(a){return ({quick:'Быстрый удар',heavy:'Тяжёлый удар',block:'Защита',special:'Спецприём'})[a]||'Удар';}
+  function actionFor(p, forced){if(forced) return forced; const r=Math.random(); if(r<.16)return'block'; if(r<.38)return'heavy'; if(r<.52)return'special'; return'quick';}
+  function damage(attacker,defender,opt){
+    const ar=statScore(attacker),dr=statScore(defender),ratio=ar/(ar+dr||1), [weapon]=weaponFor(attacker), [style]=styleFor(attacker);
+    const wm={axe:1.18,sword:1.0,spear:.94}[weapon], sm={berserker:1.13,shield:.95,hunter:1.04,jarl:1.08}[style], am={quick:.9,heavy:1.34,block:.25,special:1.58}[opt.action];
+    const dodge=Math.random()<Math.min(.24,.025+num(defender.agility)/(num(defender.agility)+num(attacker.mastery)+1)*.17); if(dodge)return{damage:0,dodge:true,critical:false};
+    const crit=Math.random()<Math.min(.32,.06+num(attacker.mastery)/(num(attacker.mastery)+num(defender.mastery)+1)*.24);
+    let d=(6+ratio*12)*(.84+Math.random()*.34)*wm*sm*am; if(opt.action==='special')d*=1+Math.min(.35,num(attacker.mastery)/(num(attacker.mastery)+12000)*.35); if(crit)d*=1.6;
+    return{damage:Math.max(3,Math.round(d)),dodge:false,critical:crit};
+  }
+  function anim(id,cls){const e=$a(id);e.classList.remove('attacking','jumping','blocking','hit','critical','dodging');void e.offsetWidth;e.classList.add(cls);}
+  function strike(side,forced){
+    const attacker=side==='A'?st.a:st.b, defender=side==='A'?st.b:st.a, target=side==='A'?'B':'A'; const action=actionFor(attacker,forced); const [weapon]=weaponFor(attacker); const [style]=styleFor(attacker); const el=$a('fighter'+side);
+    el.classList.remove('attacking','jumping','blocking'); void el.offsetWidth; if(action==='block')el.classList.add('blocking'); else el.classList.add(action==='special'||action==='heavy'?'jumping':'attacking');
+    const delay=action==='special'||action==='heavy'?470:360;
+    setTimeout(()=>{if(!st.running)return;const res=damage(attacker,defender,{action,weapon,style});
+      if(res.dodge){anim('fighter'+target,'dodging');$a('arenaCommentary').textContent=`💨 ${defender.nickname} уклонился!`;write(`<b>${esc(defender.nickname)}</b> уклонился от атаки.`);return;}
+      anim('fighter'+target,res.critical?'critical':'hit');const flash=$a('arenaHitFlash');flash.classList.remove('show');void flash.offsetWidth;flash.classList.add('show');
+      const current=target==='A'?st.hpA:st.hpB,next=current-res.damage;setHp(target,next);$a('arenaCommentary').textContent=`${res.critical?'💥':'⚔️'} ${attacker.nickname}: ${res.critical?'КРИТИЧЕСКИЙ УДАР':'УДАР'} −${res.damage} HP`;write(`<b>${esc(attacker.nickname)}</b> — ${actionName(action).toLowerCase()} (${weapon==='axe'?'топор':weapon==='sword'?'меч':'копьё'}, ${style}) <strong>−${res.damage}</strong> HP${res.critical?' 🔥':''}`);if(next<=0)finish(side);
+    },delay);
+  }
+  function write(t){const p=document.createElement('p');p.innerHTML=t;$a('arenaLog').appendChild(p);$a('arenaLog').scrollTop=$a('arenaLog').scrollHeight;}
+  function finish(side){st.running=false;clearTimeout(st.timer);const win=side==='A'?st.a:st.b, lose=side==='A'?st.b:st.a; $a('fighter'+(side==='A'?'B':'A')).classList.add('ko','loser');$a('fighter'+side).classList.add('winner');$a('arenaRound').textContent='НОКАУТ';$a('arenaCommentary').textContent=`🏆 ${win.nickname} ПОБЕЖДАЕТ!`;write(`<strong>🏆 ${esc(win.nickname)} побеждает ${esc(lose.nickname)}!</strong>`);$a('arenaResultTitle').textContent=`🏆 ${win.nickname.toUpperCase()} ПОБЕЖДАЕТ`; $a('arenaResultText').textContent=`Нокаут в ${st.round}-м раунде · оружие: ${weaponFor(win)[1]} · стиль: ${styleFor(win)[1]}`;$a('arenaResult').classList.remove('hidden');}
+  function roundStep(){if(!st.running)return;st.round++;$a('arenaRound').textContent=`РАУНД ${st.round}`;const side=st.round%2?'A':'B';strike(side,st.queued[side]);st.queued[side]=null;st.timer=setTimeout(roundStep,1150);}
+  async function open(){ $a('arenaPanel').classList.remove('hidden');$a('arenaToggle').setAttribute('aria-expanded','true'); if(!st.players.length){$a('arenaCommentary').textContent='Загрузка бойцов из статистики…';try{const r=await fetch(`/api/arena/players?_=${Date.now()}`,{cache:'no-store'});if(!r.ok)throw new Error('HTTP '+r.status);const d=await r.json();st.players=d.players||[];const opts=st.players.map(p=>`<option value="${p.id}">${esc(p.nickname)} · ур. ${p.level??'—'} · ${fmt(p.power)}</option>`).join('');$a('arenaFighterA').innerHTML=opts;$a('arenaFighterB').innerHTML=opts;if(st.players.length>1){$a('arenaFighterA').value=st.players[0].id;$a('arenaFighterB').value=st.players[1].id;}sync();}catch(e){console.error(e);$a('arenaCommentary').textContent='Не удалось загрузить бойцов.';}} else sync();$a('arenaPanel').scrollIntoView({behavior:'smooth',block:'start'}); }
+  function close(){clearTimeout(st.timer);st.running=false;$a('arenaPanel').classList.add('hidden');$a('arenaToggle').setAttribute('aria-expanded','false');}
+  function start(){if(!st.a||!st.b||String(st.a.id)===String(st.b.id)){ $a('arenaCommentary').textContent='Нужно выбрать двух разных викингов.';return;}reset();st.running=true;$a('arenaCommentary').textContent='🔥 ВИКИНГИ ВЫХОДЯТ НА АРЕНУ!';write('⚔️ Бой начинается!');setTimeout(roundStep,750);}
+  $a('arenaToggle')?.addEventListener('click',open);$a('arenaClose')?.addEventListener('click',close);$a('arenaStart')?.addEventListener('click',start);$a('arenaAgain')?.addEventListener('click',start);$a('arenaFighterA')?.addEventListener('change',sync);$a('arenaFighterB')?.addEventListener('change',sync);$a('arenaSwap')?.addEventListener('click',()=>{const x=$a('arenaFighterA').value;$a('arenaFighterA').value=$a('arenaFighterB').value;$a('arenaFighterB').value=x;sync();});
+  document.querySelectorAll('[data-arena-action]').forEach(btn=>btn.addEventListener('click',()=>{if(!st.running){$a('arenaCommentary').textContent='Сначала нажмите «Начать бой».';return;}const side=st.round%2?'A':'B';st.queued[side]=btn.dataset.arenaAction;$a('arenaCommentary').textContent=`${side==='A'?st.a.nickname:st.b.nickname}: ${actionName(btn.dataset.arenaAction)}`;}));
+})();
