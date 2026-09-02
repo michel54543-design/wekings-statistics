@@ -8,7 +8,7 @@
   <link rel="icon" href="/static/favicon.ico?v=41" sizes="any">
   <link rel="icon" href="/static/favicon.svg?v=41" type="image/svg+xml">
   <link rel="apple-touch-icon" href="/static/apple-touch-icon.png?v=41">
-  <link rel="stylesheet" href="/static/style.css?v=79">
+  <link rel="stylesheet" href="/static/style.css?v=85">
 </head>
 <body class="dark">
   <main class="page">
@@ -62,26 +62,19 @@
 
     <section id="arenaPanel" class="arena-panel hidden" aria-live="polite">
       <div class="arena-head">
-        <div><p class="arena-kicker">ВИКИНГСКАЯ АРЕНА</p><h2>⚔ Бой двух викингов</h2><p>Параметры берутся напрямую из статистики. Бой виртуальный и не меняет данные игроков.</p></div>
+        <div><p class="arena-kicker">ВИКИНГСКАЯ АРЕНА</p><h2>⚔ Бой двух викингов</h2><p>Настоящий виртуальный поединок: характеристики берутся из статистики, оружие и стиль определяются автоматически.</p></div>
         <button id="arenaClose" type="button">Свернуть ↑</button>
       </div>
       <div class="arena-selectors">
-        <label><span>ВИКИНГ 1</span><select id="arenaFighterA"></select></label>
-        <button id="arenaSwap" class="arena-swap" type="button" title="Поменять местами">⇄</button>
-        <label><span>ВИКИНГ 2</span><select id="arenaFighterB"></select></label>
+        <label><span>ЛЕВЫЙ ВИКИНГ</span><select id="arenaFighterA"></select></label>
+        <div class="arena-vs-select">VS</div>
+        <label><span>ПРАВЫЙ ВИКИНГ</span><select id="arenaFighterB"></select></label>
         <button id="arenaStart" class="arena-start" type="button">⚔ НАЧАТЬ БОЙ</button>
       </div>
-      <div class="arena-loadout">
-        <div class="arena-loadout-card">
-          <div class="arena-loadout-title">⚔ СНАРЯЖЕНИЕ ВИКИНГА 1</div>
-          <label><span>Оружие</span><select id="arenaWeaponA"><option value="axe">🪓 Боевой топор</option><option value="sword">⚔ Меч</option><option value="spear">🔱 Копьё</option></select></label>
-          <label><span>Стиль</span><select id="arenaStyleA"><option value="berserker">Берсерк</option><option value="shield">Щитоносец</option><option value="hunter">Охотник</option><option value="jarl">Ярл</option></select></label>
-        </div>
-        <div class="arena-loadout-card">
-          <div class="arena-loadout-title">⚔ СНАРЯЖЕНИЕ ВИКИНГА 2</div>
-          <label><span>Оружие</span><select id="arenaWeaponB"><option value="axe">🪓 Боевой топор</option><option value="sword">⚔ Меч</option><option value="spear">🔱 Копьё</option></select></label>
-          <label><span>Стиль</span><select id="arenaStyleB"><option value="berserker">Берсерк</option><option value="shield">Щитоносец</option><option value="hunter">Охотник</option><option value="jarl">Ярл</option></select></label>
-        </div>
+      <div class="arena-auto-loadout">
+        <div class="arena-auto-card"><span>ЛЕВЫЙ ВИКИНГ</span><strong id="arenaLoadoutA">—</strong><small id="arenaStyleA">—</small></div>
+        <button id="arenaSwap" class="arena-swap" type="button" title="Поменять бойцов местами">⇄</button>
+        <div class="arena-auto-card right"><span>ПРАВЫЙ ВИКИНГ</span><strong id="arenaLoadoutB">—</strong><small id="arenaStyleB">—</small></div>
       </div>
       <div class="arena-controls" aria-label="Боевые приёмы">
         <button data-arena-action="quick" type="button">⚡ Быстрый удар</button>
@@ -90,16 +83,18 @@
         <button data-arena-action="special" type="button">🔥 Спецприём</button>
       </div>
       <div class="arena-stage">
-        <div class="arena-sky">⚔　♜　⚔</div>
-        <div class="arena-nameplate arena-nameplate-a"><b id="arenaNameA">Викинг 1</b><small id="arenaLevelA">ур. —</small></div>
-        <div class="arena-nameplate arena-nameplate-b"><b id="arenaNameB">Викинг 2</b><small id="arenaLevelB">ур. —</small></div>
-        <div class="arena-health health-a"><div class="health-top"><span id="arenaHpNameA">Викинг 1</span><b id="arenaHpTextA">100 / 100</b></div><div class="health-bar"><i id="arenaHpA"></i></div></div>
-        <div class="arena-health health-b"><div class="health-top"><span id="arenaHpNameB">Викинг 2</span><b id="arenaHpTextB">100 / 100</b></div><div class="health-bar"><i id="arenaHpB"></i></div></div>
+        <div class="arena-vignette"></div>
+        <div class="arena-topbar">
+          <div class="arena-fighter-top left"><div class="arena-top-name"><b id="arenaNameA">Викинг 1</b><small id="arenaLevelA">ур. —</small></div><div class="arena-health"><div class="health-top"><span id="arenaHpNameA">Викинг 1</span><b id="arenaHpTextA">100 / 100</b></div><div class="health-bar"><i id="arenaHpA"></i></div></div></div>
+          <div class="arena-round" id="arenaRound">БОЙ 1</div>
+          <div class="arena-fighter-top right"><div class="arena-top-name"><b id="arenaNameB">Викинг 2</b><small id="arenaLevelB">ур. —</small></div><div class="arena-health"><div class="health-top"><span id="arenaHpNameB">Викинг 2</span><b id="arenaHpTextB">100 / 100</b></div><div class="health-bar"><i id="arenaHpB"></i></div></div></div>
+        </div>
         <div class="arena-fighter fighter-a" id="fighterA"></div>
+        <div class="arena-center-mark"><span>VS</span></div>
         <div class="arena-fighter fighter-b" id="fighterB"></div>
-        <div class="arena-vs">VS</div><div class="arena-hit-flash" id="arenaHitFlash"></div>
-        <div class="arena-round" id="arenaRound">ПОДГОТОВКА</div>
+        <div class="arena-hit-flash" id="arenaHitFlash"></div>
         <div class="arena-commentary" id="arenaCommentary">Выберите двух викингов и нажмите «Начать бой»</div>
+        <div class="arena-ground-fog"></div>
       </div>
       <div class="arena-bottom">
         <article class="arena-card"><div class="arena-card-title"><span id="arenaCardNameA">Викинг 1</span><b id="arenaRatingA">Рейтинг —</b></div><div id="arenaStatsA" class="arena-stat-grid"></div></article>
@@ -200,6 +195,6 @@
     <button data-mobile-mode="growth"><span class="nav-icon">↗</span>Прирост</button>
     <button id="mobilePlayer"><span class="nav-icon">♙</span>Игрок</button>
   </nav>
-  <script src="/static/app.js?v=77"></script>
+  <script src="/static/app.js?v=85"></script>
 </body>
 </html>
