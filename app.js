@@ -136,7 +136,7 @@ async function loadAttacks() {
     $("serpentTime").textContent = attackTimeText(data.serpent_at, 90);
     // Основной источник — сохранённое значение БД. Если оно ещё не попало
     // в ответ, но диагностика уже распознала прогноз, используем её parsed.
-    const weatherValue = data.weather_at || (data.debug && data.debug.parsed) || null;
+    const weatherValue = (data.debug && data.debug.parsed) || data.weather_at || null;
     $("weatherTime").textContent = weatherTimeText(weatherValue);
     if (data.fetched_at) {
       $("attackUpdated").textContent = `обновлено ${new Date(data.fetched_at).toLocaleTimeString("ru-RU", {hour:"2-digit", minute:"2-digit"})}`;

@@ -1428,9 +1428,10 @@ def api_attacks():
     # Резерв: если парсер уже доказал прогноз в диагностике, но старое
     # значение weather_at по какой-либо причине не попало в БД, отдаём
     # распознанное значение напрямую через API. Это не влияет на Dragon/Serpent.
-    weather_value = state.weather_at.isoformat() if state and state.weather_at else None
-    if not weather_value and _last_attack_debug.get("parsed"):
-        weather_value = _last_attack_debug.get("parsed")
+    # Диагностический результат относится к последнему фактическому запросу
+    # Монаха и потому имеет приоритет над устаревшим значением в БД.
+    # После перезапуска процесса debug очищается, и тогда используется БД.
+    weather_value = _last_attack_debug.get("parsed") or (state.weather_at.isoformat() if state and state.weather_at else None)
     return jsonify(
         fetched_at=state.fetched_at.isoformat() if state and state.fetched_at else None,
         game_time=state.game_time.isoformat() if state and state.game_time else None,
