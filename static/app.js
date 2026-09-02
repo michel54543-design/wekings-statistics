@@ -281,15 +281,24 @@ async function loadOrganizations() {
     const medal = rankBadge(rank);
     const members = group.members.map((member, memberIndex) => {
       const memberPlace = rankBadge(memberIndex + 1);
+      const gain = Number(member.stat_gain || 0);
+      const gainHtml = gain > 0 ? `<em class="org-player-gain">+${fmt(gain)}</em>` : `<em class="org-player-gain zero">—</em>`;
       return (
       `<div class="org-player">
         <b class="org-player-place">${memberPlace}</b>
         <a class="org-player-name game-profile-link" href="https://playwekings.mobi/hero/detail?player=${member.id}"><span>${escapeHtml(member.nickname)}</span></a>
-        <small>ур. ${member.level ?? "—"} · ${fmt(member.stat_sum)}</small>
+        <small>ур. ${member.level ?? "—"} · ${fmt(member.stat_sum)} ${gainHtml}</small>
         <button class="show-stats" data-player-id="${member.id}" title="Показать статистику" aria-label="Показать статистику игрока">▥</button>
       </div>`
       );
     }).join("");
+    const weeklyTop = group.weekly_top?.length ? `
+      <div class="org-weekly-top">
+        <div class="org-weekly-title"><span>🏆</span><div><strong>ТОП-3 игроков братства за неделю</strong><small>Кто больше всего добавил статов</small></div></div>
+        <div class="org-weekly-list">${group.weekly_top.map((item, index) => `
+          <div class="org-weekly-item"><b>${index + 1}</b><a class="game-profile-link" href="https://playwekings.mobi/hero/detail?player=${item.player_id}">${escapeHtml(item.nickname)}</a><strong>+${fmt(item.gain)}</strong></div>`).join("")}
+        </div>
+      </div>` : `<div class="org-weekly-top empty"><div class="org-weekly-title"><span>🏆</span><div><strong>ТОП-3 братства за неделю</strong><small>Пока недостаточно данных</small></div></div></div>`;
     const joined = group.joined.length
       ? `<div class="membership-list joined"><strong>Пришли:</strong> ${group.joined.map(member => escapeHtml(member.nickname)).join(", ")}</div>`
       : "";
@@ -305,7 +314,9 @@ async function loadOrganizations() {
     </tr>
     <tr class="organization-members hidden" data-members-index="${i}">
       <td colspan="5">
+        <div class="organization-contribution-head"><span>📈 Вклад в братство</span><b>${signedValue(group.stat_delta)}</b><small>изменение суммы статов за выбранный период</small></div>
         <div class="membership-changes">${joined}${left}</div>
+        ${weeklyTop}
         <div class="organization-player-list">${members}</div>
       </td>
     </tr>`;
