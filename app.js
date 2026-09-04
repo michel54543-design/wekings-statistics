@@ -349,17 +349,35 @@ async function loadLuck(brotherhood) {
 async function loadLuckBrotherhoods() {
   const select = $("luckBrotherhoodSelect");
   select.innerHTML = '<option value="">Загрузка братств…</option>';
-  const data = await fetch('/api/organizations?type=brotherhood&page=1&per_page=100').then(r => r.json());
-  if (!data.organizations?.length) {
+  const data = await fetch('/api/luck/brotherhoods').then(r => r.json());
+  if (!data.brotherhoods?.length) {
     select.innerHTML = '<option value="">Братства не найдены</option>';
     $("luckCalculate").disabled = true;
     return;
   }
-  select.innerHTML = '<option value="">Выберите братство…</option>' + data.organizations.map(group => `<option value="${escapeHtml(group.name)}">${escapeHtml(group.name)} (${fmt(group.players)} игроков)</option>`).join("");
-  if (state.luckBrotherhood && data.organizations.some(group => group.name === state.luckBrotherhood)) {
+  select.innerHTML = '<option value="">Выберите братство…</option>' + data.brotherhoods.map(group => `<option value="${escapeHtml(group.name)}">${escapeHtml(group.name)} (${fmt(group.players)} игроков)</option>`).join("");
+  if (state.luckBrotherhood && data.brotherhoods.some(group => group.name === state.luckBrotherhood)) {
     select.value = state.luckBrotherhood;
-    $("luckCalculate").disabled = false;
+    await loadLuckMembers(state.luckBrotherhood);
   }
+}
+
+async function loadLuckMembers(brotherhood) {
+  if (!brotherhood) {
+    $("luckResults").innerHTML = '<p class="life-empty">Выберите братство из списка.</p>';
+    $("luckCalculate").disabled = true;
+    return;
+  }
+  $("luckCalculate").disabled = true;
+  $("luckActions").classList.add("hidden");
+  $("luckResults").innerHTML = '<p class="life-empty">Загружаем участников…</p>';
+  const data = await fetch(`/api/luck/members?brotherhood=${encodeURIComponent(brotherhood)}`).then(r => r.json());
+  if (!data.players) throw new Error(data.error || "Не удалось загрузить участников");
+  $("luckCalculate").disabled = data.players.length < 2;
+  $("luckResults").innerHTML = data.players.length ? `
+    <div class="luck-members-head">Участники братства: <b>${data.players.length}</b></div>
+    <div class="luck-members-list">${data.players.map(p => `<div class="luck-member"><b>${escapeHtml(p.nickname)}</b><span>ур. ${p.level}</span><span>сила ${fmt(p.power)}</span></div>`).join("")}</div>
+    <p class="luck-hint">Приоритет получателей: уровень выше 30, затем сила.</p>` : '<p class="life-empty">В братстве нет участников.</p>';
 }
 
 async function openLuck() {
@@ -822,7 +840,15 @@ $("luckToggle").onclick = () => $("luckPanel").classList.contains("hidden") ? op
 $("luckBrotherhoodSelect").onchange = () => {
   state.luckBrotherhood = $("luckBrotherhoodSelect").value;
   $("luckCalculate").disabled = !state.luckBrotherhood;
-  if (state.luckBrotherhood) $("luckSubtitle").textContent = `Братство: ${state.luckBrotherhood}`;
+  if (state.luckBrotherhood) {
+    $("luckSubtitle").textContent = `Братство: ${state.luckBrotherhood}`;
+    loadLuckMembers(state.luckBrotherhood).catch(error => {
+      $("luckResults").innerHTML = `<p class="life-empty">${escapeHtml(error.message || "Ошибка загрузки")}</p>`;
+    });
+  } else {
+    $("luckSubtitle").textContent = "Выберите братство";
+    $("luckResults").innerHTML = '<p class="life-empty">Выберите братство из списка.</p>';
+  }
 };
 $("luckCalculate").onclick = () => {
   if (!state.luckBrotherhood) return;

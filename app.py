@@ -1256,6 +1256,32 @@ def valid_group_name(value):
     )
 
 
+@app.get("/api/luck/brotherhoods")
+def api_luck_brotherhoods():
+    names = set()
+    for p in Player.query.filter(Player.brotherhood.isnot(None)).all():
+        name = (p.brotherhood or "").strip()
+        if valid_group_name(name):
+            names.add(name)
+    result = []
+    for name in sorted(names, key=str.lower):
+        count = Player.query.filter(Player.brotherhood == name).count()
+        result.append({"name": name, "players": count})
+    return jsonify(brotherhoods=result)
+
+@app.get("/api/luck/members")
+def api_luck_members():
+    brotherhood = (request.args.get("brotherhood") or "").strip()
+    if not brotherhood:
+        return jsonify(error="Не указано братство"), 400
+    players = [p for p in Player.query.filter(Player.brotherhood == brotherhood).all() if valid_group_name(p.brotherhood)]
+    players.sort(key=lambda p: (-int(p.power or 0), p.nickname.lower()))
+    if len(players) > 35:
+        players = players[:35]
+    return jsonify(brotherhood=brotherhood, players=[{
+        "nickname": p.nickname, "level": int(p.level or 0), "power": int(p.power or 0)
+    } for p in players])
+
 @app.get("/api/luck")
 def api_luck():
     """Рассчитать распределение удачи для текущего состава братства.
