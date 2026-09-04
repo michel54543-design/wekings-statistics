@@ -2035,8 +2035,10 @@ def start_daily_attack_if_needed():
         fetched_at = _as_utc(state.fetched_at) if state and state.fetched_at else None
         if fetched_at and not state.last_error:
             fetched_local = fetched_at.astimezone(ZoneInfo("Europe/Chisinau"))
-            if fetched_local.date() == now_local.date():
-                app.logger.info("Wekings attacks skipped: schedule already fetched today")
+            dragon_ok = bool(state and state.dragon_at and _as_utc(state.dragon_at) > datetime.now(timezone.utc))
+            serpent_ok = bool(state and state.serpent_at and _as_utc(state.serpent_at) > datetime.now(timezone.utc))
+            if fetched_local.date() == now_local.date() and dragon_ok and serpent_ok:
+                app.logger.info("Wekings attacks skipped: valid schedule already fetched today")
                 return
     start_attack_thread()
 
@@ -2137,6 +2139,22 @@ if os.getenv("SCAN_ENABLED", "true").lower() == "true":
             id="wekings-daily-catchup-on-boot",
             replace_existing=True,
         )
+
+    # Расписание Дракона/Змея через сохранённую сессию пользователя 106.
+    # Основная попытка после полуночи и страховочные повторы.
+    # Если после deploy/ошибки расписание не загрузилось, проверяем его
+    # каждые 5 минут. Пока оба времени корректные и ещё не наступили,
+    # лишний запрос в игру не выполняется.
+    scheduler.add_job(
+        start_daily_attack_if_needed,
+        "interval",
+        minutes=5,
+        id="wekings-attacks-retry",
+        replace_existing=True,
+        coalesce=True,
+        max_instances=1,
+        misfire_grace_time=300,
+    )
 
     # Расписание Дракона/Змея через сохранённую сессию пользователя 106.
     # Основная попытка после полуночи и страховочные повторы.
