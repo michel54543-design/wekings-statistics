@@ -384,15 +384,12 @@ async function calculateLuck() {
 
   const lines = [];
   data.results.forEach(item => {
-    lines.push(`🏆 ${item.receiver} — ${item.received}/${item.requested}`);
-    item.givers.forEach(giver => lines.push(`${item.receiver} ← ⚔️ ${giver.nickname}`));
-    if (item.received < item.requested) lines.push(`⚠ Не хватило ${item.requested - item.received} удач`);
+    const givers = item.givers.map(giver => `⚔️ ${giver.nickname}`).join(", ");
+    const line = `🏆 ${item.receiver} получает ${item.received} из ${item.requested} удачи от ${givers}.`;
+    lines.push(item.received < item.requested ? `${line} ⚠ Не хватило ${item.requested - item.received} удач.` : line);
   });
   state.luckText = [
-    `⚔ РАСЧЁТ УДАЧИ — ${data.brotherhood}`,
-    `Выбрано получателей: ${data.selected}`,
-    `Запрошено: ${data.requested}`,
-    `Распределено: ${data.total} из ${data.requested}`,
+    "Братство: Раздача удачи",
     "",
     ...lines
   ].join("\n");
@@ -400,9 +397,8 @@ async function calculateLuck() {
   $("luckActions").classList.remove("hidden");
   $("luckResults").innerHTML = data.results.length ? data.results.map(item => `
     <article class="luck-receiver">
-      <div class="luck-receiver-head"><strong>🏆 ${escapeHtml(item.receiver)}</strong><span>${item.received} / ${item.requested} удач · ур. ${item.level} · сила ${fmt(item.power)}</span></div>
-      <div class="luck-givers">${item.givers.map(giver => `<div class="luck-giver"><b>${escapeHtml(item.receiver)}</b><span>←</span><strong>⚔️ ${escapeHtml(giver.nickname)}</strong></div>`).join("")}
-      ${item.received < item.requested ? `<div class="luck-shortage">⚠ Не хватило ${item.requested - item.received} удач</div>` : ""}</div>
+      <div class="luck-receiver-head"><strong>🏆 ${escapeHtml(item.receiver)} получает ${item.received} из ${item.requested} удачи</strong><span>ур. ${item.level} · сила ${fmt(item.power)}</span></div>
+      <div class="luck-result-line">${item.givers.length ? `от ${item.givers.map(giver => `<span class="luck-inline-giver">⚔️ ${escapeHtml(giver.nickname)}</span>`).join(", ")}` : "Удачу некому дать"}.${item.received < item.requested ? ` <span class="luck-shortage">Не хватило ${item.requested - item.received} удач.</span>` : ""}</div>
     </article>`).join("") : '<p class="life-empty">Распределить удачу невозможно.</p>';
 }
 
