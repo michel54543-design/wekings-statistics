@@ -1280,6 +1280,7 @@ def api_luck_members():
     if len(players) > 35:
         players = sorted(players, key=lambda p: (-int(p.power or 0), p.nickname.lower()))[:35]
         players.sort(key=lambda p: (-int(p.level or 0), -int(p.power or 0), p.nickname.lower()))
+    total_capacity = sum(6 if p.id in potion_users else 3 for p in players)
     return jsonify(
         brotherhood=brotherhood,
         players=[{
@@ -1298,8 +1299,9 @@ def api_luck():
     Правила: каждый участник может дать максимум 3 удачи в день, одному
     получателю — максимум 1; получить выбранный игрок может не больше
     указанного пользователем количества (5 или 7); себе нельзя.
-    Отдающие сортируются по силе от большей к меньшей. Получатели идут строго
-    в порядке постановки галочек.
+    Отдающие сначала сортируются по уровню (30+ имеют приоритет), затем внутри
+    каждой группы по силе от большей к меньшей. Получатели идут строго в порядке
+    постановки галочек.
     """
     if request.method == "POST":
         payload = request.get_json(silent=True) or {}
@@ -1319,7 +1321,7 @@ def api_luck():
         .filter(Player.brotherhood == brotherhood)
         .all())
     players = [p for p in players if valid_group_name(p.brotherhood)]
-    players.sort(key=lambda p: (-int(p.power or 0), p.nickname.lower()))
+    players.sort(key=lambda p: (-(1 if int(p.level or 0) >= 30 else 0), -int(p.power or 0), p.nickname.lower()))
 
     if len(players) < 2:
         return jsonify(error="В братстве должно быть минимум 2 игрока"), 400
@@ -1411,13 +1413,14 @@ def api_luck():
         })
 
     requested_total = sum(selected.values())
+    total_capacity = sum(6 if p.id in potion_users else 3 for p in players)
     return jsonify(
         brotherhood=brotherhood,
         players=len(players),
         selected=len(selected),
         requested=requested_total,
         total=len(assignments),
-        capacity=len(players) * 3,
+        capacity=total_capacity,
         results=result,
     )
 
