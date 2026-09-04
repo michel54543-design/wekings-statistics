@@ -1941,26 +1941,25 @@ _last_attack_refresh_request = None
 
 
 def request_attack_refresh_if_needed(state):
+    """Обновляем расписание только один раз в сутки.
+
+    Время Дракона/Змея приходит один раз в день. После сохранения в БД
+    его нельзя перезапрашивать из-за того, что таймер события истёк:
+    иначе страница может получить пустой ответ и стереть уже известное время.
+    Новое расписание получаем только в новый календарный день или если
+    расписание ещё ни разу не было сохранено.
+    """
     global _last_attack_refresh_request
 
     now = datetime.now(timezone.utc)
-    fetched_at = state.fetched_at if state else None
-    if fetched_at and fetched_at.tzinfo is None:
-        fetched_at = fetched_at.replace(tzinfo=timezone.utc)
-    stale = not fetched_at or now - fetched_at > timedelta(minutes=15)
-    missing = not state or not state.dragon_at or not state.serpent_at
-    failed = bool(state and state.last_error)
-    event_expired = bool(
-        state
-        and (
-            (state.dragon_at and _as_utc(state.dragon_at) <= now)
-            or (state.serpent_at and _as_utc(state.serpent_at) <= now)
-        )
-    )
-    if not (stale or missing or failed or event_expired):
+    tz = ZoneInfo("Europe/Chisinau")
+    today = now.astimezone(tz).date()
+    fetched_at = _as_utc(state.fetched_at) if state and state.fetched_at else None
+
+    if fetched_at and fetched_at.astimezone(tz).date() == today and state and state.dragon_at and state.serpent_at:
         return
 
-    # Не чаще одного принудительного запроса в 5 минут на один процесс.
+    # Если сегодня уже была попытка, не создаём несколько параллельных запросов.
     with _attack_refresh_lock:
         if (
             _last_attack_refresh_request is not None
@@ -2003,15 +2002,8 @@ def update_attack_schedule():
                 db.session.rollback()
                 app.logger.exception("Wekings attack schedule update failed")
                 state = db.session.get(GameAttackState, 1)
-                # Показываем время именно последней попытки, а не старую дату.
-                state.fetched_at = datetime.now(timezone.utc)
-                # Никогда не показываем вчерашнее время как актуальное.
-                state.dragon_at = None
-                state.serpent_at = None
-                state.dragon_raw = None
-                state.serpent_raw = None
-                state.weather_at = None
-                state.weather_raw = None
+                # КРИТИЧНО: не стираем последнее сохранённое время при временной
+                # ошибке сайта игры. Следующая попытка будет только в новый день.
                 state.last_error = str(exc)[:1000]
                 db.session.commit()
     finally:
@@ -2140,15 +2132,12 @@ if os.getenv("SCAN_ENABLED", "true").lower() == "true":
             replace_existing=True,
         )
 
-    # Расписание Дракона/Змея через сохранённую сессию пользователя 106.
-    # Основная попытка после полуночи и страховочные повторы.
-    # Если после deploy/ошибки расписание не загрузилось, проверяем его
-    # каждые 5 минут. Пока оба времени корректные и ещё не наступили,
-    # лишний запрос в игру не выполняется.
+    # Проверяем, нужно ли получить новое дневное расписание.
+    # После успешного получения в этот день никаких повторных запросов нет.
     scheduler.add_job(
         start_daily_attack_if_needed,
         "interval",
-        minutes=5,
+        hours=1,
         id="wekings-attacks-retry",
         replace_existing=True,
         coalesce=True,
