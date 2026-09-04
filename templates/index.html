@@ -8,7 +8,7 @@
   <link rel="icon" href="/static/favicon.ico?v=41" sizes="any">
   <link rel="icon" href="/static/favicon.svg?v=41" type="image/svg+xml">
   <link rel="apple-touch-icon" href="/static/apple-touch-icon.png?v=41">
-  <link rel="stylesheet" href="/static/style.css?v=87">
+  <link rel="stylesheet" href="/static/style.css?v=88">
 </head>
 <body class="dark">
   <main class="page">
@@ -103,15 +103,28 @@
 
     <section id="luckPanel" class="luck-panel hidden" aria-live="polite">
       <div class="luck-head">
-        <div><h2>⚔ РАСЧЁТ УДАЧИ</h2><p id="luckSubtitle">Выберите братство</p></div>
+        <div><h2>⚔ РАСЧЁТ УДАЧИ</h2><p id="luckSubtitle">Сначала выберите братство и кому нужна удача</p></div>
         <button id="luckClose" type="button">Свернуть ↑</button>
       </div>
       <div class="luck-selector">
-        <label><span>Братство</span><select id="luckBrotherhoodSelect"><option value="">Загрузка братств…</option></select></label>
-        <button id="luckCalculate" type="button" disabled>Рассчитать удачу</button>
+        <label class="luck-search-label"><span>Братство</span>
+          <div class="luck-search-wrap">
+            <input id="luckBrotherhoodSearch" type="text" autocomplete="off" placeholder="Начните вводить название братства…" aria-label="Поиск братства">
+            <div id="luckBrotherhoodSuggestions" class="luck-suggestions hidden" role="listbox"></div>
+          </div>
+        </label>
+      </div>
+      <div id="luckMemberBox" class="luck-member-box hidden">
+        <div class="luck-member-head"><strong>Кому нужна удача?</strong><span>Поставьте галочку и укажите количество от 1 до 7</span></div>
+        <div id="luckMembers" class="luck-members"></div>
+        <div class="luck-member-tools">
+          <button id="luckSelectAll" type="button">Выбрать всех</button>
+          <button id="luckClearAll" type="button">Снять выбор</button>
+          <button id="luckCalculate" type="button" disabled>Рассчитать удачу</button>
+        </div>
       </div>
       <div class="luck-actions hidden" id="luckActions">
-        <button id="luckCopy" type="button">Скопировать распределение</button>
+        <button id="luckCopy" type="button">📋 Скопировать распределение</button>
         <span id="luckSummary"></span>
       </div>
       <div id="luckResults" class="luck-results"><p class="life-empty">Выберите братство из списка.</p></div>
@@ -159,6 +172,6 @@
     <button data-mobile-mode="growth"><span class="nav-icon">↗</span>Прирост</button>
     <button id="mobilePlayer"><span class="nav-icon">♙</span>Игрок</button>
   </nav>
-  <script src="/static/app.js?v=87"></script>
+  <script src="/static/app.js?v=88"></script>
 </body>
 </html>

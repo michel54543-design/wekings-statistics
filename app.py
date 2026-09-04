@@ -1259,48 +1259,63 @@ def valid_group_name(value):
 @app.get("/api/luck/brotherhoods")
 def api_luck_brotherhoods():
     names = set()
-    for p in Player.query.filter(Player.brotherhood.isnot(None)).all():
-        name = (p.brotherhood or "").strip()
+    for row in Player.query.with_entities(Player.brotherhood).all():
+        name = (row[0] or "").strip()
         if valid_group_name(name):
             names.add(name)
-    result = []
-    for name in sorted(names, key=str.lower):
-        count = Player.query.filter(Player.brotherhood == name).count()
-        result.append({"name": name, "players": count})
-    return jsonify(brotherhoods=result)
+    return jsonify(brotherhoods=sorted(names, key=str.lower))
+
 
 @app.get("/api/luck/members")
 def api_luck_members():
     brotherhood = (request.args.get("brotherhood") or "").strip()
     if not brotherhood:
         return jsonify(error="Не указано братство"), 400
-    players = [p for p in Player.query.filter(Player.brotherhood == brotherhood).all() if valid_group_name(p.brotherhood)]
-    players.sort(key=lambda p: (-int(p.power or 0), p.nickname.lower()))
+    players = (Player.query
+        .filter(Player.brotherhood.isnot(None))
+        .filter(Player.brotherhood == brotherhood)
+        .all())
+    players = [p for p in players if valid_group_name(p.brotherhood)]
+    players.sort(key=lambda p: (-int(p.level or 0), -int(p.power or 0), p.nickname.lower()))
     if len(players) > 35:
-        players = players[:35]
-    return jsonify(brotherhood=brotherhood, players=[{
-        "nickname": p.nickname, "level": int(p.level or 0), "power": int(p.power or 0)
-    } for p in players])
+        players = sorted(players, key=lambda p: (-int(p.power or 0), p.nickname.lower()))[:35]
+        players.sort(key=lambda p: (-int(p.level or 0), -int(p.power or 0), p.nickname.lower()))
+    return jsonify(
+        brotherhood=brotherhood,
+        players=[{
+            "id": p.id,
+            "nickname": p.nickname,
+            "level": int(p.level or 0),
+            "power": int(p.power or 0),
+        } for p in players],
+    )
 
-@app.get("/api/luck")
+
+@app.route("/api/luck", methods=["GET", "POST"])
 def api_luck():
-    """Рассчитать распределение удачи для текущего состава братства.
+    """Рассчитать удачу для выбранных получателей.
 
     Правила: каждый участник может дать максимум 3 удачи в день, одному
-    получателю — максимум 1; получать можно максимум 7; себе нельзя.
-    Приоритет получателей: уровень > 30, затем сила. Отдающие сортируются
-    по силе от большей к меньшей.
+    получателю — максимум 1; получить выбранный игрок может не больше
+    указанного пользователем количества (до 7); себе нельзя.
+    Отдающие сортируются по силе от большей к меньшей. Получатели внутри
+    выбранных — сначала уровень > 30, затем сила.
     """
-    brotherhood = (request.args.get("brotherhood") or "").strip()
+    if request.method == "POST":
+        payload = request.get_json(silent=True) or {}
+        brotherhood = (payload.get("brotherhood") or "").strip()
+        requested_raw = payload.get("requests") or []
+    else:
+        brotherhood = (request.args.get("brotherhood") or "").strip()
+        requested_raw = []
+
     if not brotherhood:
         return jsonify(error="Не указано братство"), 400
 
-    players = (
-        Player.query
+    players = (Player.query
         .filter(Player.brotherhood.isnot(None))
         .filter(Player.brotherhood == brotherhood)
-        .all()
-    )
+        .all())
     players = [p for p in players if valid_group_name(p.brotherhood)]
     players.sort(key=lambda p: (-int(p.power or 0), p.nickname.lower()))
 
@@ -1309,45 +1324,50 @@ def api_luck():
     if len(players) > 35:
         players = players[:35]
 
-    # Получатели: сначала уровень выше 30, затем сила. Внутри одинакового
-    # приоритета сохраняем порядок по силе.
+    player_by_id = {p.id: p for p in players}
+    selected = {}
+    if requested_raw:
+        for item in requested_raw:
+            try:
+                pid = int(item.get("id"))
+                amount = int(item.get("amount"))
+            except (TypeError, ValueError, AttributeError):
+                continue
+            if pid in player_by_id and 1 <= amount <= 7:
+                selected[pid] = amount
+    else:
+        # GET оставляем для совместимости: если старый URL вызывается напрямую,
+        # рассчитываем всем участникам по 7, как раньше.
+        selected = {p.id: 7 for p in players}
+
+    if not selected:
+        return jsonify(error="Выберите хотя бы одного получателя и укажите количество удачи"), 400
+
     receivers = sorted(
-        players,
+        [player_by_id[pid] for pid in selected],
         key=lambda p: (-(1 if int(p.level or 0) > 30 else 0), -int(p.power or 0), p.nickname.lower()),
     )
-    received = {p.id: 0 for p in players}
-    given = {p.id: 0 for p in players}
+    received = {p.id: 0 for p in receivers}
     used_pairs = set()
     assignments = []
 
-    # Каждый отдающий получает до 3 разных получателей. На каждом шаге
-    # выбираем самого приоритетного доступного получателя, не допуская себя.
-    # После каждого полного прохода приоритет всё равно остаётся заданным
-    # уровнем/силой, поэтому результат полностью повторяемый.
+    # Сильные игроки отдают первыми. Каждый отдаёт не более 3 удач,
+    # и одному выбранному получателю — не более одной.
     for giver in players:
         for _ in range(3):
-            candidate = next(
-                (
-                    r for r in receivers
-                    if r.id != giver.id
-                    and received[r.id] < 7
-                    and (giver.id, r.id) not in used_pairs
-                ),
-                None,
-            )
+            candidate = next((r for r in receivers
+                if r.id != giver.id
+                and received[r.id] < selected[r.id]
+                and (giver.id, r.id) not in used_pairs), None)
             if candidate is None:
                 break
             used_pairs.add((giver.id, candidate.id))
-            given[giver.id] += 1
             received[candidate.id] += 1
             assignments.append({
                 "giver_id": giver.id,
                 "giver": giver.nickname,
-                "giver_power": int(giver.power or 0),
                 "receiver_id": candidate.id,
                 "receiver": candidate.nickname,
-                "receiver_level": int(candidate.level or 0),
-                "receiver_power": int(candidate.power or 0),
             })
 
     by_receiver = {}
@@ -1356,22 +1376,24 @@ def api_luck():
     result = []
     for receiver in receivers:
         items = by_receiver.get(receiver.id, [])
-        if not items:
-            continue
         result.append({
             "receiver_id": receiver.id,
             "receiver": receiver.nickname,
             "level": int(receiver.level or 0),
             "power": int(receiver.power or 0),
+            "requested": selected[receiver.id],
             "received": len(items),
             "givers": [{"id": x["giver_id"], "nickname": x["giver"]} for x in items],
         })
 
+    requested_total = sum(selected.values())
     return jsonify(
         brotherhood=brotherhood,
         players=len(players),
+        selected=len(selected),
+        requested=requested_total,
         total=len(assignments),
-        max_possible=len(players) * 3,
+        capacity=len(players) * 3,
         results=result,
     )
 
