@@ -332,7 +332,7 @@ function renderLuckMembers(players) {
       <input type="checkbox" class="luck-member-check" data-player-id="${player.id}">
       <span class="luck-member-name"><b>${escapeHtml(player.nickname)}</b><small>ур. ${player.level} · сила ${fmt(player.power)}</small></span>
       <select class="luck-member-amount" data-player-id="${player.id}" disabled aria-label="Количество удачи для ${escapeHtml(player.nickname)}">
-        ${Array.from({length: 7}, (_, i) => `<option value="${i + 1}">${i + 1}</option>`).join("")}
+        ${[5, 7].map(value => `<option value="${value}">${value}</option>`).join("")}
       </select>
     </label>`).join("") : '<p class="life-empty">В братстве нет участников.</p>';
 
