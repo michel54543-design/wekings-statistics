@@ -334,3 +334,12 @@ table.levels-table .level-group-row.open td{border-bottom-color:transparent}
 .luck-member-choice.active{background:linear-gradient(180deg,#e3bd65,#b98128);color:#15110a;border-color:#8a6b32}
 .luck-member-choice:disabled{opacity:.35;cursor:not-allowed}
 @media (max-width:700px){.luck-member-row{grid-template-columns:24px minmax(0,1fr) 76px}.luck-member-choices{width:76px}.luck-member-choice{width:36px}}
+
+/* Краткая памятка в разделе расчёта удачи */
+.luck-info{margin:12px 0 14px;padding:12px 14px;border:1px solid #4b402e;background:#15130f;border-radius:12px}
+.luck-info-title{color:#e8c878;font-size:12px;font-weight:900;margin-bottom:8px;text-transform:uppercase;letter-spacing:.04em}
+.luck-info-grid{display:grid;grid-template-columns:22px minmax(0,1fr);column-gap:7px;row-gap:6px;align-items:start}
+.luck-info-grid span{font-size:12px;line-height:1.45;text-align:center;color:#e8c878;font-weight:900}
+.luck-info-grid p{margin:0;color:#aaa59b;font-size:11px;line-height:1.4}
+.luck-info-grid b{color:#eee5d5}
+@media(max-width:700px){.luck-info{padding:11px 12px}.luck-info-grid{grid-template-columns:22px minmax(0,1fr);row-gap:7px}.luck-info-grid p{font-size:11px}}
