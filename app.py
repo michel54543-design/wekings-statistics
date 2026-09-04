@@ -1305,9 +1305,11 @@ def api_luck():
         payload = request.get_json(silent=True) or {}
         brotherhood = (payload.get("brotherhood") or "").strip()
         requested_raw = payload.get("requests") or []
+        potion_raw = payload.get("potion_users") or []
     else:
         brotherhood = (request.args.get("brotherhood") or "").strip()
         requested_raw = []
+        potion_raw = []
 
     if not brotherhood:
         return jsonify(error="Не указано братство"), 400
@@ -1343,6 +1345,16 @@ def api_luck():
     if not selected:
         return jsonify(error="Выберите хотя бы одного получателя и укажите количество удачи"), 400
 
+    # Игроки, выпившие Зелье Обновления Пожеланий, могут отдать до 6 удач.
+    potion_users = set()
+    for item in potion_raw:
+        try:
+            pid = int(item)
+        except (TypeError, ValueError):
+            continue
+        if pid in player_by_id:
+            potion_users.add(pid)
+
     # Порядок получателей = порядок, в котором пользователь ставил галочки.
     # Первый выбранный получает удачу от самых сильных игроков первым,
     # затем распределение переходит ко второму выбранному и т.д.
@@ -1362,10 +1374,11 @@ def api_luck():
     used_pairs = set()
     assignments = []
 
-    # Сильные игроки отдают первыми. Каждый отдаёт не более 3 удач,
-    # и одному выбранному получателю — не более одной.
+    # Сильные игроки отдают первыми. Обычный лимит — 3 удачи,
+    # с Зельем Обновления Пожеланий — 6 удач. Одному получателю — не более одной.
     for giver in players:
-        for _ in range(3):
+        giver_limit = 6 if giver.id in potion_users else 3
+        for _ in range(giver_limit):
             candidate = next((r for r in receivers
                 if r.id != giver.id
                 and received[r.id] < selected[r.id]

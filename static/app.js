@@ -336,9 +336,24 @@ async function loadOrganizations() {
 
 
 function renderLuckMembers(players) {
+  const potionBox = $("luckPotionBox");
+  const potionList = $("luckPotionMembers");
   const box = $("luckMemberBox");
   const list = $("luckMembers");
-  box.classList.remove("hidden");
+  potionBox.classList.remove("hidden");
+  box.classList.add("hidden");
+  potionList.innerHTML = players.length ? players.map(player => `
+    <label class="luck-member-row">
+      <input type="checkbox" class="luck-potion-check" data-player-id="${player.id}">
+      <span class="luck-member-name"><b>${escapeHtml(player.nickname)}</b><small>ур. ${player.level} · сила ${fmt(player.power)}</small></span>
+      <span class="luck-potion-badge">до 6</span>
+    </label>`).join("") : '<p class="life-empty">В братстве нет участников.</p>';
+
+  potionList.querySelectorAll(".luck-potion-check").forEach(check => {
+    check.onchange = () => {
+      updateLuckPotionState();
+    };
+  });
   list.innerHTML = players.length ? players.map(player => `
     <label class="luck-member-row">
       <input type="checkbox" class="luck-member-check" data-player-id="${player.id}">
@@ -378,6 +393,11 @@ function renderLuckMembers(players) {
   updateLuckCalculateState();
 }
 
+function updateLuckPotionState() {
+  const hasPlayers = document.querySelectorAll(".luck-potion-check").length > 0;
+  $("luckPotionContinue").disabled = !hasPlayers;
+}
+
 function updateLuckCalculateState() {
   const selected = document.querySelectorAll(".luck-member-check:checked").length;
   $("luckCalculate").disabled = selected === 0;
@@ -388,8 +408,9 @@ async function loadLuckMembers(brotherhood) {
   state.luckText = "";
   $("luckSubtitle").textContent = `Братство: ${brotherhood}`;
   $("luckActions").classList.add("hidden");
-  $("luckMemberBox").classList.remove("hidden");
-  $("luckMembers").innerHTML = '<p class="life-empty">Загрузка участников…</p>';
+  $("luckPotionBox").classList.remove("hidden");
+  $("luckMemberBox").classList.add("hidden");
+  $("luckPotionMembers").innerHTML = '<p class="life-empty">Загрузка участников…</p>';
   $("luckResults").innerHTML = '<p class="life-empty">Выберите игроков и укажите, сколько удачи им нужно.</p>';
   const response = await fetch(`/api/luck/members?brotherhood=${encodeURIComponent(brotherhood)}`);
   const data = await response.json();
@@ -403,6 +424,7 @@ async function calculateLuck() {
   if (!state.luckBrotherhood || !checks.length) return;
   $("luckResults").innerHTML = '<p class="life-empty">Рассчитываем распределение…</p>';
   $("luckActions").classList.add("hidden");
+  const potion_users = [...document.querySelectorAll(".luck-potion-check:checked")].map(check => Number(check.dataset.playerId));
   const requests = checks.map(check => {
     const amount = document.querySelector(`.luck-member-amount[data-player-id="${check.dataset.playerId}"]`);
     return { id: Number(check.dataset.playerId), amount: Number(amount?.value || 1) };
@@ -410,7 +432,7 @@ async function calculateLuck() {
   const response = await fetch("/api/luck", {
     method: "POST",
     headers: {"Content-Type": "application/json"},
-    body: JSON.stringify({brotherhood: state.luckBrotherhood, requests})
+    body: JSON.stringify({brotherhood: state.luckBrotherhood, requests, potion_users})
   });
   const data = await response.json();
   if (!response.ok) throw new Error(data.error || "Не удалось рассчитать удачу");
@@ -989,6 +1011,12 @@ document.addEventListener("click", event => {
   const wrap = document.querySelector(".luck-search-wrap");
   if (wrap && !wrap.contains(event.target)) hideLuckSuggestions();
 });
+$("luckPotionContinue").onclick = () => {
+  $("luckPotionBox").classList.add("hidden");
+  $("luckMemberBox").classList.remove("hidden");
+  $("luckResults").innerHTML = '<p class="life-empty">Выберите игроков и укажите, сколько удачи им нужно.</p>';
+};
+
 $("luckSelectAll").onclick = () => {
   document.querySelectorAll(".luck-member-check").forEach(check => {
     check.checked = true;

@@ -343,3 +343,5 @@ table.levels-table .level-group-row.open td{border-bottom-color:transparent}
 .luck-info-grid p{margin:0;color:#aaa59b;font-size:11px;line-height:1.4}
 .luck-info-grid b{color:#eee5d5}
 @media(max-width:700px){.luck-info{padding:11px 12px}.luck-info-grid{grid-template-columns:22px minmax(0,1fr);row-gap:7px}.luck-info-grid p{font-size:11px}}
+
+.luck-potion-badge{min-width:42px;text-align:center;padding:5px 6px;border:1px solid #5b4b31;border-radius:7px;background:#211c13;color:#e3bd65;font-size:10px;font-weight:900}.luck-potion-check{width:17px!important;height:17px!important}.luck-member-tools #luckPotionContinue{background:linear-gradient(180deg,#e3bd65,#b98128);color:#15110a;border-color:#8a6b32;margin-left:auto}.luck-member-tools #luckPotionContinue:disabled{opacity:.45;cursor:not-allowed}@media(max-width:700px){.luck-member-tools #luckPotionContinue{margin-left:0;width:100%}}
