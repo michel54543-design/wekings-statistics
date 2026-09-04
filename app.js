@@ -331,16 +331,29 @@ function renderLuckMembers(players) {
     <label class="luck-member-row">
       <input type="checkbox" class="luck-member-check" data-player-id="${player.id}">
       <span class="luck-member-name"><b>${escapeHtml(player.nickname)}</b><small>ур. ${player.level} · сила ${fmt(player.power)}</small></span>
-      <select class="luck-member-amount" data-player-id="${player.id}" disabled aria-label="Количество удачи для ${escapeHtml(player.nickname)}">
-        ${[5, 7].map(value => `<option value="${value}">${value}</option>`).join("")}
-      </select>
+      <span class="luck-member-choices" data-player-id="${player.id}" aria-label="Количество удачи для ${escapeHtml(player.nickname)}">
+        <button type="button" class="luck-member-choice active" data-player-id="${player.id}" data-amount="5" disabled>5</button>
+        <button type="button" class="luck-member-choice" data-player-id="${player.id}" data-amount="7" disabled>7</button>
+        <input type="hidden" class="luck-member-amount" data-player-id="${player.id}" value="5">
+      </span>
     </label>`).join("") : '<p class="life-empty">В братстве нет участников.</p>';
 
   list.querySelectorAll(".luck-member-check").forEach(check => {
     check.onchange = () => {
-      const amount = list.querySelector(`.luck-member-amount[data-player-id="${check.dataset.playerId}"]`);
-      if (amount) amount.disabled = !check.checked;
+      const choices = list.querySelector(`.luck-member-choices[data-player-id="${check.dataset.playerId}"]`);
+      if (choices) choices.querySelectorAll(".luck-member-choice").forEach(button => { button.disabled = !check.checked; });
       updateLuckCalculateState();
+    };
+  });
+  list.querySelectorAll(".luck-member-choice").forEach(button => {
+    button.onclick = event => {
+      event.preventDefault();
+      const choices = button.closest(".luck-member-choices");
+      if (!choices) return;
+      choices.querySelectorAll(".luck-member-choice").forEach(item => item.classList.remove("active"));
+      button.classList.add("active");
+      const amount = choices.querySelector(".luck-member-amount");
+      if (amount) amount.value = button.dataset.amount;
     };
   });
   updateLuckCalculateState();
@@ -384,7 +397,7 @@ async function calculateLuck() {
 
   const lines = [];
   data.results.forEach(item => {
-    const givers = item.givers.map(giver => `⚔️ ${giver.nickname}`).join(", ");
+    const givers = item.givers.map(giver => giver.nickname).join(", ");
     const line = `🏆 ${item.receiver} получает ${item.received} из ${item.requested} удачи от ${givers}.`;
     lines.push(item.received < item.requested ? `${line} ⚠ Не хватило ${item.requested - item.received} удач.` : line);
   });
@@ -398,7 +411,7 @@ async function calculateLuck() {
   $("luckResults").innerHTML = data.results.length ? data.results.map(item => `
     <article class="luck-receiver">
       <div class="luck-receiver-head"><strong>🏆 ${escapeHtml(item.receiver)} получает ${item.received} из ${item.requested} удачи</strong><span>ур. ${item.level} · сила ${fmt(item.power)}</span></div>
-      <div class="luck-result-line">${item.givers.length ? `от ${item.givers.map(giver => `<span class="luck-inline-giver">⚔️ ${escapeHtml(giver.nickname)}</span>`).join(", ")}` : "Удачу некому дать"}.${item.received < item.requested ? ` <span class="luck-shortage">Не хватило ${item.requested - item.received} удач.</span>` : ""}</div>
+      <div class="luck-result-line">${item.givers.length ? `от ${item.givers.map(giver => `<span class="luck-inline-giver">${escapeHtml(giver.nickname)}</span>`).join(", ")}` : "Удачу некому дать"}.${item.received < item.requested ? ` <span class="luck-shortage">Не хватило ${item.requested - item.received} удач.</span>` : ""}</div>
     </article>`).join("") : '<p class="life-empty">Распределить удачу невозможно.</p>';
 }
 
@@ -959,16 +972,16 @@ document.addEventListener("click", event => {
 $("luckSelectAll").onclick = () => {
   document.querySelectorAll(".luck-member-check").forEach(check => {
     check.checked = true;
-    const amount = document.querySelector(`.luck-member-amount[data-player-id="${check.dataset.playerId}"]`);
-    if (amount) amount.disabled = false;
+    const choices = document.querySelector(`.luck-member-choices[data-player-id="${check.dataset.playerId}"]`);
+    if (choices) choices.querySelectorAll(".luck-member-choice").forEach(button => { button.disabled = false; });
   });
   updateLuckCalculateState();
 };
 $("luckClearAll").onclick = () => {
   document.querySelectorAll(".luck-member-check").forEach(check => {
     check.checked = false;
-    const amount = document.querySelector(`.luck-member-amount[data-player-id="${check.dataset.playerId}"]`);
-    if (amount) amount.disabled = true;
+    const choices = document.querySelector(`.luck-member-choices[data-player-id="${check.dataset.playerId}"]`);
+    if (choices) choices.querySelectorAll(".luck-member-choice").forEach(button => { button.disabled = true; });
   });
   updateLuckCalculateState();
 };

@@ -326,3 +326,11 @@ table.levels-table .level-group-row.open td{border-bottom-color:transparent}
 /* Luck: compact old-calculator style */
 .luck-result-line{margin-top:8px;padding:9px 10px;border-radius:8px;background:#1c1b19;color:#e9e2d6;font-size:13px;line-height:1.45}.luck-inline-giver{white-space:nowrap}.luck-result-line .luck-shortage{display:inline;color:#d8a86b}.luck-receiver{padding:10px 12px}.luck-receiver-head{display:flex;align-items:center;gap:12px}.luck-receiver-head strong{flex:1}.luck-receiver-head span{white-space:nowrap}.luck-menu-button{white-space:nowrap}
 @media (max-width:700px){.luck-receiver-head{display:block}.luck-receiver-head span{display:block;margin-top:3px}.luck-result-line{font-size:12px}.luck-menu-button{white-space:normal}}
+
+/* Luck amount buttons: only 5 or 7 */
+.luck-member-choices{display:flex;align-items:center;justify-content:flex-end;gap:4px;width:76px}
+.luck-member-choice{width:36px;height:32px;padding:0;border:1px solid #5b4b31;border-radius:7px;background:#0e0e0d;color:#f2eadb;font-weight:900;font-size:13px;cursor:pointer}
+.luck-member-choice:hover:not(:disabled){background:#302719}
+.luck-member-choice.active{background:linear-gradient(180deg,#e3bd65,#b98128);color:#15110a;border-color:#8a6b32}
+.luck-member-choice:disabled{opacity:.35;cursor:not-allowed}
+@media (max-width:700px){.luck-member-row{grid-template-columns:24px minmax(0,1fr) 76px}.luck-member-choices{width:76px}.luck-member-choice{width:36px}}
