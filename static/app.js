@@ -338,10 +338,17 @@ function renderLuckMembers(players) {
       </span>
     </label>`).join("") : '<p class="life-empty">В братстве нет участников.</p>';
 
+  let selectionOrder = 0;
   list.querySelectorAll(".luck-member-check").forEach(check => {
     check.onchange = () => {
       const choices = list.querySelector(`.luck-member-choices[data-player-id="${check.dataset.playerId}"]`);
       if (choices) choices.querySelectorAll(".luck-member-choice").forEach(button => { button.disabled = !check.checked; });
+      if (check.checked) {
+        selectionOrder += 1;
+        check.dataset.selectionOrder = String(selectionOrder);
+      } else {
+        delete check.dataset.selectionOrder;
+      }
       updateLuckCalculateState();
     };
   });
@@ -379,7 +386,8 @@ async function loadLuckMembers(brotherhood) {
 }
 
 async function calculateLuck() {
-  const checks = [...document.querySelectorAll(".luck-member-check:checked")];
+  const checks = [...document.querySelectorAll(".luck-member-check:checked")]
+    .sort((a, b) => Number(a.dataset.selectionOrder || 0) - Number(b.dataset.selectionOrder || 0));
   if (!state.luckBrotherhood || !checks.length) return;
   $("luckResults").innerHTML = '<p class="life-empty">Рассчитываем распределение…</p>';
   $("luckActions").classList.add("hidden");

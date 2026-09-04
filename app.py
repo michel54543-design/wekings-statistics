@@ -1297,9 +1297,9 @@ def api_luck():
 
     Правила: каждый участник может дать максимум 3 удачи в день, одному
     получателю — максимум 1; получить выбранный игрок может не больше
-    указанного пользователем количества (до 7); себе нельзя.
-    Отдающие сортируются по силе от большей к меньшей. Получатели внутри
-    выбранных — сначала уровень > 30, затем сила.
+    указанного пользователем количества (5 или 7); себе нельзя.
+    Отдающие сортируются по силе от большей к меньшей. Получатели идут строго
+    в порядке постановки галочек.
     """
     if request.method == "POST":
         payload = request.get_json(silent=True) or {}
@@ -1333,7 +1333,7 @@ def api_luck():
                 amount = int(item.get("amount"))
             except (TypeError, ValueError, AttributeError):
                 continue
-            if pid in player_by_id and 1 <= amount <= 7:
+            if pid in player_by_id and amount in (5, 7):
                 selected[pid] = amount
     else:
         # GET оставляем для совместимости: если старый URL вызывается напрямую,
@@ -1343,10 +1343,21 @@ def api_luck():
     if not selected:
         return jsonify(error="Выберите хотя бы одного получателя и укажите количество удачи"), 400
 
-    receivers = sorted(
-        [player_by_id[pid] for pid in selected],
-        key=lambda p: (-(1 if int(p.level or 0) > 30 else 0), -int(p.power or 0), p.nickname.lower()),
-    )
+    # Порядок получателей = порядок, в котором пользователь ставил галочки.
+    # Первый выбранный получает удачу от самых сильных игроков первым,
+    # затем распределение переходит ко второму выбранному и т.д.
+    if requested_raw:
+        ordered_ids = []
+        for item in requested_raw:
+            try:
+                pid = int(item.get("id"))
+            except (TypeError, ValueError, AttributeError):
+                continue
+            if pid in selected and pid not in ordered_ids:
+                ordered_ids.append(pid)
+        receivers = [player_by_id[pid] for pid in ordered_ids]
+    else:
+        receivers = [player_by_id[pid] for pid in selected]
     received = {p.id: 0 for p in receivers}
     used_pairs = set()
     assignments = []
