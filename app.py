@@ -1993,11 +1993,16 @@ def update_attack_schedule():
             try:
                 result = fetch_attack_schedule()
                 _last_attack_debug = result.get("weather_debug") or {}
-                for field in (
-                    "fetched_at", "game_time", "dragon_at", "serpent_at",
-                    "dragon_raw", "serpent_raw",
-                ):
-                    setattr(state, field, result.get(field))
+                # Время Дракона и Змея приходит раз в сутки. Если парсер
+                # в этот раз не распознал одно из двух значений, никогда не
+                # затираем уже сохранённое время пустым результатом.
+                for field in ("fetched_at", "game_time"):
+                    if result.get(field) is not None:
+                        setattr(state, field, result.get(field))
+                for field in ("dragon_at", "serpent_at", "dragon_raw", "serpent_raw"):
+                    value = result.get(field)
+                    if value is not None:
+                        setattr(state, field, value)
 
                 # Не затираем последний корректный прогноз плавания пустым
                 # результатом. Если Монах отдал прогноз, он сохраняется в БД;
@@ -2038,10 +2043,11 @@ def start_daily_attack_if_needed():
         fetched_at = _as_utc(state.fetched_at) if state and state.fetched_at else None
         if fetched_at and not state.last_error:
             fetched_local = fetched_at.astimezone(ZoneInfo("Europe/Chisinau"))
-            dragon_ok = bool(state and state.dragon_at and _as_utc(state.dragon_at) > datetime.now(timezone.utc))
-            serpent_ok = bool(state and state.serpent_at and _as_utc(state.serpent_at) > datetime.now(timezone.utc))
-            if fetched_local.date() == now_local.date() and dragon_ok and serpent_ok:
-                app.logger.info("Wekings attacks skipped: valid schedule already fetched today")
+            # Получили сегодняшнее расписание — больше не заходим в игру
+            # в течение этого календарного дня. Истёкшее время не считается
+            # причиной для нового запроса: расписание уже сохранено.
+            if fetched_local.date() == now_local.date() and state.dragon_at and state.serpent_at:
+                app.logger.info("Wekings attacks skipped: today's schedule already saved")
                 return
     start_attack_thread()
 

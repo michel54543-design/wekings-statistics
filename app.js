@@ -105,15 +105,21 @@ async function loadPlayerDetail(playerId, scroll = true) {
   $("closePlayerDetail").focus();
 }
 
-function attackTimeText(value, stayMinutes) {
+function attackTimeText(value, stayMinutes, goneText) {
+  // Время Дракона/Змея — это суточное расписание. После начала события
+  // оставляем время до окончания пребывания, а затем показываем статус.
   if (!value) return "Ожидаем новое время";
   const start = new Date(value);
   if (Number.isNaN(start.getTime())) return "Ожидаем новое время";
+
   const now = new Date();
-  const end = new Date(start.getTime() + stayMinutes * 60000);
-  if (now < start) return start.toLocaleTimeString("ru-RU", {hour:"2-digit", minute:"2-digit"});
-  if (now < end) return "Сейчас в городе";
-  return "Ожидаем новое время";
+  const end = new Date(start.getTime() + stayMinutes * 60 * 1000);
+  if (now >= end) return goneText;
+
+  const sameDay = start.getFullYear() === now.getFullYear() &&
+    start.getMonth() === now.getMonth() && start.getDate() === now.getDate();
+  const time = start.toLocaleTimeString("ru-RU", {hour:"2-digit", minute:"2-digit"});
+  return sameDay ? time : `${time} · ${String(start.getDate()).padStart(2,"0")}.${String(start.getMonth()+1).padStart(2,"0")}`;
 }
 
 function weatherTimeText(value) {
@@ -170,8 +176,12 @@ async function loadAttacks() {
     const response = await fetch(`/api/attacks?_=${Date.now()}`, { cache: "no-store" });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const data = await response.json();
-    $("dragonTime").textContent = attackTimeText(data.dragon_at, 60);
-    $("serpentTime").textContent = attackTimeText(data.serpent_at, 90);
+    $("dragonTime").textContent = data.dragon_at
+      ? attackTimeText(data.dragon_at, 60, "Дракон улетел")
+      : (data.dragon_status || "Ожидаем новое время");
+    $("serpentTime").textContent = data.serpent_at
+      ? attackTimeText(data.serpent_at, 90, "Змей уплыл")
+      : (data.serpent_status || "Ожидаем новое время");
     // Основной источник — БД. Резерв — parsed из диагностического ответа.
     // Это закрывает случай, когда парсер уже нашёл прогноз, а запись БД ещё
     // не успела попасть в JSON-ответ.
@@ -191,8 +201,10 @@ async function loadAttacks() {
     }
     box?.classList.toggle("waiting", !data.dragon_at || !data.serpent_at);
   } catch (error) {
-    $("dragonTime").textContent = "Ожидаем новое время";
-    $("serpentTime").textContent = "Ожидаем новое время";
+    // При временной ошибке запроса не затираем уже показанное расписание.
+    // Следующий успешный запрос обновит его.
+    $("dragonTime").textContent = $("dragonTime").textContent || "Ожидаем новое время";
+    $("serpentTime").textContent = $("serpentTime").textContent || "Ожидаем новое время";
     $("weatherTime").textContent = "Нет прогноза";
     $("attackUpdated").textContent = "нет связи";
     box?.classList.add("waiting");
@@ -1006,3 +1018,4 @@ if ($("attackRefresh")) $("attackRefresh").onclick = refreshAttacks;
 loadStatus().catch(() => {});
 loadPlayers().catch(() => $("rows").innerHTML = '<tr><td colspan="7" class="loading">Не удалось загрузить данные</td></tr>');
 setInterval(() => loadStatus().catch(() => {}), 30000);
+setInterval(() => loadAttacks().catch(() => {}), 30000);
