@@ -750,7 +750,5 @@ $("todayBadge").textContent = new Date().toLocaleDateString("ru-RU", {
 syncMobileNav();
 if ($("attackRefresh")) $("attackRefresh").onclick = refreshAttacks;
 loadStatus().catch(() => {});
-loadAttacks().catch(() => {});
 loadPlayers().catch(() => $("rows").innerHTML = '<tr><td colspan="7" class="loading">Не удалось загрузить данные</td></tr>');
 setInterval(() => loadStatus().catch(() => {}), 30000);
-setInterval(() => loadAttacks().catch(() => {}), 60000);

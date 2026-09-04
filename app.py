@@ -1256,6 +1256,100 @@ def valid_group_name(value):
     )
 
 
+@app.get("/api/luck")
+def api_luck():
+    """Рассчитать распределение удачи для текущего состава братства.
+
+    Правила: каждый участник может дать максимум 3 удачи в день, одному
+    получателю — максимум 1; получать можно максимум 7; себе нельзя.
+    Приоритет получателей: уровень > 30, затем сила. Отдающие сортируются
+    по силе от большей к меньшей.
+    """
+    brotherhood = (request.args.get("brotherhood") or "").strip()
+    if not brotherhood:
+        return jsonify(error="Не указано братство"), 400
+
+    players = (
+        Player.query
+        .filter(Player.brotherhood.isnot(None))
+        .filter(Player.brotherhood == brotherhood)
+        .all()
+    )
+    players = [p for p in players if valid_group_name(p.brotherhood)]
+    players.sort(key=lambda p: (-int(p.power or 0), p.nickname.lower()))
+
+    if len(players) < 2:
+        return jsonify(error="В братстве должно быть минимум 2 игрока"), 400
+    if len(players) > 35:
+        players = players[:35]
+
+    # Получатели: сначала уровень выше 30, затем сила. Внутри одинакового
+    # приоритета сохраняем порядок по силе.
+    receivers = sorted(
+        players,
+        key=lambda p: (-(1 if int(p.level or 0) > 30 else 0), -int(p.power or 0), p.nickname.lower()),
+    )
+    received = {p.id: 0 for p in players}
+    given = {p.id: 0 for p in players}
+    used_pairs = set()
+    assignments = []
+
+    # Каждый отдающий получает до 3 разных получателей. На каждом шаге
+    # выбираем самого приоритетного доступного получателя, не допуская себя.
+    # После каждого полного прохода приоритет всё равно остаётся заданным
+    # уровнем/силой, поэтому результат полностью повторяемый.
+    for giver in players:
+        for _ in range(3):
+            candidate = next(
+                (
+                    r for r in receivers
+                    if r.id != giver.id
+                    and received[r.id] < 7
+                    and (giver.id, r.id) not in used_pairs
+                ),
+                None,
+            )
+            if candidate is None:
+                break
+            used_pairs.add((giver.id, candidate.id))
+            given[giver.id] += 1
+            received[candidate.id] += 1
+            assignments.append({
+                "giver_id": giver.id,
+                "giver": giver.nickname,
+                "giver_power": int(giver.power or 0),
+                "receiver_id": candidate.id,
+                "receiver": candidate.nickname,
+                "receiver_level": int(candidate.level or 0),
+                "receiver_power": int(candidate.power or 0),
+            })
+
+    by_receiver = {}
+    for item in assignments:
+        by_receiver.setdefault(item["receiver_id"], []).append(item)
+    result = []
+    for receiver in receivers:
+        items = by_receiver.get(receiver.id, [])
+        if not items:
+            continue
+        result.append({
+            "receiver_id": receiver.id,
+            "receiver": receiver.nickname,
+            "level": int(receiver.level or 0),
+            "power": int(receiver.power or 0),
+            "received": len(items),
+            "givers": [{"id": x["giver_id"], "nickname": x["giver"]} for x in items],
+        })
+
+    return jsonify(
+        brotherhood=brotherhood,
+        players=len(players),
+        total=len(assignments),
+        max_possible=len(players) * 3,
+        results=result,
+    )
+
+
 @app.get("/api/organizations")
 def api_organizations():
     organization_type = request.args.get("type", "clan")

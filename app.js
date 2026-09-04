@@ -1,4 +1,4 @@
-const state = { page: 1, pages: 1, mode: "general", datesLoaded: false, playerDetail: null, finishedAt: undefined };
+const state = { page: 1, pages: 1, mode: "general", datesLoaded: false, playerDetail: null, finishedAt: undefined, luckBrotherhood: "", luckText: "" };
 const metricNames = {
   glory: "Слава", stat_sum: "Сумма характеристик", power: "Сила",
   defense: "Защита", agility: "Ловкость", mastery: "Мастерство",
@@ -120,11 +120,49 @@ function weatherTimeText(value) {
   if (!value) return "Нет прогноза";
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "Нет прогноза";
-  // Прогноз должен отображаться как полученное сервером время.
-  // Не скрываем его сравнением с часами браузера: при различии часового
-  // пояса/локали такой прогноз ошибочно превращался в «Нет прогноза».
-  return date.toLocaleString("ru-RU", {day:"2-digit", month:"2-digit", hour:"2-digit", minute:"2-digit"});
+  // Показываем именно время прогноза, полученное сервером.
+  // Не сравниваем его с часами браузера: прогноз может быть на текущее
+  // или уже начавшееся время, но он всё равно должен быть виден.
+  const hh = String(date.getHours()).padStart(2, "0");
+  const mm = String(date.getMinutes()).padStart(2, "0");
+  const dd = String(date.getDate()).padStart(2, "0");
+  const mo = String(date.getMonth() + 1).padStart(2, "0");
+  return `${hh}:${mm} ${dd}.${mo}`;
 }
+
+async function refreshAttacks() {
+  const button = $("attackRefresh");
+  if (!button) return;
+
+  const before = window.__attacksFetchedAt || null;
+  button.disabled = true;
+  button.textContent = "Обновляем…";
+
+  try {
+    const response = await fetch("/api/attacks/refresh", { method: "POST", cache: "no-store" });
+    let data = null;
+    try { data = await response.json(); } catch (_) {}
+    if (!response.ok) throw new Error(data?.message || `HTTP ${response.status}`);
+
+    for (let i = 0; i < 20; i++) {
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      const check = await fetch(`/api/attacks?_=${Date.now()}`, { cache: "no-store" });
+      if (!check.ok) continue;
+      const fresh = await check.json();
+      if (fresh.fetched_at && fresh.fetched_at !== before) {
+        await loadAttacks();
+        return;
+      }
+    }
+    await loadAttacks();
+  } catch (error) {
+    button.title = error?.message || "Не удалось обновить прогноз";
+  } finally {
+    button.disabled = false;
+    button.textContent = "↻ Обновить";
+  }
+}
+
 
 async function loadAttacks() {
   const box = $("attackSchedule");
@@ -134,10 +172,18 @@ async function loadAttacks() {
     const data = await response.json();
     $("dragonTime").textContent = attackTimeText(data.dragon_at, 60);
     $("serpentTime").textContent = attackTimeText(data.serpent_at, 90);
-    // Основной источник — сохранённое значение БД. Если оно ещё не попало
-    // в ответ, но диагностика уже распознала прогноз, используем её parsed.
-    const weatherValue = (data.debug && data.debug.parsed) || data.weather_at || null;
-    $("weatherTime").textContent = weatherTimeText(weatherValue);
+    // Основной источник — БД. Резерв — parsed из диагностического ответа.
+    // Это закрывает случай, когда парсер уже нашёл прогноз, а запись БД ещё
+    // не успела попасть в JSON-ответ.
+    const debugBox = $("attackDebug");
+    if (debugBox && data.debug) {
+      const d = data.debug;
+      debugBox.textContent = d.error
+        ? `Диагностика: ${d.error}`
+        : `Монах: ${d.monk_url || "—"}\nФинальный URL: ${d.final_url || "—"}\nHTTP: ${d.http_status ?? "—"}, ответ: ${d.response_bytes ?? "—"} байт\nМаркер погоды: ${d.weather_marker ? "найден" : "не найден"}\nИсточник: ${d.source || "—"}\nРаспознано: ${d.parsed || "НЕТ"}\nФрагмент: ${d.snippet || "—"}`;
+      debugBox.classList.remove("hidden");
+    }
+    window.__attacksFetchedAt = data.fetched_at || null;
     if (data.fetched_at) {
       $("attackUpdated").textContent = `обновлено ${new Date(data.fetched_at).toLocaleTimeString("ru-RU", {hour:"2-digit", minute:"2-digit"})}`;
     } else {
@@ -233,15 +279,24 @@ async function loadOrganizations() {
     const medal = rankBadge(rank);
     const members = group.members.map((member, memberIndex) => {
       const memberPlace = rankBadge(memberIndex + 1);
+      const gain = Number(member.stat_gain || 0);
+      const gainHtml = gain > 0 ? `<em class="org-player-gain">+${fmt(gain)}</em>` : `<em class="org-player-gain zero">—</em>`;
       return (
       `<div class="org-player">
         <b class="org-player-place">${memberPlace}</b>
         <a class="org-player-name game-profile-link" href="https://playwekings.mobi/hero/detail?player=${member.id}"><span>${escapeHtml(member.nickname)}</span></a>
-        <small>ур. ${member.level ?? "—"} · ${fmt(member.stat_sum)}</small>
+        <small>ур. ${member.level ?? "—"} · ${fmt(member.stat_sum)} ${gainHtml}</small>
         <button class="show-stats" data-player-id="${member.id}" title="Показать статистику" aria-label="Показать статистику игрока">▥</button>
       </div>`
       );
     }).join("");
+    const weeklyTop = group.weekly_top?.length ? `
+      <div class="org-weekly-top">
+        <div class="org-weekly-title"><span>🏆</span><div class="org-weekly-title-text"><strong>ТОП-3 игроков ${type === "clan" ? "клана" : "братства"} за неделю</strong><small>Кто больше всего добавил статов</small></div></div>
+        <div class="org-weekly-list">${group.weekly_top.map((item, index) => `
+          <div class="org-weekly-item"><b>${index + 1}</b><a class="org-weekly-player game-profile-link" href="https://playwekings.mobi/hero/detail?player=${item.player_id}">${escapeHtml(item.nickname)}</a><strong>+${fmt(item.gain)}</strong></div>`).join("")}
+        </div>
+      </div>` : `<div class="org-weekly-top empty"><div class="org-weekly-title"><span>🏆</span><div><strong>ТОП-3 ${type === "clan" ? "клана" : "братства"} за неделю</strong><small>Пока недостаточно данных</small></div></div></div>`;
     const joined = group.joined.length
       ? `<div class="membership-list joined"><strong>Пришли:</strong> ${group.joined.map(member => escapeHtml(member.nickname)).join(", ")}</div>`
       : "";
@@ -257,7 +312,9 @@ async function loadOrganizations() {
     </tr>
     <tr class="organization-members hidden" data-members-index="${i}">
       <td colspan="5">
+        <div class="organization-contribution-head"><div class="organization-contribution-main"><span>📈 Вклад в ${type === "clan" ? "клан" : "братство"}</span><b>${signedValue(group.stat_delta)}</b></div><small>Изменение суммы статов за выбранный период</small></div>
         <div class="membership-changes">${joined}${left}</div>
+        ${weeklyTop}
         <div class="organization-player-list">${members}</div>
       </td>
     </tr>`;
@@ -265,6 +322,79 @@ async function loadOrganizations() {
   hidePlayerDetail();
 }
 
+
+async function loadLuck(brotherhood) {
+  state.luckBrotherhood = brotherhood;
+  $("luckSubtitle").textContent = `Братство: ${brotherhood}`;
+  $("luckResults").innerHTML = '<p class="life-empty">Рассчитываем распределение…</p>';
+  $("luckSummary").textContent = "";
+  $("luckActions").classList.add("hidden");
+  const data = await fetch(`/api/luck?brotherhood=${encodeURIComponent(brotherhood)}`).then(r => r.json());
+  if (!data.results) throw new Error(data.error || "Не удалось рассчитать удачу");
+  const lines = [];
+  data.results.forEach(item => {
+    lines.push(`🏆 ${item.receiver}`);
+    item.givers.forEach(giver => lines.push(`   ${item.receiver} ← ⚔️ ${giver.nickname}`));
+  });
+  state.luckText = [`⚔ РАСЧЁТ УДАЧИ — ${data.brotherhood}`, `Распределено: ${data.total} из ${data.max_possible}`, "", ...lines].join("\n");
+  $("luckSummary").textContent = `Распределено ${data.total} / ${data.max_possible}`;
+  $("luckActions").classList.remove("hidden");
+  $("luckResults").innerHTML = data.results.length ? data.results.map(item => `
+    <article class="luck-receiver">
+      <div class="luck-receiver-head"><strong>🏆 ${escapeHtml(item.receiver)}</strong><span>${item.received} удач · ур. ${item.level} · сила ${fmt(item.power)}</span></div>
+      <div class="luck-givers">${item.givers.map(giver => `<div class="luck-giver"><b>${escapeHtml(item.receiver)}</b><span>←</span><strong>⚔️ ${escapeHtml(giver.nickname)}</strong></div>`).join("")}</div>
+    </article>`).join("") : '<p class="life-empty">Распределить удачу невозможно.</p>';
+}
+
+async function loadLuckBrotherhoods() {
+  const select = $("luckBrotherhoodSelect");
+  select.innerHTML = '<option value="">Загрузка братств…</option>';
+  const data = await fetch('/api/organizations?type=brotherhood&page=1&per_page=100').then(r => r.json());
+  if (!data.organizations?.length) {
+    select.innerHTML = '<option value="">Братства не найдены</option>';
+    $("luckCalculate").disabled = true;
+    return;
+  }
+  select.innerHTML = '<option value="">Выберите братство…</option>' + data.organizations.map(group => `<option value="${escapeHtml(group.name)}">${escapeHtml(group.name)} (${fmt(group.players)} игроков)</option>`).join("");
+  if (state.luckBrotherhood && data.organizations.some(group => group.name === state.luckBrotherhood)) {
+    select.value = state.luckBrotherhood;
+    $("luckCalculate").disabled = false;
+  }
+}
+
+async function openLuck() {
+  $("luckPanel").classList.remove("hidden");
+  $("luckToggle").classList.add("active");
+  $("luckToggle").setAttribute("aria-expanded", "true");
+  await loadLuckBrotherhoods();
+  $("luckPanel").scrollIntoView({behavior:"smooth", block:"start"});
+}
+
+function closeLuck() {
+  $("luckPanel").classList.add("hidden");
+  $("luckToggle").classList.remove("active");
+  $("luckToggle").setAttribute("aria-expanded", "false");
+}
+
+async function copyLuck() {
+  if (!state.luckText) return;
+  try {
+    await navigator.clipboard.writeText(state.luckText);
+  } catch (_) {
+    const area = document.createElement("textarea");
+    area.value = state.luckText;
+    area.style.position = "fixed";
+    area.style.opacity = "0";
+    document.body.appendChild(area);
+    area.select();
+    document.execCommand("copy");
+    area.remove();
+  }
+  const button = $("luckCopy");
+  const old = button.textContent;
+  button.textContent = "Скопировано";
+  setTimeout(() => button.textContent = old, 1500);
+}
 
 const levelGroupState = { open: new Set(), cache: new Map() };
 
@@ -484,11 +614,9 @@ function openLife(){$("lifePanel").classList.remove("hidden");$("lifeToggle").cl
 function closeLife(){$("lifePanel").classList.add("hidden");$("lifeToggle").classList.remove("active");$("lifeToggle").setAttribute("aria-expanded","false");}
 
 
-const todayTopsState = { loaded: false, loading: false };
+const todayTopsState = { loaded: false };
 async function loadTodayTops(force = false) {
-  if (todayTopsState.loading) return;
   if (todayTopsState.loaded && !force) return;
-  todayTopsState.loading = true;
   $("todayTopsGrid").innerHTML = '<p class="life-empty">Считаем сегодняшние топы…</p>';
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 15000);
@@ -521,7 +649,6 @@ async function loadTodayTops(force = false) {
     todayTopsState.loaded = true;
   } finally {
     clearTimeout(timer);
-    todayTopsState.loading = false;
   }
 }
 function openTodayTops(){
@@ -539,11 +666,9 @@ function closeTodayTops(){
   $("todayTopsToggle").setAttribute("aria-expanded","false");
 }
 
-const yesterdayTopsState = { loaded: false, loading: false };
+const yesterdayTopsState = { loaded: false };
 async function loadYesterdayTops(force = false) {
-  if (yesterdayTopsState.loading) return;
   if (yesterdayTopsState.loaded && !force) return;
-  yesterdayTopsState.loading = true;
   $("yesterdayTopsGrid").innerHTML = '<p class="life-empty">Считаем вчерашние топы…</p>';
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 15000);
@@ -576,7 +701,6 @@ async function loadYesterdayTops(force = false) {
     yesterdayTopsState.loaded = true;
   } finally {
     clearTimeout(timer);
-    yesterdayTopsState.loading = false;
   }
 }
 function openYesterdayTops(){
@@ -683,20 +807,36 @@ $("mobilePlayer").onclick = () => {
 };
 
 
-$("lifeToggle").onclick=()=>{$("lifePanel").classList.contains("hidden")?openLife():closeLife();};
-$("lifeClose").onclick=closeLife;
+if ($("lifeToggle") && $("lifePanel")) {
+  $("lifeToggle").onclick=()=>{$("lifePanel").classList.contains("hidden")?openLife():closeLife();};
+}
+if ($("lifeClose")) $("lifeClose").onclick=closeLife;
 $("todayTopsToggle").onclick=()=>{$("todayTopsPanel").classList.contains("hidden")?openTodayTops():closeTodayTops();};
 $("todayTopsClose").onclick=closeTodayTops;
 $("yesterdayTopsToggle").onclick=()=>{$("yesterdayTopsPanel").classList.contains("hidden")?openYesterdayTops():closeYesterdayTops();};
 $("yesterdayTopsClose").onclick=closeYesterdayTops;
 document.querySelectorAll("[data-life-period]").forEach(b=>{b.onclick=()=>loadLife(b.dataset.lifePeriod).catch(()=>{$("lifeEvents").innerHTML='<p class="life-empty">Не удалось загрузить события.</p>';});});
 
+$("luckClose").onclick = closeLuck;
+$("luckToggle").onclick = () => $("luckPanel").classList.contains("hidden") ? openLuck().catch(() => { $("luckResults").innerHTML = '<p class="life-empty">Не удалось загрузить список братств.</p>'; }) : closeLuck();
+$("luckBrotherhoodSelect").onchange = () => {
+  state.luckBrotherhood = $("luckBrotherhoodSelect").value;
+  $("luckCalculate").disabled = !state.luckBrotherhood;
+  if (state.luckBrotherhood) $("luckSubtitle").textContent = `Братство: ${state.luckBrotherhood}`;
+};
+$("luckCalculate").onclick = () => {
+  if (!state.luckBrotherhood) return;
+  loadLuck(state.luckBrotherhood).catch(error => {
+    $("luckResults").innerHTML = `<p class="life-empty">${escapeHtml(error.message || "Ошибка расчёта")}</p>`;
+  });
+};
+$("luckCopy").onclick = copyLuck;
+
 $("todayBadge").textContent = new Date().toLocaleDateString("ru-RU", {
   day: "2-digit", month: "short"
 }).replace(".", "").toUpperCase();
 syncMobileNav();
+if ($("attackRefresh")) $("attackRefresh").onclick = refreshAttacks;
 loadStatus().catch(() => {});
-loadAttacks().catch(() => {});
 loadPlayers().catch(() => $("rows").innerHTML = '<tr><td colspan="7" class="loading">Не удалось загрузить данные</td></tr>');
 setInterval(() => loadStatus().catch(() => {}), 30000);
-setInterval(() => loadAttacks().catch(() => {}), 60000);
