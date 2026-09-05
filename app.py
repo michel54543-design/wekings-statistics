@@ -1412,6 +1412,7 @@ def api_luck():
         })
 
     requested_total = sum(selected.values())
+    total_capacity = sum(6 if giver.id in potion_users else 3 for giver in players)
     return jsonify(
         brotherhood=brotherhood,
         players=len(players),
