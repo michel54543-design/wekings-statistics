@@ -1280,7 +1280,6 @@ def api_luck_members():
     if len(players) > 35:
         players = sorted(players, key=lambda p: (-int(p.power or 0), p.nickname.lower()))[:35]
         players.sort(key=lambda p: (-int(p.level or 0), -int(p.power or 0), p.nickname.lower()))
-    total_capacity = sum(6 if p.id in potion_users else 3 for p in players)
     return jsonify(
         brotherhood=brotherhood,
         players=[{
@@ -1413,7 +1412,6 @@ def api_luck():
         })
 
     requested_total = sum(selected.values())
-    total_capacity = sum(6 if p.id in potion_users else 3 for p in players)
     return jsonify(
         brotherhood=brotherhood,
         players=len(players),
