@@ -381,8 +381,27 @@ EVENTS_ADMIN_HTML = r"""
 <!doctype html><html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>События · WEKINGS</title>
 <style>
-body{font-family:Arial,sans-serif;max-width:980px;margin:24px auto;padding:0 14px;background:#0b1117;color:#eee}
-a{color:#9cf}input,button{box-sizing:border-box;padding:10px 12px;border-radius:8px;border:1px solid #45515d;background:#121a22;color:#fff}button{font-weight:700;cursor:pointer}.form{display:flex;gap:8px;flex-wrap:wrap;margin:16px 0}.form label{display:flex;flex-direction:column;gap:5px;color:#aaa;font-size:13px}.form input{min-width:180px}.primary{background:#1b6f9e;border-color:#2d94ca}.box{background:#101820;border:1px solid #263541;border-radius:10px;padding:14px;margin:14px 0}.ok{color:#7ee787}.err{color:#ff7b72}.muted{color:#9aa7b2}.stats{display:flex;gap:16px;flex-wrap:wrap}.stat{background:#151f28;border-radius:8px;padding:10px 14px}.event{border-top:1px solid #25323d;padding:10px 0}.event:first-child{border-top:0}.when{color:#78c7ff;font-weight:700}.title{color:#7cc7ff;font-weight:700;margin:2px 0}.text{line-height:1.4}.pager{display:flex;gap:8px;align-items:center;margin-top:12px}
+*{box-sizing:border-box}
+body{font-family:Arial,sans-serif;max-width:980px;margin:16px auto;padding:0 12px;background:#0b1117;color:#eee;font-size:13px}
+a{color:#9cf}input,button{box-sizing:border-box;padding:8px 10px;border-radius:7px;border:1px solid #45515d;background:#121a22;color:#fff}button{font-weight:700;cursor:pointer}.form{display:flex;gap:7px;flex-wrap:wrap;margin:10px 0}.form label{display:flex;flex-direction:column;gap:3px;color:#aaa;font-size:11px}.form input{min-width:150px;height:36px}.primary{background:#1b6f9e;border-color:#2d94ca}.box{background:#101820;border:1px solid #263541;border-radius:9px;padding:10px;margin:10px 0}.ok{color:#7ee787}.err{color:#ff7b72}.muted{color:#9aa7b2}.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}.stat{background:#151f28;border-radius:6px;padding:7px 9px;font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.analysis{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-top:7px}.analysis .stat{border:1px solid #273844}.analysis b{font-size:13px;color:#fff}.events-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:7px}.events-head h3{margin:0;font-size:15px}.print{font-size:11px;padding:6px 9px}.event-list{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:0 12px}.event{border-top:1px solid #25323d;padding:5px 0;min-width:0}.event:nth-child(-n+3){border-top:0}.event-line{display:grid;grid-template-columns:54px 1fr 78px;gap:5px;align-items:center;font-size:11px;white-space:nowrap}.when{color:#78c7ff;font-weight:700}.title{color:#7cc7ff;font-weight:700;overflow:hidden;text-overflow:ellipsis}.text{line-height:1.2;overflow:hidden;text-overflow:ellipsis;color:#ddd}.interval{color:#b9c5ce;text-align:right;font-variant-numeric:tabular-nums}.interval.good{color:#7ee787}.pager{display:flex;gap:8px;align-items:center;margin-top:12px}
+@media(max-width:760px){.stats,.analysis{grid-template-columns:repeat(2,1fr)}.event-list{grid-template-columns:1fr}.event:nth-child(-n+3){border-top:1px solid #25323d}.event:first-child{border-top:0}.event-line{grid-template-columns:52px 1fr 70px}.form label{flex:1}.form input{min-width:0;width:100%}}
+@media print{
+  @page{size:A4 landscape;margin:7mm}
+  html,body{background:#fff!important;color:#111!important;margin:0!important;padding:0!important;max-width:none!important;font-size:9px}
+  body>*{max-width:none!important}
+  a,.form,.print,.muted{display:none!important}
+  .box{background:#fff!important;border:1px solid #aaa!important;border-radius:0!important;box-shadow:none!important;margin:3mm 0!important;padding:3mm!important}
+  .stats,.analysis{grid-template-columns:repeat(4,1fr);gap:3mm}
+  .stat{background:#f5f5f5!important;color:#111!important;border:1px solid #ccc!important;padding:2mm!important;font-size:8px}
+  .stat b,.analysis b{color:#111!important}
+  .events-head h3{font-size:11px}
+  .event-list{grid-template-columns:repeat(3,1fr);gap:0 6mm}
+  .event{padding:1.4mm 0;border-top:1px solid #ddd!important}
+  .event:nth-child(-n+3){border-top:0!important}
+  .event-line{grid-template-columns:12mm 1fr 18mm;gap:1mm;font-size:7.5px}
+  .when,.title,.text,.interval{color:#111!important}
+  h2{font-size:15px;margin:0 0 2mm}
+}
 </style></head><body>
 <h2>📋 Проверка событий «Участок»</h2>
 <p class="muted">Сбор идёт напрямую из раздела <b>Прочее</b>. Загружаются только события «Участок» за последние 3 календарных дня.</p>
@@ -394,9 +413,12 @@ a{color:#9cf}input,button{box-sizing:border-box;padding:10px 12px;border-radius:
 <button class="primary" type="submit">🚀 Собрать события</button>
 </form>
 {% if error %}<p class="err">{{ error }}</p>{% endif %}
-{% if result %}<div class="stats"><div class="stat">Игрок: <b>{{ result.nickname }}</b> (ID {{ result.player_id }})</div><div class="stat">Страниц: <b>{{ result.pages }}</b></div><div class="stat">Найдено «Участок»: <b>{{ result.count }}</b></div><div class="stat">Сохранено новых: <b>{{ result.saved }}</b></div></div>{% endif %}
+{% if result %}<div class="stats"><div class="stat">Игрок: <b>{{ result.nickname }}</b> (ID {{ result.player_id }})</div><div class="stat">Страниц: <b>{{ result.pages }}</b></div><div class="stat">Найдено: <b>{{ result.count }}</b></div><div class="stat">Новых: <b>{{ result.saved }}</b></div></div>{% endif %}
 </div>
-{% if events is not none %}<div class="box"><h3>Последние события</h3>{% if events %}{% for e in events %}<div class="event"><div class="when">{{ e.when }}</div><div class="title">🌱 Участок</div><div class="text">{{ e.text }}</div></div>{% endfor %}{% else %}<p class="muted">За выбранный период событий «Участок» не найдено.</p>{% endif %}</div>{% endif %}
+{% if events is not none %}<div class="box">
+<div class="events-head"><h3>🌱 Участок — интервалы посадки</h3><button class="print" type="button" onclick="window.print()">🖨 Печать A4</button></div>
+{% if analysis %}<div class="analysis"><div class="stat">Средний интервал: <b>{{ analysis.avg }}</b></div><div class="stat">Медианный: <b>{{ analysis.median }}</b></div><div class="stat">Минимум: <b>{{ analysis.min }}</b></div><div class="stat">Максимум: <b>{{ analysis.max }}</b></div></div>{% endif %}
+{% if events %}<div class="event-list">{% for e in events %}<div class="event"><div class="event-line"><span class="when">{{ e.when_short }}</span><span class="text">{{ e.text_short }}</span><span class="interval {% if e.interval_minutes and e.interval_minutes <= 90 %}good{% endif %}">{% if e.interval %}← {{ e.interval }}{% else %}—{% endif %}</span></div></div>{% endfor %}</div>{% else %}<p class="muted">За выбранный период событий «Участок» не найдено.</p>{% endif %}</div>{% endif %}
 </body></html>
 """
 
@@ -404,7 +426,7 @@ a{color:#9cf}input,button{box-sizing:border-box;padding:10px 12px;border-radius:
 def admin_wekings_events():
     denied = _admin_required()
     if denied: return denied
-    return render_template_string(EVENTS_ADMIN_HTML, player_id=request.args.get("player_id", ""), events=None, result=None, error=None)
+    return render_template_string(EVENTS_ADMIN_HTML, player_id=request.args.get("player_id", ""), events=None, analysis=None, result=None, error=None)
 
 @app.post("/admin/wekings-events/collect")
 def admin_wekings_events_collect():
@@ -414,7 +436,7 @@ def admin_wekings_events_collect():
     player_id = request.form.get("player_id", type=int)
     days = max(1, min(7, request.form.get("days", 3, type=int) or 3))
     if not player_id:
-        return render_template_string(EVENTS_ADMIN_HTML, player_id="", events=[], result=None, error="Введите ID игрока")
+        return render_template_string(EVENTS_ADMIN_HTML, player_id="", events=[], analysis=None, result=None, error="Введите ID игрока")
     try:
         result = fetch_garden_events(player_id, days=days)
         now = datetime.now(timezone.utc)
@@ -431,12 +453,45 @@ def admin_wekings_events_collect():
         result["count"] = len(result["events"])
         player_obj = db.session.get(Player, player_id)
         result["nickname"] = player_obj.nickname if player_obj else (result.get("nickname") or "неизвестен")
-        events = [{"when": e.event_at.astimezone(ZoneInfo("Europe/Chisinau")).strftime("%H:%M %d.%m.%y"), "text": e.text} for e in rows]
-        return render_template_string(EVENTS_ADMIN_HTML, player_id=player_id, events=events, result=result, error=None)
+        # Готовим компактный анализ интервалов между последовательными посадками.
+        ordered = list(reversed(rows))
+        intervals = []
+        events = []
+        for idx, e in enumerate(ordered):
+            local_dt = e.event_at.astimezone(ZoneInfo("Europe/Chisinau"))
+            delta = None
+            if idx > 0:
+                delta = int(round((e.event_at - ordered[idx - 1].event_at).total_seconds() / 60))
+                if delta >= 0:
+                    intervals.append(delta)
+            hours, minutes = (divmod(delta, 60) if delta is not None and delta >= 0 else (None, None))
+            interval_text = (f"{hours} ч {minutes:02d} мин" if hours else f"{minutes} мин") if delta is not None and delta >= 0 else None
+            # На листе оставляем только суть: время + культура + интервал.
+            text_short = re.sub(r"\s+", " ", e.text or "").strip()
+            text_short = re.sub(r"^Культура\s*[«\"]?([^»\"]+)[»\"]?.*$", r"\1", text_short, flags=re.I)
+            if len(text_short) > 46:
+                text_short = text_short[:43] + "…"
+            events.append({
+                "when_short": local_dt.strftime("%H:%M %d.%m"),
+                "text_short": text_short,
+                "interval": interval_text,
+                "interval_minutes": delta,
+            })
+        analysis = None
+        if intervals:
+            ordered_int = sorted(intervals)
+            avg = round(sum(intervals) / len(intervals))
+            med = ordered_int[len(ordered_int)//2] if len(ordered_int) % 2 else round((ordered_int[len(ordered_int)//2-1] + ordered_int[len(ordered_int)//2]) / 2)
+            def fmt(m):
+                h, mm = divmod(int(m), 60)
+                return f"{h} ч {mm:02d} мин" if h else f"{mm} мин"
+            analysis = {"avg": fmt(avg), "median": fmt(med), "min": fmt(min(intervals)), "max": fmt(max(intervals))}
+        events.reverse()
+        return render_template_string(EVENTS_ADMIN_HTML, player_id=player_id, events=events, analysis=analysis, result=result, error=None)
     except Exception as exc:
         db.session.rollback()
         app.logger.exception("Garden events collection failed for player %s", player_id)
-        return render_template_string(EVENTS_ADMIN_HTML, player_id=player_id, events=[], result=None, error=str(exc)[:1000])
+        return render_template_string(EVENTS_ADMIN_HTML, player_id=player_id, events=[], analysis=None, result=None, error=str(exc)[:1000])
 
 
 @app.post("/admin/wekings-scan-now")
