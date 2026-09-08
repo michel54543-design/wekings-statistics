@@ -8,7 +8,7 @@
   <link rel="icon" href="/static/favicon.ico?v=41" sizes="any">
   <link rel="icon" href="/static/favicon.svg?v=41" type="image/svg+xml">
   <link rel="apple-touch-icon" href="/static/apple-touch-icon.png?v=41">
-  <link rel="stylesheet" href="/static/style.css?v=96">
+  <link rel="stylesheet" href="/static/style.css?v=97">
 </head>
 <body class="dark">
   <main class="page">
@@ -20,6 +20,7 @@
         <p class="status"><i></i><span id="statusText">Проверяем состояние базы…</span></p>
       </div>
       <time id="todayBadge" class="today-badge"></time>
+      {% if is_admin %}<a href="/admin/wekings-events" style="margin-left:auto;color:#9cf;font-size:13px;white-space:nowrap">📋 События</a>{% endif %}
     </header>
 
     <section id="attackSchedule" class="attack-schedule" aria-label="Ближайшие нападения">
@@ -192,6 +193,6 @@
     <button data-mobile-mode="growth"><span class="nav-icon">↗</span>Прирост</button>
     <button id="mobilePlayer"><span class="nav-icon">♙</span>Игрок</button>
   </nav>
-  <script src="/static/app.js?v=101"></script>
+  <script src="/static/app.js?v=102"></script>
 </body>
 </html>

@@ -564,3 +564,115 @@ def fetch_attack_schedule():
         raise
     finally:
         s.close()
+
+
+# ---------------------------------------------------------------------------
+# События игрока: быстрый сбор только из раздела «Прочее» (type=OTHER).
+# ---------------------------------------------------------------------------
+
+def _parse_event_datetime(value, now_local):
+    """Разбирает дату из интерфейса игры: 03:06 08.09.26 / 03:06 08.09.2026."""
+    raw = re.sub(r"\s+", " ", value or "").strip()
+    m = re.search(r"(\d{1,2}):(\d{2})\s+(\d{1,2})[./-](\d{1,2})[./-](\d{2,4})", raw)
+    if not m:
+        return None
+    hour, minute, day, month, year = map(int, m.groups())
+    if year < 100:
+        year += 2000
+    try:
+        return datetime(year, month, day, hour, minute, tzinfo=ZoneInfo("Europe/Chisinau")).astimezone(timezone.utc)
+    except ValueError:
+        return None
+
+
+def _event_container(node):
+    """Поднимаемся от заголовка «Участок» к небольшому блоку одного события."""
+    cur = node
+    for _ in range(7):
+        cur = cur.parent
+        if not cur:
+            break
+        text = re.sub(r"\s+", " ", cur.get_text(" ", strip=True)).strip()
+        if len(text) > 40 and len(text) < 900 and re.search(r"\d{1,2}:\d{2}\s+\d{1,2}[./-]\d{1,2}[./-]\d{2,4}", text):
+            return cur
+    return node.parent or node
+
+
+def _extract_garden_events(html, page, cutoff, now_local):
+    soup = BeautifulSoup(html, "html.parser")
+    events = []
+    seen = set()
+    for node in soup.find_all(string=lambda x: x and x.strip().casefold() == "участок"):
+        container = _event_container(node)
+        text = re.sub(r"\s+", " ", container.get_text(" ", strip=True)).strip()
+        # Берём дату рядом с этим блоком, а не дату другого события на странице.
+        date_match = re.search(r"\d{1,2}:\d{2}\s+\d{1,2}[./-]\d{1,2}[./-]\d{2,4}", text)
+        event_at = _parse_event_datetime(date_match.group(0), now_local) if date_match else None
+        if event_at is None or event_at < cutoff:
+            continue
+        # Убираем заголовок и дату из текста, сохраняя само описание события.
+        body = re.sub(r"^.*?Участок\s*", "", text, count=1, flags=re.I)
+        body = re.sub(r"\d{1,2}:\d{2}\s+\d{1,2}[./-]\d{1,2}[./-]\d{2,4}", "", body, count=1).strip(" -|·")
+        if not body:
+            body = text
+        key = (event_at.isoformat(), body)
+        if key in seen:
+            continue
+        seen.add(key)
+        events.append({"event_at": event_at, "text": body[:2000], "page": page})
+    return events
+
+
+def fetch_garden_events(player_id, days=3):
+    """Собирает только «Участок» из /events/user/<id>?type=OTHER&page=N.
+
+    Идём по страницам от самых новых к старым и останавливаемся сразу,
+    когда страница полностью старше выбранного периода. Поэтому раздел
+    «Прочее» используется напрямую и остальные категории событий не качаются.
+    """
+    days = max(1, min(7, int(days or 3)))
+    s = _session(saved=True)
+    tz = ZoneInfo("Europe/Chisinau")
+    now_local = datetime.now(tz)
+    cutoff_local = datetime(now_local.year, now_local.month, now_local.day, tzinfo=tz) - timedelta(days=days - 1)
+    cutoff = cutoff_local.astimezone(timezone.utc)
+    base_events_url = urljoin(BASE_URL + "/", f"events/user/{int(player_id)}")
+    all_events = []
+    max_pages = int(os.getenv("EVENTS_MAX_PAGES", "120"))
+    nickname = None
+    try:
+        for page in range(1, max_pages + 1):
+            url = f"{base_events_url}?type=OTHER&page={page}"
+            r = s.get(url, timeout=TIMEOUT, allow_redirects=True)
+            if r.status_code in {401, 403} or "/login" in r.url or "/start" in r.url:
+                raise PermissionError("Сессия WEKINGS истекла. Обновите её через /wekings-login")
+            r.raise_for_status()
+            soup = BeautifulSoup(r.text, "html.parser")
+            if nickname is None:
+                title = soup.find("title")
+                if title:
+                    nickname = title.get_text(" ", strip=True).split("|")[0].strip() or None
+            page_events = _extract_garden_events(r.text, page, cutoff, now_local)
+            all_events.extend(page_events)
+
+            # Если на странице есть даты событий, смотрим самую старую.
+            page_text = re.sub(r"\s+", " ", soup.get_text(" ", strip=True))
+            dates = []
+            for dm in re.findall(r"\d{1,2}:\d{2}\s+\d{1,2}[./-]\d{1,2}[./-]\d{2,4}", page_text):
+                dt = _parse_event_datetime(dm, now_local)
+                if dt:
+                    dates.append(dt)
+            if dates and min(dates) < cutoff:
+                break
+            # Пустая страница означает конец пагинации.
+            if page > 1 and not dates and not page_events:
+                break
+        # Уникальность + newest first.
+        unique = {}
+        for item in all_events:
+            unique[(item["event_at"].isoformat(), item["text"])] = item
+        all_events = sorted(unique.values(), key=lambda x: x["event_at"], reverse=True)
+        _save(s)
+        return {"player_id": int(player_id), "nickname": nickname, "events": all_events, "pages": page, "cutoff": cutoff}
+    finally:
+        s.close()

@@ -157,6 +157,17 @@ class LowLevelPlayer(db.Model):
     checked_at = db.Column(db.DateTime(timezone=True), nullable=False, index=True)
 
 
+class GardenEvent(db.Model):
+    """События «Участок», собранные из раздела «Прочее»."""
+    id = db.Column(db.BigInteger, primary_key=True, autoincrement=True)
+    player_id = db.Column(db.Integer, nullable=False, index=True)
+    event_at = db.Column(db.DateTime(timezone=True), nullable=False, index=True)
+    title = db.Column(db.String(80), nullable=False, default="Участок")
+    text = db.Column(db.Text, nullable=False)
+    source_page = db.Column(db.Integer, nullable=False, default=1)
+    collected_at = db.Column(db.DateTime(timezone=True), nullable=False)
+
+
 class PlayerSnapshot(db.Model):
     __table_args__ = (
         db.UniqueConstraint("player_id", "batch_at", name="uq_player_snapshot_batch"),
@@ -364,6 +375,68 @@ def admin_wekings_login():
         except Exception as exc:
             error = str(exc)
     return render_template_string(WEKINGS_LOGIN_HTML, ok=ok, error=error, saved=saved, captcha=captcha)
+
+
+EVENTS_ADMIN_HTML = r"""
+<!doctype html><html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>События · WEKINGS</title>
+<style>
+body{font-family:Arial,sans-serif;max-width:980px;margin:24px auto;padding:0 14px;background:#0b1117;color:#eee}
+a{color:#9cf}input,button{box-sizing:border-box;padding:10px 12px;border-radius:8px;border:1px solid #45515d;background:#121a22;color:#fff}button{font-weight:700;cursor:pointer}.form{display:flex;gap:8px;flex-wrap:wrap;margin:16px 0}.form label{display:flex;flex-direction:column;gap:5px;color:#aaa;font-size:13px}.form input{min-width:180px}.primary{background:#1b6f9e;border-color:#2d94ca}.box{background:#101820;border:1px solid #263541;border-radius:10px;padding:14px;margin:14px 0}.ok{color:#7ee787}.err{color:#ff7b72}.muted{color:#9aa7b2}.stats{display:flex;gap:16px;flex-wrap:wrap}.stat{background:#151f28;border-radius:8px;padding:10px 14px}.event{border-top:1px solid #25323d;padding:10px 0}.event:first-child{border-top:0}.when{color:#78c7ff;font-weight:700}.title{color:#7cc7ff;font-weight:700;margin:2px 0}.text{line-height:1.4}.pager{display:flex;gap:8px;align-items:center;margin-top:12px}
+</style></head><body>
+<h2>📋 Проверка событий «Участок»</h2>
+<p class="muted">Сбор идёт напрямую из раздела <b>Прочее</b>. Загружаются только события «Участок» за последние 3 календарных дня.</p>
+<p><a href="/">← На сайт статистики</a> &nbsp; <a href="/admin/wekings-login">Авторизация WEKINGS</a></p>
+<div class="box">
+<form method="post" action="/admin/wekings-events/collect" class="form">
+<label>ID игрока<input name="player_id" type="number" min="1" required value="{{ player_id or '' }}"></label>
+<label>Дней<input name="days" type="number" min="1" max="7" value="3"></label>
+<button class="primary" type="submit">🚀 Собрать события</button>
+</form>
+{% if error %}<p class="err">{{ error }}</p>{% endif %}
+{% if result %}<div class="stats"><div class="stat">Игрок: <b>{{ result.nickname }}</b> (ID {{ result.player_id }})</div><div class="stat">Страниц: <b>{{ result.pages }}</b></div><div class="stat">Найдено «Участок»: <b>{{ result.count }}</b></div><div class="stat">Сохранено новых: <b>{{ result.saved }}</b></div></div>{% endif %}
+</div>
+{% if events is not none %}<div class="box"><h3>Последние события</h3>{% if events %}{% for e in events %}<div class="event"><div class="when">{{ e.when }}</div><div class="title">🌱 Участок</div><div class="text">{{ e.text }}</div></div>{% endfor %}{% else %}<p class="muted">За выбранный период событий «Участок» не найдено.</p>{% endif %}</div>{% endif %}
+</body></html>
+"""
+
+@app.get("/admin/wekings-events")
+def admin_wekings_events():
+    denied = _admin_required()
+    if denied: return denied
+    return render_template_string(EVENTS_ADMIN_HTML, player_id=request.args.get("player_id", ""), events=None, result=None, error=None)
+
+@app.post("/admin/wekings-events/collect")
+def admin_wekings_events_collect():
+    denied = _admin_required()
+    if denied: return denied
+    from scraper import fetch_garden_events
+    player_id = request.form.get("player_id", type=int)
+    days = max(1, min(7, request.form.get("days", 3, type=int) or 3))
+    if not player_id:
+        return render_template_string(EVENTS_ADMIN_HTML, player_id="", events=[], result=None, error="Введите ID игрока")
+    try:
+        result = fetch_garden_events(player_id, days=days)
+        now = datetime.now(timezone.utc)
+        saved = 0
+        for item in result["events"]:
+            exists = GardenEvent.query.filter_by(player_id=player_id, event_at=item["event_at"], text=item["text"]).first()
+            if exists:
+                continue
+            db.session.add(GardenEvent(player_id=player_id, event_at=item["event_at"], title="Участок", text=item["text"], source_page=item["page"], collected_at=now))
+            saved += 1
+        db.session.commit()
+        rows = GardenEvent.query.filter(GardenEvent.player_id == player_id, GardenEvent.event_at >= result["cutoff"]).order_by(GardenEvent.event_at.desc()).all()
+        result["saved"] = saved
+        result["count"] = len(result["events"])
+        player_obj = db.session.get(Player, player_id)
+        result["nickname"] = player_obj.nickname if player_obj else (result.get("nickname") or "неизвестен")
+        events = [{"when": e.event_at.astimezone(ZoneInfo("Europe/Chisinau")).strftime("%H:%M %d.%m.%y"), "text": e.text} for e in rows]
+        return render_template_string(EVENTS_ADMIN_HTML, player_id=player_id, events=events, result=result, error=None)
+    except Exception as exc:
+        db.session.rollback()
+        app.logger.exception("Garden events collection failed for player %s", player_id)
+        return render_template_string(EVENTS_ADMIN_HTML, player_id=player_id, events=[], result=None, error=str(exc)[:1000])
 
 
 @app.post("/admin/wekings-scan-now")
@@ -1941,6 +2014,9 @@ def start_optional_db_maintenance():
         time.sleep(20)
         with app.app_context():
             try:
+                # Новая таблица событий создаётся отдельно от основного старта Gunicorn.
+                # Это не задерживает открытие сайта и безопасно для существующей БД.
+                db.create_all()
                 for field in ("power", "glory", "defense", "agility", "mastery", "vitality", "stat_sum"):
                     db.session.execute(db.text(
                         f"CREATE INDEX IF NOT EXISTS ix_snapshot_batch_{field} "
@@ -1958,6 +2034,20 @@ def start_optional_db_maintenance():
 
     threading.Thread(target=_worker, daemon=True, name="db-maintenance").start()
 
+
+
+def start_event_db_init():
+    """Создаёт только отсутствующие таблицы, не задерживая запуск сайта."""
+    def _worker():
+        time.sleep(20)
+        with app.app_context():
+            try:
+                db.create_all()
+                app.logger.info("GardenEvent table checked")
+            except Exception:
+                db.session.rollback()
+                app.logger.exception("GardenEvent table initialization failed")
+    threading.Thread(target=_worker, daemon=True, name="garden-events-db-init").start()
 
 
 _attack_lock = threading.Lock()
@@ -2081,6 +2171,7 @@ def start_scan_on_boot_if_needed():
         start_scan_thread()
 
 
+start_event_db_init()
 start_optional_db_maintenance()
 
 if os.getenv("SCAN_ENABLED", "true").lower() == "true":
