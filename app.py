@@ -169,6 +169,20 @@ class GardenEvent(db.Model):
     collected_at = db.Column(db.DateTime(timezone=True), nullable=False)
 
 
+class DailyTopCache(db.Model):
+    """Готовые дневные результаты топов. Считаются один раз и хранятся в БД."""
+    __table_args__ = (
+        db.UniqueConstraint("report_date", "kind", name="uq_daily_top_cache_date_kind"),
+        db.Index("ix_daily_top_cache_kind_date", "kind", "report_date"),
+    )
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    report_date = db.Column(db.Date, nullable=False)
+    kind = db.Column(db.String(20), nullable=False)  # today / yesterday
+    payload = db.Column(db.Text, nullable=False)
+    created_at = db.Column(db.DateTime(timezone=True), nullable=False)
+    updated_at = db.Column(db.DateTime(timezone=True), nullable=False)
+
+
 class PlayerSnapshot(db.Model):
     __table_args__ = (
         db.UniqueConstraint("player_id", "batch_at", name="uq_player_snapshot_batch"),
@@ -380,79 +394,82 @@ def admin_wekings_login():
 
 EVENTS_ADMIN_HTML = r"""
 <!doctype html><html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Проверка событий · WEKINGS</title>
+<title>Wekings — События участка</title>
+<link rel="icon" href="/static/favicon.ico?v=41" sizes="any">
+<link rel="icon" href="/static/favicon.svg?v=41" type="image/svg+xml">
+<link rel="stylesheet" href="/static/style.css?v=97">
 <style>
-*{box-sizing:border-box}
-body{font-family:Arial,sans-serif;max-width:1500px;margin:0 auto;padding:18px 24px 40px;background:#081018;color:#eef3f7;font-size:14px}
-a{color:#8fd3ff;text-decoration:underline}
-h2{margin:0 0 8px;font-size:23px;line-height:1.15}
-.muted{color:#9aaabd}.top-note{margin:0 0 12px;font-size:13px}
-.box{background:#0d1720;border:1px solid #203443;border-radius:10px;padding:10px;margin:10px 0;box-shadow:0 4px 18px #00000018}
-.form{display:grid;grid-template-columns:220px 170px 220px 1fr auto;gap:10px;align-items:end;margin:0}
-.form label{display:flex;flex-direction:column;gap:5px;color:#aab8c5;font-size:12px}
-.form input{width:100%;height:39px;padding:8px 11px;border-radius:8px;border:1px solid #3a4d5d;background:#101b24;color:#fff;font-size:14px}
-button{font:inherit;font-weight:700;cursor:pointer;border-radius:8px;border:1px solid #405568;background:#111c25;color:#fff}
-.primary{height:39px;padding:0 16px;background:#1979ad;border-color:#2697d0}
-.print{height:35px;padding:0 12px;font-size:12px;white-space:nowrap}
-.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:9px}
-.stat{background:#111d27;border-radius:7px;padding:8px 11px;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border:1px solid #152b39}
-.stat b{font-size:14px;color:#fff}
-.events-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:7px}
-.events-head h3{margin:0;font-size:17px}
-.summary{grid-template-columns:repeat(5,1fr);margin:0 0 10px}
-.summary .stat{padding:9px 11px;min-width:0}
-.summary .stat span{display:block;color:#9eafbd;font-size:12px;margin-bottom:4px}
-.summary .stat b{font-size:16px}
-.event-title{margin-top:2px}
-.event-list{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));grid-template-rows:repeat(30,auto);grid-auto-flow:column;column-gap:18px;min-width:0}
-.event{border-top:1px solid #21323f;padding:5px 0;min-width:0}
-.event:nth-child(-n+3){border-top:0}
-.event-line{display:grid;grid-template-columns:30px 105px minmax(0,1fr);gap:7px;align-items:center;font-size:12px;line-height:1.15;white-space:nowrap}
-.num{color:#a8b5c0;text-align:center}.when{color:#70c8ff;font-weight:700}.text{overflow:hidden;text-overflow:ellipsis;color:#e3e8ec}.culture{font-weight:700}
-.culture.luk{color:#65ef82}.culture.morkov{color:#ff7139}.culture.kukuruza{color:#ffd32d}
-.empty{padding:12px 0}
-@media(max-width:900px){body{padding:14px 12px}.form{grid-template-columns:1fr 1fr}.form .primary{grid-column:1/-1}.summary{grid-template-columns:repeat(2,1fr)}.event-list{grid-template-columns:1fr;grid-template-rows:none;grid-auto-flow:row}.event:nth-child(-n+3){border-top:1px solid #21323f}.event:first-child{border-top:0}}
-@media(max-width:600px){.stats,.summary{grid-template-columns:1fr}.form{grid-template-columns:1fr}.form .primary{grid-column:auto}.event-line{grid-template-columns:25px 90px minmax(0,1fr);font-size:11px}}
+.admin-events-page{max-width:1280px;margin:0 auto;padding:28px 22px 50px}
+.admin-events-page .site-header{margin-bottom:18px}
+.admin-events-title{display:flex;align-items:center;justify-content:space-between;gap:16px;margin:8px 0 14px}
+.admin-events-title h2{font-family:Georgia,'Times New Roman',serif;font-size:28px;margin:0;color:#f5ead0}
+.admin-events-title .gold-mark{font-size:28px}
+.admin-events-note{color:#9e9a91;font-size:13px;margin:0 0 14px}
+.admin-events-links{margin-bottom:14px}.admin-events-links a{color:#d9b95b}
+.admin-box{background:#10100f;border:1px solid #5c461c;border-radius:14px;padding:14px 16px;margin:12px 0;box-shadow:0 8px 25px rgba(0,0,0,.25)}
+.admin-form{display:grid;grid-template-columns:220px 170px 230px 1fr auto;gap:12px;align-items:end}
+.admin-form label{display:flex;flex-direction:column;gap:6px;color:#aaa39a;font-size:12px}
+.admin-form input{height:42px;padding:9px 12px;border-radius:8px;border:1px solid #57451f;background:#171614;color:#f5f1e8;font-size:14px}
+.admin-primary,.admin-print{height:42px;border-radius:8px;border:1px solid #9a7725;color:#16120a;font-weight:800;cursor:pointer}
+.admin-primary{background:linear-gradient(#e7c765,#b98b2c);padding:0 18px}
+.admin-print{background:#171614;color:#e5c45d;padding:0 14px}
+.admin-stats{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:12px}
+.admin-stat{background:#171614;border:1px solid #2d281d;border-radius:8px;padding:9px 11px;color:#b7b0a5;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.admin-stat b{color:#f3e8cc;font-size:14px}
+.admin-section-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px}
+.admin-section-head h3{margin:0;color:#f2e6ca;font-size:19px;font-family:Georgia,'Times New Roman',serif}
+.admin-summary{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-bottom:13px}
+.admin-summary .admin-stat span{display:block;color:#8f887d;font-size:11px;margin-bottom:4px}.admin-summary .admin-stat b{font-size:15px}
+.event-list{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));grid-template-rows:repeat(30,auto);grid-auto-flow:column;column-gap:22px;min-width:0}
+.event{border-top:1px solid #2b281f;padding:6px 0;min-width:0}.event:nth-child(-n+3){border-top:0}
+.event-line{display:grid;grid-template-columns:28px 105px minmax(0,1fr);gap:7px;align-items:center;font-size:12px;line-height:1.15;white-space:nowrap}
+.num{color:#857f75;text-align:center}.when{color:#d5b34e;font-weight:700}.text{overflow:hidden;text-overflow:ellipsis;color:#e2ddd3}.culture{font-weight:700}.culture.luk{color:#72d66f}.culture.morkov{color:#e77a43}.culture.kukuruza{color:#e3c34f}
+.err{color:#ef786d}.empty{padding:12px 0;color:#918b81}
+@media(max-width:900px){.admin-form{grid-template-columns:1fr 1fr}.admin-form .admin-primary{grid-column:1/-1}.admin-stats,.admin-summary{grid-template-columns:repeat(2,1fr)}.event-list{grid-template-columns:1fr;grid-template-rows:none;grid-auto-flow:row}.event:nth-child(-n+3){border-top:1px solid #2b281f}.event:first-child{border-top:0}}
+@media(max-width:600px){.admin-events-page{padding:18px 12px}.admin-form{grid-template-columns:1fr}.admin-form .admin-primary{grid-column:auto}.admin-stats,.admin-summary{grid-template-columns:1fr}.event-line{grid-template-columns:25px 90px minmax(0,1fr);font-size:11px}}
 @media print{
  @page{size:A4 landscape;margin:6mm}
- html,body{background:#fff!important;color:#111!important;margin:0!important;padding:0!important;max-width:none!important;font-size:8px}
- a,.top-note,.form,.print{display:none!important}
- .box{background:#fff!important;border:1px solid #aaa!important;border-radius:0!important;box-shadow:none!important;margin:2mm 0!important;padding:2.5mm!important}
- h2{font-size:14px;margin:0 0 2mm}.events-head h3{font-size:10px}
- .stats,.summary{gap:2mm}.stat{background:#f5f5f5!important;color:#111!important;border:1px solid #ccc!important;padding:1.7mm!important;font-size:7px}.stat b,.summary .stat b{color:#111!important;font-size:9px}.summary .stat span{color:#555!important;font-size:7px;margin-bottom:1mm}
- .event-list{grid-template-columns:repeat(3,1fr);grid-template-rows:repeat(30,auto);grid-auto-flow:column;column-gap:5mm}
- .event{padding:1.1mm 0;border-top:1px solid #ddd!important}.event:nth-child(-n+3){border-top:0!important}
- .event-line{grid-template-columns:6mm 22mm minmax(0,1fr);gap:1mm;font-size:6.8px}.when,.num,.text,.culture{color:#111!important}
+ body{background:#fff!important;color:#111!important}.admin-events-page{max-width:none;padding:0}.site-header,.admin-events-title,.admin-events-note,.admin-events-links,.admin-form,.admin-print{display:none!important}
+ .admin-box{background:#fff!important;border:1px solid #aaa!important;border-radius:0!important;box-shadow:none!important;margin:2mm 0!important;padding:2.5mm!important}
+ .admin-stats,.admin-summary{gap:2mm}.admin-stat{background:#f5f5f5!important;color:#111!important;border:1px solid #ccc!important;padding:1.7mm!important;font-size:7px}.admin-stat b,.admin-summary .admin-stat b{color:#111!important;font-size:9px}.admin-summary .admin-stat span{color:#555!important;font-size:7px;margin-bottom:1mm}
+ .admin-section-head h3{font-size:10px;color:#111!important}.event-list{grid-template-columns:repeat(3,1fr);grid-template-rows:repeat(30,auto);grid-auto-flow:column;column-gap:5mm}.event{padding:1.1mm 0;border-top:1px solid #ddd!important}.event:nth-child(-n+3){border-top:0!important}.event-line{grid-template-columns:6mm 22mm minmax(0,1fr);gap:1mm;font-size:6.8px}.when,.num,.text,.culture{color:#111!important}
 }
-</style></head><body>
-<h2>📋 Проверка событий «Участок»</h2>
-<p class="muted top-note">Сбор идёт напрямую из раздела <b>Прочее</b>. Загружаются только события «Участок» за последние 3 календарных дня.</p>
-<p><a href="/">← На сайт статистики</a> &nbsp; <a href="/admin/wekings-login">Авторизация WEKINGS</a></p>
-<div class="box">
-<form method="post" action="/admin/wekings-events/collect" class="form">
+</style></head><body class="dark">
+<main class="page admin-events-page">
+<header class="site-header">
+  <img class="site-mark" src="/static/wekings-gold.svg" alt="">
+  <div class="site-heading"><p class="brand">WEKINGS</p><h1>Wekings Статистика</h1><p class="status"><i></i><span>Проверка событий игрока</span></p></div>
+  <a href="/" class="today-badge">На сайт</a>
+</header>
+<div class="admin-events-title"><h2>📋 Проверка событий «Участок»</h2><span class="gold-mark">🌱</span></div>
+<p class="admin-events-note">Сбор идёт напрямую из раздела <b>Прочее</b>. Загружаются только события «Участок» за последние выбранные дни.</p>
+<p class="admin-events-links"><a href="/">← На сайт статистики</a> &nbsp; <a href="/admin/wekings-login">Авторизация WEKINGS</a></p>
+<div class="admin-box">
+<form method="post" action="/admin/wekings-events/collect" class="admin-form">
 <label>ID игрока<input name="player_id" type="number" min="1" required value="{{ player_id or '' }}"></label>
 <label>Дней<input name="days" type="number" min="1" max="7" value="{{ days or 3 }}"></label>
-<button class="primary" type="submit">🚀 Собрать события</button>
-<div></div><button class="print" type="button" onclick="window.print()">🖨 Печать A4</button>
+<button class="admin-primary" type="submit">🚀 Собрать события</button><div></div>
+<button class="admin-print" type="button" onclick="window.print()">🖨 Печать A4</button>
 </form>
 {% if error %}<p class="err">{{ error }}</p>{% endif %}
-{% if result %}<div class="stats"><div class="stat">Игрок: <b>{{ result.nickname }}</b> (ID {{ result.player_id }})</div><div class="stat">Страниц: <b>{{ result.pages }}</b></div><div class="stat">Найдено: <b>{{ result.count }}</b></div><div class="stat">Новых: <b>{{ result.saved }}</b></div></div>{% endif %}
+{% if result %}<div class="admin-stats"><div class="admin-stat">Игрок: <b>{{ result.nickname }}</b> (ID {{ result.player_id }})</div><div class="admin-stat">Страниц: <b>{{ result.pages }}</b></div><div class="admin-stat">Найдено: <b>{{ result.count }}</b></div><div class="admin-stat">Новых: <b>{{ result.saved }}</b></div></div>{% endif %}
 </div>
-{% if events is not none %}<div class="box">
-<div class="events-head"><h3>🌱 Участок — сводная информация</h3></div>
+{% if events is not none %}<div class="admin-box">
+<div class="admin-section-head"><h3>🌱 Участок — сводная информация</h3></div>
 {% if events %}
-<div class="stats summary">
-<div class="stat"><span>Всего посадок</span><b>{{ events|length }}</b></div>
-<div class="stat"><span>Период</span><b>{{ days }} дня</b></div>
-<div class="stat"><span>Первое событие</span><b>{{ events[0].when_short }}</b></div>
-<div class="stat"><span>Последнее событие</span><b>{{ events[-1].when_short }}</b></div>
-<div class="stat"><span>Уникальных культур</span><b>{{ cultures_count }}</b></div>
+<div class="admin-summary">
+<div class="admin-stat"><span>Всего посадок</span><b>{{ events|length }}</b></div>
+<div class="admin-stat"><span>Период</span><b>{{ days }} дня</b></div>
+<div class="admin-stat"><span>Первое событие</span><b>{{ events[0].when_short }}</b></div>
+<div class="admin-stat"><span>Последнее событие</span><b>{{ events[-1].when_short }}</b></div>
+<div class="admin-stat"><span>Уникальных культур</span><b>{{ cultures_count }}</b></div>
 </div>
-<div class="events-head event-title"><h3>🌱 Список событий (от новых к старым)</h3></div>
+<div class="admin-section-head"><h3>🌱 Список событий (от новых к старым)</h3></div>
 <div class="event-list">{% for e in events %}<div class="event"><div class="event-line"><span class="num">{{ loop.index }}</span><span class="when">{{ e.when_short }}</span><span class="text culture {% if 'Морковь' in e.text_short %}morkov{% elif 'Кукуруза' in e.text_short %}kukuruza{% elif 'Лук' in e.text_short %}luk{% endif %}">{{ e.text_short }}</span></div></div>{% endfor %}</div>
-{% else %}<p class="muted empty">За выбранный период событий «Участок» не найдено.</p>{% endif %}</div>{% endif %}
-</body></html>
+{% else %}<p class="empty">За выбранный период событий «Участок» не найдено.</p>{% endif %}</div>{% endif %}
+</main></body></html>
 """
+
 
 
 @app.get("/admin/wekings-events")
@@ -992,6 +1009,77 @@ def _life_snapshot_dates():
         query = query.filter(PlayerSnapshot.batch_at <= state.finished_at)
     return [row.batch_at for row in query.order_by(PlayerSnapshot.batch_at.desc()).limit(300).all()]
 
+
+def _ensure_daily_top_cache_table():
+    # Создаём только одну маленькую таблицу лениво из фонового сканирования.
+    # Это не замедляет запуск Gunicorn.
+    DailyTopCache.__table__.create(db.engine, checkfirst=True)
+
+
+def _daily_top_load(kind, report_date):
+    try:
+        row = DailyTopCache.query.filter_by(kind=kind, report_date=report_date).first()
+        if not row:
+            return None
+        return json.loads(row.payload)
+    except Exception:
+        db.session.rollback()
+        return None
+
+
+def _daily_top_save(kind, report_date, payload):
+    _ensure_daily_top_cache_table()
+    now = datetime.now(timezone.utc)
+    row = DailyTopCache.query.filter_by(kind=kind, report_date=report_date).first()
+    encoded = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
+    if row is None:
+        row = DailyTopCache(
+            report_date=report_date, kind=kind, payload=encoded,
+            created_at=now, updated_at=now,
+        )
+        db.session.add(row)
+    else:
+        row.payload = encoded
+        row.updated_at = now
+    db.session.commit()
+    return payload
+
+
+def _calculate_daily_top_payload(report_date, kind):
+    dates = _life_snapshot_dates()
+    day_dates = sorted(dt for dt in dates if moldova_date(dt) == report_date)
+    if len(day_dates) < 2:
+        return {"ready": False, "tops": [], "date": report_date.isoformat()}
+    before_at, current_at = day_dates[0], day_dates[-1]
+    tops, hero = _build_delta_tops(before_at, current_at)
+    return {
+        "ready": True, "date": report_date.isoformat(),
+        "from_date": before_at.isoformat(), "to_date": current_at.isoformat(),
+        "tops": tops, "hero": hero,
+    }
+
+
+def _warm_daily_top_cache_after_scan():
+    """Считает топы после снимка и сохраняет результат в БД.
+    После этого пользовательские клики не выполняют тяжёлый SQL/расчёт.
+    Вчерашний результат после закрытия дня больше не пересчитываем.
+    """
+    _ensure_daily_top_cache_table()
+    today = moldova_date(datetime.now(timezone.utc))
+    yesterday = today - timedelta(days=1)
+
+    # Сегодня может измениться после каждого нового снимка — обновляем готовый результат.
+    today_payload = _calculate_daily_top_payload(today, "today")
+    _daily_top_save("today", today, today_payload)
+
+    # Вчерашний день закрыт: если результат уже записан, больше его не считаем.
+    existing = _daily_top_load("yesterday", yesterday)
+    if existing is None:
+        yesterday_payload = _calculate_daily_top_payload(yesterday, "yesterday")
+        if yesterday_payload.get("ready"):
+            _daily_top_save("yesterday", yesterday, yesterday_payload)
+
+
 @app.get("/api/life")
 def api_life():
     period = request.args.get("period", "now")
@@ -1175,77 +1263,36 @@ def _build_delta_tops(before_at, current_at):
 
 @app.get("/api/today-tops")
 def api_today_tops():
-    cache_key = "today:tops"
-    cached = _life_cache_get(cache_key)
-    if cached is not None:
-        return jsonify(cached)
-
-    dates = _life_snapshot_dates()
     today = moldova_date(datetime.now(timezone.utc))
-    today_dates = sorted([dt for dt in dates if moldova_date(dt) == today])
-    if len(today_dates) < 2:
-        payload = {"ready": False, "tops": [], "date": today.isoformat()}
-        _life_cache_put(cache_key, payload)
-        return jsonify(payload)
+    # Сначала читаем постоянный результат из БД — без пересчёта игроков.
+    cached_db = _daily_top_load("today", today)
+    if cached_db is not None:
+        return jsonify(cached_db)
 
-    # Список отсортирован по времени по возрастанию: первый снимок дня
-    # является началом периода, последний — текущим состоянием.
-    before_at = today_dates[0]
-    current_at = today_dates[-1]
-    tops, hero = _build_delta_tops(before_at, current_at)
-    payload = dict(
-        ready=True,
-        date=today.isoformat(),
-        from_date=before_at.isoformat(),
-        to_date=current_at.isoformat(),
-        tops=tops,
-        hero=hero,
-    )
-    _life_cache_put(cache_key, payload)
+    # Только если это новый день/новая БД и готового результата ещё нет.
+    payload = _calculate_daily_top_payload(today, "today")
+    try:
+        _daily_top_save("today", today, payload)
+    except Exception:
+        db.session.rollback()
     return jsonify(payload)
 
 
 @app.get("/api/yesterday-tops")
 def api_yesterday_tops():
-    cache_key = "yesterday:tops"
-    cached = _life_cache_get(cache_key)
-    if cached is not None:
-        return jsonify(cached)
+    yesterday = moldova_date(datetime.now(timezone.utc)) - timedelta(days=1)
+    # Вчерашние топы постоянные: один раз рассчитали и дальше только SELECT из БД.
+    cached_db = _daily_top_load("yesterday", yesterday)
+    if cached_db is not None:
+        return jsonify(cached_db)
 
-    dates = _life_snapshot_dates()
-    if len(dates) < 2:
-        payload = {"ready": False, "tops": []}
-        _life_cache_put(cache_key, payload)
-        return jsonify(payload)
-
-    # Для «Топы вчера» сравниваем начало и конец именно вчерашнего дня.
-    # Нельзя сравнивать вчера с сегодняшним снимком: это смешивает два периода.
-    yesterday_day = moldova_date(datetime.now(timezone.utc)) - timedelta(days=1)
-    yesterday_dates = sorted(
-        dt for dt in dates if moldova_date(dt) == yesterday_day
-    )
-    if len(yesterday_dates) < 2:
-        payload = {
-            "ready": False,
-            "tops": [],
-            "date": yesterday_day.isoformat(),
-        }
-        _life_cache_put(cache_key, payload)
-        return jsonify(payload)
-
-    before_at = yesterday_dates[0]
-    current_at = yesterday_dates[-1]
-    tops, hero = _build_delta_tops(before_at, current_at)
-    payload = {
-        "ready": True,
-        "date": yesterday_day.isoformat(),
-        "from_date": before_at.isoformat(),
-        "to_date": current_at.isoformat(),
-        "tops": tops,
-        "hero": hero,
-    }
-    _life_cache_put(cache_key, payload)
+    payload = _calculate_daily_top_payload(yesterday, "yesterday")
+    try:
+        _daily_top_save("yesterday", yesterday, payload)
+    except Exception:
+        db.session.rollback()
     return jsonify(payload)
+
 
 @app.get("/api/life-summary")
 def api_life_summary():
@@ -2034,14 +2081,10 @@ def run_scan():
                         api_life()
                 with app.test_request_context("/api/life-summary"):
                     api_life_summary()
-                # Сразу прогреваем оба блока топов. Тогда нажатие кнопок
-                # «Топы сегодня/вчера» не запускает тяжёлый пересчёт для
-                # первого посетителя после каждого снимка.
-                with app.test_request_context("/api/today-tops"):
-                    api_today_tops()
-                with app.test_request_context("/api/yesterday-tops"):
-                    api_yesterday_tops()
-                app.logger.info("Life WEKINGS + today/yesterday tops cache warmed")
+                # Топы считаются в фоне после готового снимка и сохраняются в БД.
+                # Поэтому кнопки «Топы сегодня/вчера» выполняют только быстрый SELECT.
+                _warm_daily_top_cache_after_scan()
+                app.logger.info("Life WEKINGS + persistent today/yesterday tops warmed")
             except Exception:
                 app.logger.exception("Life WEKINGS cache warm failed")
         except Exception as exc:
