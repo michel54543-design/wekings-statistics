@@ -170,18 +170,55 @@ async function refreshAttacks() {
 }
 
 
+const ATTACKS_STORAGE_KEY = "wekings_attack_schedule_v1";
+
+function restoreAttackSchedule() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(ATTACKS_STORAGE_KEY) || "null");
+    if (!saved) return;
+    if (saved.dragon_at) $("dragonTime").textContent = attackTimeText(saved.dragon_at, 60, "Дракон улетел");
+    else if (saved.dragon_status) $("dragonTime").textContent = saved.dragon_status;
+    if (saved.serpent_at) $("serpentTime").textContent = attackTimeText(saved.serpent_at, 90, "Змей уплыл");
+    else if (saved.serpent_status) $("serpentTime").textContent = saved.serpent_status;
+    if (saved.fetched_at) {
+      $("attackUpdated").textContent = `обновлено ${new Date(saved.fetched_at).toLocaleTimeString("ru-RU", {hour:"2-digit", minute:"2-digit"})}`;
+    }
+  } catch (_) {}
+}
+
 async function loadAttacks() {
   const box = $("attackSchedule");
   try {
     const response = await fetch(`/api/attacks?_=${Date.now()}`, { cache: "no-store" });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const data = await response.json();
-    $("dragonTime").textContent = data.dragon_at
-      ? attackTimeText(data.dragon_at, 60, "Дракон улетел")
-      : (data.dragon_status || "Ожидаем новое время");
-    $("serpentTime").textContent = data.serpent_at
-      ? attackTimeText(data.serpent_at, 90, "Змей уплыл")
-      : (data.serpent_status || "Ожидаем новое время");
+
+    // Никогда не заменяем уже известное расписание надписью
+    // «Ожидаем новое время», если сервер временно не отдал данные.
+    // Последнее корректное расписание хранится также в браузере, поэтому
+    // обычное обновление страницы не создаёт пустое окно на 3–5 минут.
+    if (data.dragon_at) {
+      $("dragonTime").textContent = attackTimeText(data.dragon_at, 60, "Дракон улетел");
+    } else if (data.dragon_status && data.dragon_status !== "Ожидаем новое время") {
+      $("dragonTime").textContent = data.dragon_status;
+    }
+    if (data.serpent_at) {
+      $("serpentTime").textContent = attackTimeText(data.serpent_at, 90, "Змей уплыл");
+    } else if (data.serpent_status && data.serpent_status !== "Ожидаем новое время") {
+      $("serpentTime").textContent = data.serpent_status;
+    }
+
+    if (data.dragon_at || data.serpent_at) {
+      try {
+        localStorage.setItem(ATTACKS_STORAGE_KEY, JSON.stringify({
+          fetched_at: data.fetched_at || new Date().toISOString(),
+          dragon_at: data.dragon_at || null,
+          serpent_at: data.serpent_at || null,
+          dragon_status: data.dragon_status || null,
+          serpent_status: data.serpent_status || null
+        }));
+      } catch (_) {}
+    }
     // Основной источник — БД. Резерв — parsed из диагностического ответа.
     // Это закрывает случай, когда парсер уже нашёл прогноз, а запись БД ещё
     // не успела попасть в JSON-ответ.
@@ -199,7 +236,9 @@ async function loadAttacks() {
     } else {
       $("attackUpdated").textContent = "";
     }
-    box?.classList.toggle("waiting", !data.dragon_at || !data.serpent_at);
+    box?.classList.toggle("waiting", !data.dragon_at && !data.serpent_at &&
+      $("dragonTime").textContent === "Ожидаем новое время" &&
+      $("serpentTime").textContent === "Ожидаем новое время");
   } catch (error) {
     // При временной ошибке запроса не затираем уже показанное расписание.
     // Следующий успешный запрос обновит его.
@@ -1046,4 +1085,6 @@ if ($("attackRefresh")) $("attackRefresh").onclick = refreshAttacks;
 loadStatus().catch(() => {});
 loadPlayers().catch(() => $("rows").innerHTML = '<tr><td colspan="7" class="loading">Не удалось загрузить данные</td></tr>');
 setInterval(() => loadStatus().catch(() => {}), 30000);
+restoreAttackSchedule();
+loadAttacks().catch(() => {});
 setInterval(() => loadAttacks().catch(() => {}), 30000);

@@ -183,6 +183,15 @@ class DailyTopCache(db.Model):
     updated_at = db.Column(db.DateTime(timezone=True), nullable=False)
 
 
+class SnapshotBatch(db.Model):
+    """Одна строка на готовый снимок игроков.
+
+    Нужна, чтобы списки дат/снимков не сканировали огромную player_snapshot.
+    """
+    batch_at = db.Column(db.DateTime(timezone=True), primary_key=True)
+    created_at = db.Column(db.DateTime(timezone=True), nullable=False)
+
+
 class PlayerSnapshot(db.Model):
     __table_args__ = (
         db.UniqueConstraint("player_id", "batch_at", name="uq_player_snapshot_batch"),
@@ -1003,7 +1012,19 @@ LIFE_METRICS = [
 ]
 
 def _life_snapshot_dates():
+    """Вернуть даты готовых снимков без DISTINCT по огромной player_snapshot."""
     state = db.session.get(ScanState, 1)
+    try:
+        query = db.session.query(SnapshotBatch.batch_at)
+        if state and state.finished_at:
+            query = query.filter(SnapshotBatch.batch_at <= state.finished_at)
+        rows = query.order_by(SnapshotBatch.batch_at.desc()).limit(300).all()
+        if rows:
+            return [row.batch_at for row in rows]
+    except Exception:
+        db.session.rollback()
+
+    # Временно для старой БД до создания/backfill SnapshotBatch.
     query = db.session.query(PlayerSnapshot.batch_at).distinct()
     if state and state.finished_at:
         query = query.filter(PlayerSnapshot.batch_at <= state.finished_at)
@@ -1043,6 +1064,49 @@ def _daily_top_save(kind, report_date, payload):
         row.updated_at = now
     db.session.commit()
     return payload
+
+
+def _record_snapshot_batch(batch_at):
+    """Зарегистрировать готовый batch в маленькой таблице-справочнике."""
+    if not batch_at:
+        return
+    try:
+        if db.session.get(SnapshotBatch, batch_at) is None:
+            db.session.add(SnapshotBatch(
+                batch_at=batch_at,
+                created_at=datetime.now(timezone.utc),
+            ))
+            db.session.commit()
+    except Exception:
+        db.session.rollback()
+        app.logger.exception("Snapshot batch registry update failed")
+
+
+def _backfill_snapshot_batches():
+    """Однократно заполнить справочник дат из старой player_snapshot."""
+    try:
+        db.create_all()
+        dialect = db.engine.dialect.name
+        if dialect == "postgresql":
+            db.session.execute(db.text("""
+                INSERT INTO snapshot_batch (batch_at, created_at)
+                SELECT batch_at, MIN(batch_at)
+                FROM player_snapshot
+                GROUP BY batch_at
+                ON CONFLICT (batch_at) DO NOTHING
+            """))
+        elif dialect == "sqlite":
+            db.session.execute(db.text("""
+                INSERT OR IGNORE INTO snapshot_batch (batch_at, created_at)
+                SELECT batch_at, MIN(batch_at)
+                FROM player_snapshot
+                GROUP BY batch_at
+            """))
+        db.session.commit()
+        app.logger.info("Snapshot batch registry backfilled")
+    except Exception:
+        db.session.rollback()
+        app.logger.exception("Snapshot batch backfill failed")
 
 
 def _calculate_daily_top_payload(report_date, kind):
@@ -1405,14 +1469,19 @@ def completed_snapshot_dates():
         and now - cached["at"] < 300
     ):
         return list(cached["dates"])
-    query = db.session.query(PlayerSnapshot.batch_at).distinct()
-    if scan_state and scan_state.finished_at:
-        query = query.filter(PlayerSnapshot.batch_at <= scan_state.finished_at)
-    # Почасовые снимки текущего дня храним в БД, но в интерфейсе показываем
-    # только один снимок на календарный день — самый свежий завершённый.
-    # 1000 снимков = более 40 дней истории даже при 24 обновлениях в сутки.
-    rows = query.order_by(PlayerSnapshot.batch_at.desc()).limit(1000).all()
-    candidates = [row.batch_at for row in rows]
+    try:
+        query = db.session.query(SnapshotBatch.batch_at)
+        if scan_state and scan_state.finished_at:
+            query = query.filter(SnapshotBatch.batch_at <= scan_state.finished_at)
+        candidates = [row.batch_at for row in query.order_by(SnapshotBatch.batch_at.desc()).limit(1000).all()]
+    except Exception:
+        db.session.rollback()
+        # Совместимость на время миграции старой БД. После backfill этот путь
+        # больше не используется и тяжёлый DISTINCT исчезает из обычных запросов.
+        query = db.session.query(PlayerSnapshot.batch_at).distinct()
+        if scan_state and scan_state.finished_at:
+            query = query.filter(PlayerSnapshot.batch_at <= scan_state.finished_at)
+        candidates = [row.batch_at for row in query.order_by(PlayerSnapshot.batch_at.desc()).limit(1000).all()]
 
     trusted = []
     seen_days = set()
@@ -2014,6 +2083,7 @@ def run_scan():
                 state.finished_at = completed_at
                 state.last_error = None
                 db.session.commit()
+                _record_snapshot_batch(completed_at)
                 logger_message = (
                     "Recovered completed snapshot: %s players; "
                     "publishing without a redundant full rescan"
@@ -2071,6 +2141,7 @@ def run_scan():
             state.finished_at = completed_at
             state.last_error = None
             db.session.commit()
+            _record_snapshot_batch(completed_at)
             with _life_cache_lock:
                 _life_cache.clear()
             # Сразу после готового часового снимка считаем "Жизнь" один раз
@@ -2138,7 +2209,12 @@ def start_optional_db_maintenance():
                     "CREATE INDEX IF NOT EXISTS ix_snapshot_batch_level_power "
                     "ON player_snapshot (batch_at, level, power DESC)"
                 ))
+                db.session.execute(db.text(
+                    "CREATE INDEX IF NOT EXISTS ix_player_snapshot_batch_at_desc "
+                    "ON player_snapshot (batch_at DESC)"
+                ))
                 db.session.commit()
+                _backfill_snapshot_batches()
                 app.logger.info("Optional database performance indexes checked")
             except Exception:
                 db.session.rollback()
@@ -2155,7 +2231,8 @@ def start_event_db_init():
         with app.app_context():
             try:
                 db.create_all()
-                app.logger.info("GardenEvent table checked")
+                _backfill_snapshot_batches()
+                app.logger.info("GardenEvent and snapshot batch registry checked")
             except Exception:
                 db.session.rollback()
                 app.logger.exception("GardenEvent table initialization failed")
