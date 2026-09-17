@@ -676,3 +676,92 @@ def fetch_garden_events(player_id, days=3):
         return {"player_id": int(player_id), "nickname": nickname, "events": all_events, "pages": page, "cutoff": cutoff}
     finally:
         s.close()
+
+def _extract_arena_event(node, page, cutoff, now_local):
+    container = _event_container(node)
+    text = re.sub(r"\s+", " ", container.get_text(" ", strip=True)).strip()
+    date_match = re.search(r"\d{1,2}:\d{2}\s+\d{1,2}[./-]\d{1,2}[./-]\d{2,4}", text)
+    event_at = _parse_event_datetime(date_match.group(0), now_local) if date_match else None
+    if event_at is None or event_at < cutoff:
+        return None
+    body = re.sub(r"^.*?Сражение\s+на\s+арене\s*", "", text, count=1, flags=re.I)
+    body = re.sub(r"\d{1,2}:\d{2}\s+\d{1,2}[./-]\d{1,2}[./-]\d{2,4}", "", body, count=1).strip(" -|·")
+    if not body:
+        body = text
+    # Исходящие атаки: «Ты атаковал NAME и получил ...»
+    m = re.search(r"Ты\s+атаковал\s+(.+?)\s+и\s+получил\s+(.+)$", body, flags=re.I)
+    direction = None; opponent = None; silver = 0; crystals = 0; glory = 0
+    if m:
+        direction = "outgoing"; opponent = m.group(1).strip(" .")
+        rewards = m.group(2)
+        sm = re.search(r"([\d\s\u00a0]+)\s+серебр", rewards, flags=re.I)
+        cm = re.search(r"([\d\s\u00a0]+)\s+кристалл", rewards, flags=re.I)
+        gm = re.search(r"([\d\s\u00a0]+)\s+слав", rewards, flags=re.I)
+        if sm: silver = int(re.sub(r"\D", "", sm.group(1)) or 0)
+        if cm: crystals = int(re.sub(r"\D", "", cm.group(1)) or 0)
+        if gm: glory = int(re.sub(r"\D", "", gm.group(1)) or 0)
+    else:
+        # Входящие: «Тебя атаковал NAME ...». Серебро считается потерянным,
+        # только если текст прямо сообщает о потере; если победил и забрал серебро,
+        # это входящая атака, но серебро не относим к потерям.
+        m = re.search(r"Тебя\s+атаковал\s+(.+?)(?:,|\s+и\s+|\s+но\s+).*$", body, flags=re.I)
+        if m:
+            direction = "incoming"; opponent = m.group(1).strip(" .")
+            lm = re.search(r"(?:потерил|потеряла|потерял)\s+([\d\s\u00a0]+)\s+серебр", body, flags=re.I)
+            if lm:
+                silver = int(re.sub(r"\D", "", lm.group(1)) or 0)
+    if not direction or not opponent:
+        return None
+    # Чистим возможные хвосты от даты/кнопок, если контейнер оказался шире события.
+    opponent = re.sub(r"\s+", " ", opponent).strip(" ,.-")[:160]
+    if not opponent:
+        return None
+    return {"event_at":event_at,"opponent":opponent,"direction":direction,"silver":silver,"crystals":crystals,"glory":glory,"text":body[:2000],"page":page}
+
+
+def _extract_arena_events(html, page, cutoff, now_local):
+    soup = BeautifulSoup(html, "html.parser")
+    events=[]; seen=set()
+    for node in soup.find_all(string=lambda x: x and x.strip().casefold() == "сражение на арене"):
+        item = _extract_arena_event(node, page, cutoff, now_local)
+        if not item: continue
+        key=(item["event_at"].isoformat(), item["text"])
+        if key in seen: continue
+        seen.add(key); events.append(item)
+    return events
+
+
+def fetch_arena_events(player_id, days=3):
+    """Собирает только «Сражение на арене» из /events/user/<id>?type=ARENA&page=N."""
+    days=max(1,min(7,int(days or 3)))
+    s=_session(saved=True)
+    tz=ZoneInfo("Europe/Chisinau"); now_local=datetime.now(tz)
+    cutoff_local=datetime(now_local.year,now_local.month,now_local.day,tzinfo=tz)-timedelta(days=days-1)
+    cutoff=cutoff_local.astimezone(timezone.utc)
+    base_events_url=urljoin(BASE_URL+"/",f"events/user/{int(player_id)}")
+    all_events=[]; max_pages=int(os.getenv("ARENA_EVENTS_MAX_PAGES","120")); nickname=None; page=0
+    try:
+        for page in range(1,max_pages+1):
+            url=f"{base_events_url}?type=ARENA&page={page}"
+            r=s.get(url,timeout=TIMEOUT,allow_redirects=True)
+            if r.status_code in {401,403} or "/login" in r.url or "/start" in r.url:
+                raise PermissionError("Сессия WEKINGS истекла. Обновите её через /wekings-login")
+            r.raise_for_status()
+            soup=BeautifulSoup(r.text,"html.parser")
+            if nickname is None:
+                title=soup.find("title")
+                if title: nickname=title.get_text(" ",strip=True).split("|")[0].strip() or None
+            page_events=_extract_arena_events(r.text,page,cutoff,now_local); all_events.extend(page_events)
+            page_text=re.sub(r"\s+"," ",soup.get_text(" ",strip=True)); dates=[]
+            for dm in re.findall(r"\d{1,2}:\d{2}\s+\d{1,2}[./-]\d{1,2}[./-]\d{2,4}",page_text):
+                dt=_parse_event_datetime(dm,now_local)
+                if dt: dates.append(dt)
+            if dates and min(dates)<cutoff: break
+            if page>1 and not dates and not page_events: break
+        unique={(e["event_at"].isoformat(),e["text"]):e for e in all_events}
+        all_events=sorted(unique.values(),key=lambda x:x["event_at"],reverse=True)
+        _save(s)
+        return {"player_id":int(player_id),"nickname":nickname,"events":all_events,"pages":page,"cutoff":cutoff,"count":len(all_events)}
+    finally:
+        s.close()
+

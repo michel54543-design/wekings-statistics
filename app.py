@@ -177,6 +177,21 @@ class GardenEvent(db.Model):
     collected_at = db.Column(db.DateTime(timezone=True), nullable=False)
 
 
+class ArenaEvent(db.Model):
+    """События «Сражение на арене» с разбивкой по сопернику."""
+    id = db.Column(db.BigInteger, primary_key=True, autoincrement=True)
+    player_id = db.Column(db.Integer, nullable=False, index=True)
+    event_at = db.Column(db.DateTime(timezone=True), nullable=False, index=True)
+    opponent = db.Column(db.String(160), nullable=False, index=True)
+    direction = db.Column(db.String(16), nullable=False)  # outgoing / incoming
+    silver = db.Column(db.BigInteger, nullable=False, default=0)
+    crystals = db.Column(db.BigInteger, nullable=False, default=0)
+    glory = db.Column(db.BigInteger, nullable=False, default=0)
+    text = db.Column(db.Text, nullable=False)
+    source_page = db.Column(db.Integer, nullable=False, default=1)
+    collected_at = db.Column(db.DateTime(timezone=True), nullable=False)
+
+
 class DailyTopCache(db.Model):
     """Готовые дневные результаты топов. Считаются один раз и хранятся в БД."""
     __table_args__ = (
@@ -570,7 +585,7 @@ EVENTS_ADMIN_HTML = r"""
 </header>
 <div class="admin-events-title"><h2>📋 Проверка событий «Участок»</h2><span class="gold-mark">🌱</span></div>
 <p class="admin-events-note">Сбор идёт напрямую из раздела <b>Прочее</b>. Загружаются только события «Участок» за последние выбранные дни.</p>
-<p class="admin-events-links"><a href="/">← На сайт статистики</a> &nbsp; <a href="/admin/wekings-login">Авторизация WEKINGS</a> &nbsp; <a href="/admin/db-usage">🗄️ База данных</a></p>
+<p class="admin-events-links"><a href="/">← На сайт статистики</a> &nbsp; <a href="/admin/wekings-login">Авторизация WEKINGS</a> &nbsp; <a href="/admin/wekings-arena">⚔️ Арена</a> &nbsp; <a href="/admin/db-usage">🗄️ База данных</a></p>
 <div class="admin-box">
 <form method="post" action="/admin/wekings-events/collect" class="admin-form">
 <label>ID игрока<input name="player_id" type="number" min="1" required value="{{ player_id or '' }}"></label>
@@ -597,6 +612,89 @@ EVENTS_ADMIN_HTML = r"""
 </main></body></html>
 """
 
+
+
+ARENA_ADMIN_HTML = r"""
+<!doctype html><html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Wekings — Арена</title>
+<link rel="icon" href="/static/favicon.ico?v=41" sizes="any"><link rel="icon" href="/static/favicon.svg?v=41" type="image/svg+xml">
+<link rel="stylesheet" href="/static/style.css?v=97">
+<style>
+.arena-page{max-width:1250px;margin:0 auto;padding:28px 22px 50px}.arena-page .site-header{margin-bottom:18px}
+.arena-title{display:flex;justify-content:space-between;align-items:center;margin:8px 0 8px}.arena-title h2{font:28px Georgia,serif;color:#f5ead0;margin:0}.arena-note{color:#9e9a91;font-size:13px;margin:0 0 14px}.arena-links{margin-bottom:14px}.arena-links a{color:#d9b95b}
+.arena-box{background:#10100f;border:1px solid #5c461c;border-radius:14px;padding:14px 16px;margin:12px 0;box-shadow:0 8px 25px rgba(0,0,0,.25)}
+.arena-form{display:grid;grid-template-columns:220px 170px auto 1fr;gap:12px;align-items:end}.arena-form label{display:flex;flex-direction:column;gap:6px;color:#aaa39a;font-size:12px}.arena-form input{height:42px;padding:9px 12px;border-radius:8px;border:1px solid #57451f;background:#171614;color:#f5f1e8;font-size:14px}.arena-primary{height:42px;border-radius:8px;border:1px solid #9a7725;color:#16120a;font-weight:800;cursor:pointer;background:linear-gradient(#e7c765,#b98b2c);padding:0 18px}
+.arena-summary{display:grid;grid-template-columns:repeat(5,1fr);gap:8px}.arena-stat{background:#171614;border:1px solid #2d281d;border-radius:8px;padding:10px 11px;color:#aaa39a;font-size:12px}.arena-stat b{display:block;color:#f3e8cc;font-size:16px;margin-top:3px}.arena-section h3{font:19px Georgia,serif;color:#f2e6ca;margin:0 0 10px}.arena-table{width:100%;border-collapse:collapse;font-size:13px}.arena-table th{color:#9f8a55;text-align:left;padding:9px 7px;border-bottom:1px solid #4a3a20;white-space:nowrap}.arena-table td{padding:8px 7px;border-bottom:1px solid #25231e;color:#e5dfd4}.arena-table tr:hover{background:#171614}.out{color:#e7c765;font-weight:700}.in{color:#74c9ff;font-weight:700}.money{font-weight:700}.muted{color:#858078}.err{color:#ef786d}.empty{color:#918b81;padding:8px 0}.day-row td{background:#15130f;color:#d9b95b;font-weight:800;border-top:1px solid #5a431b}
+@media(max-width:900px){.arena-form{grid-template-columns:1fr 1fr}.arena-primary{grid-column:1/-1}.arena-summary{grid-template-columns:repeat(2,1fr)}.arena-table{font-size:12px;display:block;overflow-x:auto;white-space:nowrap}}
+@media(max-width:600px){.arena-page{padding:18px 12px}.arena-form{grid-template-columns:1fr}.arena-primary{grid-column:auto}.arena-summary{grid-template-columns:1fr}.arena-title h2{font-size:23px}}
+</style></head><body class="dark"><main class="page arena-page">
+<header class="site-header"><img class="site-mark" src="/static/wekings-gold.svg" alt=""><div class="site-heading"><p class="brand">WEKINGS</p><h1>Wekings Статистика</h1><p class="status"><i></i><span>Анализ событий арены</span></p></div><a href="/" class="today-badge">На сайт</a></header>
+<div class="arena-title"><h2>⚔️ Сражения на арене</h2><span>За выбранные календарные дни</span></div>
+<p class="arena-note">Одинаковый соперник за один день объединяется в одну строку: показывается количество нападений, сколько серебра и кристаллов украдено и сколько серебра потеряно.</p>
+<p class="arena-links"><a href="/">← На сайт статистики</a> &nbsp; <a href="/admin/wekings-events">🌱 Участок</a> &nbsp; <a href="/admin/wekings-login">Авторизация WEKINGS</a> &nbsp; <a href="/admin/db-usage">🗄️ База данных</a></p>
+<div class="arena-box"><form method="post" action="/admin/wekings-arena/collect" class="arena-form">
+<label>ID игрока<input name="player_id" type="number" min="1" required value="{{ player_id or '' }}"></label>
+<label>Дней<input name="days" type="number" min="1" max="7" value="{{ days or 3 }}"></label>
+<button class="arena-primary" type="submit">⚔️ Собрать арену</button><div></div></form>
+{% if error %}<p class="err">{{ error }}</p>{% endif %}
+{% if result %}<div class="arena-summary" style="margin-top:12px"><div class="arena-stat">Игрок<b>{{ result.nickname }} ({{ result.player_id }})</b></div><div class="arena-stat">Событий найдено<b>{{ result.count }}</b></div><div class="arena-stat">Новых сохранено<b>{{ result.saved }}</b></div><div class="arena-stat">Нападений игрока<b>{{ result.outgoing_count }}</b></div><div class="arena-stat">На игрока напали<b>{{ result.incoming_count }}</b></div></div>{% endif %}</div>
+{% if rows is not none %}<div class="arena-box arena-section"><h3>📊 Арена — по дням и соперникам</h3>
+{% if rows %}<table class="arena-table"><thead><tr><th>Дата</th><th>Соперник</th><th>Я нападал</th><th>Серебро украл</th><th>Кристаллы украл</th><th>Меня атаковали</th><th>Серебро потерял</th></tr></thead><tbody>
+{% for r in rows %}<tr><td>{{ r.date }}</td><td><b>{{ r.opponent }}</b></td><td class="out">{{ r.out_count or '—' }}</td><td class="money">{% if r.out_silver %}{{ "{:,.0f}".format(r.out_silver).replace(',', ' ') }}{% else %}—{% endif %}</td><td class="money">{% if r.out_crystals %}💎 {{ "{:,.0f}".format(r.out_crystals).replace(',', ' ') }}{% else %}—{% endif %}</td><td class="in">{{ r.in_count or '—' }}</td><td class="money">{% if r.in_silver %}{{ "{:,.0f}".format(r.in_silver).replace(',', ' ') }}{% else %}—{% endif %}</td></tr>{% endfor %}</tbody></table>
+{% else %}<p class="empty">Событий арены за выбранный период не найдено.</p>{% endif %}</div>{% endif %}
+{% if totals %}<div class="arena-box arena-section"><h3>📌 Итоги</h3><div class="arena-summary"><div class="arena-stat">Всего нападений<b>{{ totals.out_count }}</b></div><div class="arena-stat">Украдено серебра<b>{{ "{:,.0f}".format(totals.out_silver).replace(',', ' ') }}</b></div><div class="arena-stat">Украдено кристаллов<b>💎 {{ "{:,.0f}".format(totals.out_crystals).replace(',', ' ') }}</b></div><div class="arena-stat">Всего входящих атак<b>{{ totals.in_count }}</b></div><div class="arena-stat">Потеряно серебра<b>{{ "{:,.0f}".format(totals.in_silver).replace(',', ' ') }}</b></div><div class="arena-stat">Соперников<b>{{ totals.opponents }}</b></div></div></div>{% endif %}
+</main></body></html>
+"""
+
+@app.get("/admin/wekings-arena")
+def admin_wekings_arena():
+    denied = _admin_required()
+    if denied: return denied
+    return render_template_string(ARENA_ADMIN_HTML, player_id=request.args.get("player_id", ""), rows=None, totals=None, result=None, error=None, days=3)
+
+
+@app.post("/admin/wekings-arena/collect")
+def admin_wekings_arena_collect():
+    denied = _admin_required()
+    if denied: return denied
+    from scraper import fetch_arena_events
+    player_id = request.form.get("player_id", type=int)
+    days = max(1, min(7, request.form.get("days", 3, type=int) or 3))
+    if not player_id:
+        return render_template_string(ARENA_ADMIN_HTML, player_id="", rows=[], totals=None, result=None, error="Введите ID игрока", days=days)
+    try:
+        result = fetch_arena_events(player_id, days=days)
+        now = datetime.now(timezone.utc)
+        saved = 0
+        for item in result["events"]:
+            exists = ArenaEvent.query.filter_by(player_id=player_id, event_at=item["event_at"], opponent=item["opponent"], direction=item["direction"], text=item["text"]).first()
+            if exists:
+                continue
+            db.session.add(ArenaEvent(player_id=player_id, event_at=item["event_at"], opponent=item["opponent"], direction=item["direction"], silver=item.get("silver",0), crystals=item.get("crystals",0), glory=item.get("glory",0), text=item["text"], source_page=item["page"], collected_at=now))
+            saved += 1
+        db.session.commit()
+        cutoff = result["cutoff"]
+        rows_db = ArenaEvent.query.filter(ArenaEvent.player_id == player_id, ArenaEvent.event_at >= cutoff).order_by(ArenaEvent.event_at.desc()).all()
+        nickname = result.get("nickname") or "неизвестен"
+        # Один ряд = один календарный день + один соперник.
+        grouped = {}
+        tz = ZoneInfo("Europe/Chisinau")
+        for e in rows_db:
+            local = e.event_at.astimezone(tz)
+            key = (local.date(), e.opponent)
+            g = grouped.setdefault(key, {"date": local.strftime("%d.%m.%Y"), "date_obj": local.date(), "opponent": e.opponent, "out_count":0, "out_silver":0, "out_crystals":0, "in_count":0, "in_silver":0})
+            if e.direction == "outgoing":
+                g["out_count"] += 1; g["out_silver"] += int(e.silver or 0); g["out_crystals"] += int(e.crystals or 0)
+            else:
+                g["in_count"] += 1; g["in_silver"] += int(e.silver or 0)
+        rows = sorted(grouped.values(), key=lambda x: (x["date_obj"], x["opponent"]), reverse=True)
+        totals = {"out_count":sum(r["out_count"] for r in rows), "out_silver":sum(r["out_silver"] for r in rows), "out_crystals":sum(r["out_crystals"] for r in rows), "in_count":sum(r["in_count"] for r in rows), "in_silver":sum(r["in_silver"] for r in rows), "opponents":len({r["opponent"] for r in rows})}
+        result.update({"saved":saved,"nickname":nickname,"outgoing_count":sum(r["out_count"] for r in rows),"incoming_count":sum(r["in_count"] for r in rows)})
+        return render_template_string(ARENA_ADMIN_HTML, player_id=player_id, rows=rows, totals=totals, result=result, error=None, days=days)
+    except Exception as exc:
+        db.session.rollback()
+        app.logger.exception("Arena events collection failed for player %s", player_id)
+        return render_template_string(ARENA_ADMIN_HTML, player_id=player_id, rows=[], totals=None, result=None, error=str(exc)[:1000], days=days)
 
 
 @app.get("/admin/wekings-events")
@@ -1309,11 +1407,16 @@ def _cleanup_old_snapshots(force=False):
             {"cutoff": event_cutoff},
         )
         deleted_events = result.rowcount if result.rowcount is not None else 0
+        arena_result = db.session.execute(
+            db.text("DELETE FROM arena_event WHERE event_at < :cutoff"),
+            {"cutoff": event_cutoff},
+        )
+        deleted_arena_events = arena_result.rowcount if arena_result.rowcount is not None else 0
         db.session.commit()
 
         app.logger.info(
-            "Snapshot cleanup: removed %s old batches and %s garden events; kept all %s days, daily to %s days",
-            deleted_batches, deleted_events, SNAPSHOT_KEEP_ALL_DAYS, SNAPSHOT_KEEP_DAILY_DAYS,
+            "Snapshot cleanup: removed %s old batches, %s garden events and %s arena events; kept all %s days, daily to %s days",
+            deleted_batches, deleted_events, deleted_arena_events, SNAPSHOT_KEEP_ALL_DAYS, SNAPSHOT_KEEP_DAILY_DAYS,
         )
 
         # VACUUM обычный (не VACUUM FULL): безопасен для работающего сайта и
