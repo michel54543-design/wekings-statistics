@@ -376,6 +376,50 @@ def _admin_required():
         return None
     return redirect("/wekings-login")
 
+def _format_bytes(value):
+    try:
+        value = float(value or 0)
+    except (TypeError, ValueError):
+        value = 0.0
+    units = ("B", "KB", "MB", "GB", "TB")
+    for unit in units:
+        if value < 1024 or unit == units[-1]:
+            return f"{value:.1f} {unit}" if unit != "B" else f"{int(value)} B"
+        value /= 1024
+
+
+@app.get("/admin/db-usage")
+def admin_db_usage():
+    denied = _admin_required()
+    if denied:
+        return denied
+    if db.engine.dialect.name != "postgresql":
+        return render_template_string("<main><h2>🗄️ Использование базы</h2><p>Детальная статистика доступна для PostgreSQL.</p><p><a href='/'>← На сайт статистики</a></p></main>")
+    try:
+        db_name = db.session.execute(db.text("SELECT current_database()")).scalar()
+        total_bytes = db.session.execute(db.text("SELECT pg_database_size(current_database())")).scalar() or 0
+        table_rows = db.session.execute(db.text("""
+            SELECT c.relname AS table_name, c.reltuples::bigint AS estimated_rows,
+                   pg_relation_size(c.oid) AS table_bytes, pg_indexes_size(c.oid) AS index_bytes,
+                   pg_total_relation_size(c.oid) AS total_bytes
+            FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+            WHERE c.relkind IN ('r','m') AND n.nspname NOT IN ('pg_catalog','information_schema')
+            ORDER BY pg_total_relation_size(c.oid) DESC
+        """)).mappings().all()
+        index_rows = db.session.execute(db.text("""
+            SELECT schemaname, tablename, indexname, pg_relation_size(indexrelid) AS bytes
+            FROM pg_stat_user_indexes ORDER BY pg_relation_size(indexrelid) DESC LIMIT 40
+        """)).mappings().all()
+        rows = [{"name":r["table_name"],"rows":int(r["estimated_rows"] or 0),"table":_format_bytes(r["table_bytes"]),"indexes":_format_bytes(r["index_bytes"]),"total":_format_bytes(r["total_bytes"])} for r in table_rows]
+        indexes = [{"table":r["tablename"],"name":r["indexname"],"size":_format_bytes(r["bytes"])} for r in index_rows]
+        checked_at = datetime.now(ZoneInfo("Europe/Chisinau")).strftime("%d.%m.%Y %H:%M:%S")
+        storage_pct = min(100, round((total_bytes/(5*1024**3))*100,1))
+        return render_template("db_usage.html", db_name=db_name, total_size=_format_bytes(total_bytes), storage_pct=storage_pct, rows=rows, indexes=indexes, checked_at=checked_at)
+    except Exception as exc:
+        db.session.rollback()
+        app.logger.exception("DB usage page failed")
+        return render_template_string("<main><h2>🗄️ Использование базы</h2><p>Ошибка чтения статистики: {{ error }}</p><p><a href='/'>← На сайт статистики</a></p></main>", error=str(exc)[:1000])
+
 
 @app.route("/wekings-login", methods=["GET", "POST"])
 def wekings_login():
@@ -460,7 +504,7 @@ EVENTS_ADMIN_HTML = r"""
 </header>
 <div class="admin-events-title"><h2>📋 Проверка событий «Участок»</h2><span class="gold-mark">🌱</span></div>
 <p class="admin-events-note">Сбор идёт напрямую из раздела <b>Прочее</b>. Загружаются только события «Участок» за последние выбранные дни.</p>
-<p class="admin-events-links"><a href="/">← На сайт статистики</a> &nbsp; <a href="/admin/wekings-login">Авторизация WEKINGS</a></p>
+<p class="admin-events-links"><a href="/">← На сайт статистики</a> &nbsp; <a href="/admin/wekings-login">Авторизация WEKINGS</a> &nbsp; <a href="/admin/db-usage">🗄️ База данных</a></p>
 <div class="admin-box">
 <form method="post" action="/admin/wekings-events/collect" class="admin-form">
 <label>ID игрока<input name="player_id" type="number" min="1" required value="{{ player_id or '' }}"></label>
