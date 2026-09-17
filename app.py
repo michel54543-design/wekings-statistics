@@ -407,11 +407,11 @@ def admin_db_usage():
             ORDER BY pg_total_relation_size(c.oid) DESC
         """)).mappings().all()
         index_rows = db.session.execute(db.text("""
-            SELECT schemaname, tablename, indexname, pg_relation_size(indexrelid) AS bytes
+            SELECT schemaname, relname, indexrelname, pg_relation_size(indexrelid) AS bytes
             FROM pg_stat_user_indexes ORDER BY pg_relation_size(indexrelid) DESC LIMIT 40
         """)).mappings().all()
         rows = [{"name":r["table_name"],"rows":int(r["estimated_rows"] or 0),"table":_format_bytes(r["table_bytes"]),"indexes":_format_bytes(r["index_bytes"]),"total":_format_bytes(r["total_bytes"])} for r in table_rows]
-        indexes = [{"table":r["tablename"],"name":r["indexname"],"size":_format_bytes(r["bytes"])} for r in index_rows]
+        indexes = [{"table":r["relname"],"name":r["indexrelname"],"size":_format_bytes(r["bytes"])} for r in index_rows]
         checked_at = datetime.now(ZoneInfo("Europe/Chisinau")).strftime("%d.%m.%Y %H:%M:%S")
         storage_pct = min(100, round((total_bytes/(5*1024**3))*100,1))
         return render_template("db_usage.html", db_name=db_name, total_size=_format_bytes(total_bytes), storage_pct=storage_pct, rows=rows, indexes=indexes, checked_at=checked_at)
