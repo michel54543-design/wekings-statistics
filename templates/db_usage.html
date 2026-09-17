@@ -17,5 +17,14 @@ body{margin:0;background:#090909;color:#eee;font-family:Arial,sans-serif}.wrap{m
 <table class="table"><thead><tr><th>Таблица</th><th>Индекс</th><th>Размер</th><th>Колонки</th><th>UNIQUE</th><th>Использований</th><th>Ограничение</th><th>Статус</th></tr></thead><tbody>
 {% for i in indexes %}<tr><td><b>{{ i.table }}</b></td><td><b>{{ i.name }}</b><br><span class="mono">{{ i.definition }}</span></td><td><b>{{ i.size }}</b></td><td>{{ i.columns }}</td><td>{% if i.unique %}ДА{% else %}нет{% endif %}{% if i.primary %}<br><span class="badge">PRIMARY</span>{% endif %}</td><td>{{ "{:,.0f}".format(i.scans).replace(","," ") }}<br><span class="small">строк прочитано: {{ "{:,.0f}".format(i.reads).replace(","," ") }}</span></td><td>{% if i.constraint %}<span class="badge">ЗАЩИЩЁН</span><br><span class="small">{{ i.constraint_names }}</span>{% else %}нет{% endif %}</td><td class="{% if i.primary or i.constraint %}danger{% endif %}"><b>{{ i.action }}</b></td></tr>{% endfor %}</tbody></table>
 <p class="muted">«Использований» — статистика PostgreSQL с момента последнего сброса статистики. Нулевое значение само по себе не означает, что индекс можно удалять. Индексы PRIMARY KEY и индексы, связанные с ограничениями, помечены как защищённые.</p></div>
+<div class="box">
+<h2>🧹 Безопасное хранение истории</h2>
+<div class="topline"><span class="muted">Все снимки за последние</span><b>{{ keep_all_days }} дней</b></div>
+<div class="topline"><span class="muted">Далее хранится по одному снимку в сутки до</span><b>{{ keep_daily_days }} дней</b></div>
+<div class="topline"><span class="muted">Старше этого срока</span><b>удаляются пакетами</b></div>
+<div class="topline"><span class="muted">Снимков в реестре</span><b>{{ "{:,.0f}".format(batch_count).replace(","," ") }}</b></div>
+<div class="topline"><span class="muted">Самый старый / новый снимок</span><b>{{ oldest_batch or "—" }} / {{ newest_batch or "—" }}</b></div>
+<p class="small">Очистка не удаляет игроков из таблицы <b>player</b>, готовые дневные топы или текущие данные. Она касается только старых снимков <b>player_snapshot</b>. Большие индексы специально не удаляются.</p>
+</div>
 <div class="box"><p class="muted">Страница только читает системные каталоги PostgreSQL. Никаких DELETE, DROP, VACUUM FULL или изменений схемы здесь нет.</p></div>
 </main></body></html>

@@ -70,7 +70,7 @@ _snapshot_cleanup_last_run = 0.0
 # достаточно одного (последнего) снимка за календарный день для истории.
 SNAPSHOT_KEEP_ALL_DAYS = max(7, int(os.getenv("SNAPSHOT_KEEP_ALL_DAYS", "30")))
 SNAPSHOT_KEEP_DAILY_DAYS = max(30, int(os.getenv("SNAPSHOT_KEEP_DAILY_DAYS", "90")))
-SNAPSHOT_CLEANUP_BATCHES_PER_COMMIT = max(1, int(os.getenv("SNAPSHOT_CLEANUP_BATCHES_PER_COMMIT", "5")))
+SNAPSHOT_CLEANUP_BATCHES_PER_COMMIT = max(1, int(os.getenv("SNAPSHOT_CLEANUP_BATCHES_PER_COMMIT", "10")))
 
 
 class Player(db.Model):
@@ -467,7 +467,20 @@ def admin_db_usage():
             })
         checked_at = datetime.now(ZoneInfo("Europe/Chisinau")).strftime("%d.%m.%Y %H:%M:%S")
         storage_pct = min(100, round((total_bytes/(5*1024**3))*100,1))
-        return render_template("db_usage.html", db_name=db_name, total_size=_format_bytes(total_bytes), storage_pct=storage_pct, rows=rows, indexes=indexes, checked_at=checked_at)
+        batch_info = db.session.execute(db.text("""
+            SELECT COUNT(*)::bigint AS batch_count, MIN(batch_at) AS oldest_batch, MAX(batch_at) AS newest_batch
+            FROM snapshot_batch
+        """)).mappings().first() or {}
+        oldest_batch = batch_info.get("oldest_batch")
+        newest_batch = batch_info.get("newest_batch")
+        return render_template(
+            "db_usage.html",
+            db_name=db_name, total_size=_format_bytes(total_bytes), storage_pct=storage_pct,
+            rows=rows, indexes=indexes, checked_at=checked_at,
+            keep_all_days=SNAPSHOT_KEEP_ALL_DAYS, keep_daily_days=SNAPSHOT_KEEP_DAILY_DAYS,
+            batch_count=int(batch_info.get("batch_count") or 0),
+            oldest_batch=oldest_batch, newest_batch=newest_batch,
+        )
     except Exception as exc:
         db.session.rollback()
         app.logger.exception("DB usage page failed")
@@ -1257,6 +1270,10 @@ def _cleanup_old_snapshots(force=False):
             .order_by(SnapshotBatch.batch_at.desc())
             .all()
         )
+        app.logger.info(
+            "Snapshot cleanup plan: %s batches older than %s; retention=%s/%s days",
+            len(rows), all_cutoff.isoformat(), SNAPSHOT_KEEP_ALL_DAYS, SNAPSHOT_KEEP_DAILY_DAYS,
+        )
         daily_keep = {}
         for row in rows:
             batch = row.batch_at
@@ -1281,6 +1298,7 @@ def _cleanup_old_snapshots(force=False):
                 SnapshotBatch.batch_at.in_(chunk)
             ).delete(synchronize_session=False)
             db.session.commit()
+            db.session.expire_all()
             deleted_batches += len(chunk)
 
         # События участка тоже не должны расти бесконечно. Их исторический
