@@ -206,8 +206,10 @@ class PlayerSnapshot(db.Model):
         db.Index("ix_snapshot_batch_player", "batch_at", "player_id"),
     )
     id = db.Column(db.BigInteger, primary_key=True)
-    player_id = db.Column(db.Integer, nullable=False, index=True)
-    batch_at = db.Column(db.DateTime(timezone=True), nullable=False, index=True)
+    # Не создаём отдельные индексы player_id и batch_at: они дублируют
+    # более полезные составные индексы ниже и занимают сотни MB на миллионах строк.
+    player_id = db.Column(db.Integer, nullable=False)
+    batch_at = db.Column(db.DateTime(timezone=True), nullable=False)
     nickname = db.Column(db.String(160), nullable=False)
     level = db.Column(db.Integer)
     glory = db.Column(db.BigInteger)
@@ -2358,19 +2360,27 @@ def start_optional_db_maintenance():
                 # Новая таблица событий создаётся отдельно от основного старта Gunicorn.
                 # Это не задерживает открытие сайта и безопасно для существующей БД.
                 db.create_all()
-                # Для текущих запросов достаточно индекса (batch_at, player_id)
-                # и индекса (batch_at, level, power). Семь отдельных индексов
-                # по каждой характеристике только раздували БД и почти не
-                # использовались, потому что топы считаются одним JOIN-запросом.
-                db.session.execute(db.text(
-                    "CREATE INDEX IF NOT EXISTS ix_snapshot_batch_level_power "
-                    "ON player_snapshot (batch_at, level, power DESC)"
-                ))
-                for field in ("power", "glory", "defense", "agility", "mastery", "vitality", "stat_sum"):
-                    db.session.execute(db.text(f"DROP INDEX IF EXISTS ix_snapshot_batch_{field}"))
-                # Одиночный batch_at дублируется первым столбцом (batch_at, player_id).
-                db.session.execute(db.text("DROP INDEX IF EXISTS ix_player_snapshot_batch_at"))
-                db.session.execute(db.text("DROP INDEX IF EXISTS ix_player_snapshot_batch_at_desc"))
+                # Ничего нового тяжёлого не строим. Сначала безопасно удаляем
+                # только индексы, которые являются точными дубликатами/остатками
+                # старых версий приложения. Основные составные индексы и UNIQUE
+                # constraint НЕ трогаем. Это уменьшает размер БД без потери данных.
+                redundant_indexes = (
+                    "ix_player_snapshot_player_id",
+                    "ix_player_snapshot_batch_at",
+                    "ix_player_snapshot_batch_at_desc",
+                    "ix_snapshot_batch_level_power",
+                    "ix_snapshot_batch_power",
+                    "ix_snapshot_batch_glory",
+                    "ix_snapshot_batch_defense",
+                    "ix_snapshot_batch_agility",
+                    "ix_snapshot_batch_mastery",
+                    "ix_snapshot_batch_vitality",
+                    "ix_snapshot_batch_stat_sum",
+                )
+                for index_name in redundant_indexes:
+                    db.session.execute(db.text(
+                        f'DROP INDEX IF EXISTS "{index_name}"'
+                    ))
                 db.session.commit()
                 _backfill_snapshot_batches()
                 _cleanup_old_snapshots(force=True)
@@ -2391,6 +2401,33 @@ def _run_snapshot_cleanup_background():
             db.session.rollback()
 
 
+def _drop_redundant_snapshot_indexes():
+    """Удалить только безопасно известные избыточные индексы.
+
+    Важно: функция НЕ удаляет UNIQUE-индекс (player_id, batch_at) и НЕ
+    удаляет составной (batch_at, player_id). Она также не делает REINDEX/VACUUM
+    FULL, чтобы не требовать дополнительного дискового места.
+    """
+    if db.engine.dialect.name != "postgresql":
+        return
+    redundant_indexes = (
+        "ix_player_snapshot_player_id",
+        "ix_player_snapshot_batch_at",
+        "ix_player_snapshot_batch_at_desc",
+        "ix_snapshot_batch_level_power",
+        "ix_snapshot_batch_power",
+        "ix_snapshot_batch_glory",
+        "ix_snapshot_batch_defense",
+        "ix_snapshot_batch_agility",
+        "ix_snapshot_batch_mastery",
+        "ix_snapshot_batch_vitality",
+        "ix_snapshot_batch_stat_sum",
+    )
+    for index_name in redundant_indexes:
+        db.session.execute(db.text(f'DROP INDEX IF EXISTS "{index_name}"'))
+    db.session.commit()
+
+
 def start_event_db_init():
     """Создаёт отсутствующие таблицы и запускает фоновую очистку истории.
 
@@ -2403,6 +2440,7 @@ def start_event_db_init():
         with app.app_context():
             try:
                 db.create_all()
+                _drop_redundant_snapshot_indexes()
                 if db.session.query(SnapshotBatch.batch_at).first() is None:
                     _backfill_snapshot_batches()
                 _cleanup_old_snapshots(force=True)
