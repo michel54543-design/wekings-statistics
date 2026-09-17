@@ -409,11 +409,62 @@ def admin_db_usage():
             ORDER BY pg_total_relation_size(c.oid) DESC
         """)).mappings().all()
         index_rows = db.session.execute(db.text("""
-            SELECT schemaname, relname, indexrelname, pg_relation_size(indexrelid) AS bytes
-            FROM pg_stat_user_indexes ORDER BY pg_relation_size(indexrelid) DESC LIMIT 40
+            SELECT
+                s.schemaname,
+                s.relname,
+                s.indexrelname,
+                pg_relation_size(s.indexrelid) AS bytes,
+                s.idx_scan,
+                s.idx_tup_read,
+                s.idx_tup_fetch,
+                i.indisunique,
+                i.indisprimary,
+                pg_get_indexdef(s.indexrelid) AS indexdef,
+                COALESCE((
+                    SELECT string_agg(a.attname, ', ' ORDER BY k.ord)
+                    FROM unnest(i.indkey) WITH ORDINALITY AS k(attnum, ord)
+                    JOIN pg_attribute a
+                      ON a.attrelid = i.indrelid AND a.attnum = k.attnum
+                    WHERE k.attnum > 0
+                ), 'выражение/служебный') AS columns,
+                EXISTS (
+                    SELECT 1 FROM pg_constraint c
+                    WHERE c.conindid = s.indexrelid
+                ) AS backs_constraint,
+                COALESCE((
+                    SELECT string_agg(c.conname, ', ' ORDER BY c.conname)
+                    FROM pg_constraint c
+                    WHERE c.conindid = s.indexrelid
+                ), '') AS constraint_names
+            FROM pg_stat_user_indexes s
+            JOIN pg_index i ON i.indexrelid = s.indexrelid
+            ORDER BY pg_relation_size(s.indexrelid) DESC
+            LIMIT 40
         """)).mappings().all()
         rows = [{"name":r["table_name"],"rows":int(r["estimated_rows"] or 0),"table":_format_bytes(r["table_bytes"]),"indexes":_format_bytes(r["index_bytes"]),"total":_format_bytes(r["total_bytes"])} for r in table_rows]
-        indexes = [{"table":r["relname"],"name":r["indexrelname"],"size":_format_bytes(r["bytes"])} for r in index_rows]
+        indexes = []
+        for r in index_rows:
+            protected = bool(r["indisprimary"] or r["backs_constraint"])
+            if protected:
+                action = "НЕ ТРОГАТЬ"
+            elif int(r["idx_scan"] or 0) == 0:
+                action = "Кандидат на проверку"
+            else:
+                action = "Оставить / проверить"
+            indexes.append({
+                "table": r["relname"],
+                "name": r["indexrelname"],
+                "size": _format_bytes(r["bytes"]),
+                "columns": r["columns"],
+                "unique": bool(r["indisunique"]),
+                "primary": bool(r["indisprimary"]),
+                "constraint": bool(r["backs_constraint"]),
+                "constraint_names": r["constraint_names"],
+                "scans": int(r["idx_scan"] or 0),
+                "reads": int(r["idx_tup_read"] or 0),
+                "definition": r["indexdef"],
+                "action": action,
+            })
         checked_at = datetime.now(ZoneInfo("Europe/Chisinau")).strftime("%d.%m.%Y %H:%M:%S")
         storage_pct = min(100, round((total_bytes/(5*1024**3))*100,1))
         return render_template("db_usage.html", db_name=db_name, total_size=_format_bytes(total_bytes), storage_pct=storage_pct, rows=rows, indexes=indexes, checked_at=checked_at)
