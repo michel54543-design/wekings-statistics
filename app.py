@@ -63,6 +63,14 @@ if database_url.startswith("postgresql"):
 db = SQLAlchemy(app)
 
 _last_attack_debug = {}
+_snapshot_cleanup_lock = threading.Lock()
+_snapshot_cleanup_last_run = 0.0
+
+# Храним все почасовые снимки только за свежий период. Старше него
+# достаточно одного (последнего) снимка за календарный день для истории.
+SNAPSHOT_KEEP_ALL_DAYS = max(7, int(os.getenv("SNAPSHOT_KEEP_ALL_DAYS", "30")))
+SNAPSHOT_KEEP_DAILY_DAYS = max(30, int(os.getenv("SNAPSHOT_KEEP_DAILY_DAYS", "90")))
+SNAPSHOT_CLEANUP_BATCHES_PER_COMMIT = max(1, int(os.getenv("SNAPSHOT_CLEANUP_BATCHES_PER_COMMIT", "5")))
 
 
 class Player(db.Model):
@@ -1107,6 +1115,112 @@ def _backfill_snapshot_batches():
     except Exception:
         db.session.rollback()
         app.logger.exception("Snapshot batch backfill failed")
+
+
+def _cleanup_old_snapshots(force=False):
+    """Удаляет лишние исторические снимки, не трогая текущую историю.
+
+    Правило хранения:
+      * последние SNAPSHOT_KEEP_ALL_DAYS дней — все снимки;
+      * следующие дни до SNAPSHOT_KEEP_DAILY_DAYS — только последний снимок
+        каждого календарного дня по времени Молдовы;
+      * старше SNAPSHOT_KEEP_DAILY_DAYS — удалить полностью.
+
+    Очистка идёт небольшими транзакциями, поэтому обычная работа сайта не
+    блокируется одной огромной DELETE-транзакцией. Обычный VACUUM после неё
+    позволяет PostgreSQL повторно использовать освобождённые страницы.
+    """
+    global _snapshot_cleanup_last_run
+    now_monotonic = time.monotonic()
+    with _snapshot_cleanup_lock:
+        if not force and now_monotonic - _snapshot_cleanup_last_run < 20 * 3600:
+            return {"skipped": True}
+        _snapshot_cleanup_last_run = now_monotonic
+
+    if not db.engine.dialect.name in {"postgresql", "sqlite"}:
+        return {"skipped": True, "reason": "unsupported database"}
+
+    tz = ZoneInfo("Europe/Chisinau")
+    now = datetime.now(timezone.utc)
+    all_cutoff = now - timedelta(days=SNAPSHOT_KEEP_ALL_DAYS)
+    daily_cutoff = now - timedelta(days=SNAPSHOT_KEEP_DAILY_DAYS)
+
+    deleted_batches = 0
+    deleted_events = 0
+    try:
+        # Registry is tiny compared with player_snapshot. Only an empty registry
+        # needs the one-time backfill; never GROUP BY the multi-GB snapshot table
+        # during every scheduled cleanup.
+        if db.session.query(SnapshotBatch.batch_at).first() is None:
+            _backfill_snapshot_batches()
+
+        rows = (
+            db.session.query(SnapshotBatch.batch_at)
+            .filter(SnapshotBatch.batch_at < all_cutoff)
+            .order_by(SnapshotBatch.batch_at.desc())
+            .all()
+        )
+        daily_keep = {}
+        for row in rows:
+            batch = row.batch_at
+            if batch is None:
+                continue
+            if batch >= daily_cutoff:
+                day = moldova_date(batch)
+                if day not in daily_keep:
+                    daily_keep[day] = batch
+
+        keep_batches = set(daily_keep.values())
+        obsolete = [row.batch_at for row in rows if row.batch_at not in keep_batches]
+
+        # Удаляем старые снимки пакетами. Сами batch_at сначала берём из
+        # маленького реестра, поэтому здесь нет GROUP BY по 4+ GB таблице.
+        for start in range(0, len(obsolete), SNAPSHOT_CLEANUP_BATCHES_PER_COMMIT):
+            chunk = obsolete[start:start + SNAPSHOT_CLEANUP_BATCHES_PER_COMMIT]
+            db.session.query(PlayerSnapshot).filter(
+                PlayerSnapshot.batch_at.in_(chunk)
+            ).delete(synchronize_session=False)
+            db.session.query(SnapshotBatch).filter(
+                SnapshotBatch.batch_at.in_(chunk)
+            ).delete(synchronize_session=False)
+            db.session.commit()
+            deleted_batches += len(chunk)
+
+        # События участка тоже не должны расти бесконечно. Их исторический
+        # отчёт нужен только на разумном горизонте.
+        event_cutoff = now - timedelta(days=SNAPSHOT_KEEP_DAILY_DAYS)
+        result = db.session.execute(
+            db.text("DELETE FROM garden_event WHERE event_at < :cutoff"),
+            {"cutoff": event_cutoff},
+        )
+        deleted_events = result.rowcount if result.rowcount is not None else 0
+        db.session.commit()
+
+        app.logger.info(
+            "Snapshot cleanup: removed %s old batches and %s garden events; kept all %s days, daily to %s days",
+            deleted_batches, deleted_events, SNAPSHOT_KEEP_ALL_DAYS, SNAPSHOT_KEEP_DAILY_DAYS,
+        )
+
+        # VACUUM обычный (не VACUUM FULL): безопасен для работающего сайта и
+        # освобождённые страницы PostgreSQL сможет использовать повторно.
+        if db.engine.dialect.name == "postgresql" and deleted_batches:
+            try:
+                with db.engine.connect().execution_options(isolation_level="AUTOCOMMIT") as conn:
+                    conn.execute(db.text("VACUUM (ANALYZE) player_snapshot"))
+                    conn.execute(db.text("VACUUM (ANALYZE) garden_event"))
+            except Exception:
+                app.logger.exception("PostgreSQL VACUUM after snapshot cleanup failed")
+
+        return {
+            "deleted_batches": deleted_batches,
+            "deleted_events": deleted_events,
+            "kept_all_days": SNAPSHOT_KEEP_ALL_DAYS,
+            "kept_daily_days": SNAPSHOT_KEEP_DAILY_DAYS,
+        }
+    except Exception:
+        db.session.rollback()
+        app.logger.exception("Snapshot cleanup failed")
+        return {"error": True}
 
 
 def _calculate_daily_top_payload(report_date, kind):
@@ -2200,22 +2314,23 @@ def start_optional_db_maintenance():
                 # Новая таблица событий создаётся отдельно от основного старта Gunicorn.
                 # Это не задерживает открытие сайта и безопасно для существующей БД.
                 db.create_all()
-                for field in ("power", "glory", "defense", "agility", "mastery", "vitality", "stat_sum"):
-                    db.session.execute(db.text(
-                        f"CREATE INDEX IF NOT EXISTS ix_snapshot_batch_{field} "
-                        f"ON player_snapshot (batch_at, {field} DESC)"
-                    ))
+                # Для текущих запросов достаточно индекса (batch_at, player_id)
+                # и индекса (batch_at, level, power). Семь отдельных индексов
+                # по каждой характеристике только раздували БД и почти не
+                # использовались, потому что топы считаются одним JOIN-запросом.
                 db.session.execute(db.text(
                     "CREATE INDEX IF NOT EXISTS ix_snapshot_batch_level_power "
                     "ON player_snapshot (batch_at, level, power DESC)"
                 ))
-                db.session.execute(db.text(
-                    "CREATE INDEX IF NOT EXISTS ix_player_snapshot_batch_at_desc "
-                    "ON player_snapshot (batch_at DESC)"
-                ))
+                for field in ("power", "glory", "defense", "agility", "mastery", "vitality", "stat_sum"):
+                    db.session.execute(db.text(f"DROP INDEX IF EXISTS ix_snapshot_batch_{field}"))
+                # Одиночный batch_at дублируется первым столбцом (batch_at, player_id).
+                db.session.execute(db.text("DROP INDEX IF EXISTS ix_player_snapshot_batch_at"))
+                db.session.execute(db.text("DROP INDEX IF EXISTS ix_player_snapshot_batch_at_desc"))
                 db.session.commit()
                 _backfill_snapshot_batches()
-                app.logger.info("Optional database performance indexes checked")
+                _cleanup_old_snapshots(force=True)
+                app.logger.info("Optional database performance indexes and retention checked")
             except Exception:
                 db.session.rollback()
                 app.logger.exception("Optional database maintenance failed")
@@ -2224,18 +2339,33 @@ def start_optional_db_maintenance():
 
 
 
+def _run_snapshot_cleanup_background():
+    with app.app_context():
+        try:
+            _cleanup_old_snapshots()
+        finally:
+            db.session.rollback()
+
+
 def start_event_db_init():
-    """Создаёт только отсутствующие таблицы, не задерживая запуск сайта."""
+    """Создаёт отсутствующие таблицы и запускает фоновую очистку истории.
+
+    Важно: backfill реестра снимков выполняется только один раз — если
+    SnapshotBatch пуст. Иначе каждый deploy делал бы GROUP BY по огромной
+    player_snapshot и сам становился причиной медленного старта.
+    """
     def _worker():
         time.sleep(20)
         with app.app_context():
             try:
                 db.create_all()
-                _backfill_snapshot_batches()
-                app.logger.info("GardenEvent and snapshot batch registry checked")
+                if db.session.query(SnapshotBatch.batch_at).first() is None:
+                    _backfill_snapshot_batches()
+                _cleanup_old_snapshots(force=True)
+                app.logger.info("GardenEvent, snapshot batch registry and retention checked")
             except Exception:
                 db.session.rollback()
-                app.logger.exception("GardenEvent table initialization failed")
+                app.logger.exception("Garden events/snapshot maintenance failed")
     threading.Thread(target=_worker, daemon=True, name="garden-events-db-init").start()
 
 
@@ -2405,6 +2535,19 @@ if os.getenv("SCAN_ENABLED", "true").lower() == "true":
         coalesce=True,
         max_instances=1,
         misfire_grace_time=1800,
+    )
+
+    # Ежедневно чистим старые почасовые снимки в фоне.
+    scheduler.add_job(
+        _run_snapshot_cleanup_background,
+        "cron",
+        hour=4,
+        minute=20,
+        id="wekings-snapshot-cleanup",
+        replace_existing=True,
+        coalesce=True,
+        max_instances=1,
+        misfire_grace_time=7200,
     )
 
     # После полуночи оставляем страховочные повторы первого снимка дня.
