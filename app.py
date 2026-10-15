@@ -40,6 +40,10 @@ def _as_utc(value):
 
 
 app = Flask(__name__)
+
+# Independent board-game routes; no access to statistics models or scanners.
+from wekings_game import create_game_blueprint
+app.register_blueprint(create_game_blueprint())
 # Секрет для подписанной служебной cookie выводится из WEKINGS_PASSWORD.
 # Сам пароль в cookie и HTML никогда не сохраняется.
 app.secret_key = hashlib.sha256((os.getenv("WEKINGS_PASSWORD", "") + "|wekings-admin-session").encode()).digest()
