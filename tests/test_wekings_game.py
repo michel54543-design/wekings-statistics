@@ -51,6 +51,23 @@ class GameTests(unittest.TestCase):
             self.assertEqual(self.client.get(self.url).json['rooms'],[])
             self.assertEqual(self.client.post(self.url+'/'+room['code']+'/join',json=dict(password='secret',color='blue')).status_code,200)
 
+    def test_host_can_start_with_two_of_four(self):
+        room = self.room(4)
+        url = self.url+'/'+room['code']
+        headers = {'X-Player-Token': room['token']}
+        self.assertTrue(room['host'])
+        self.assertEqual(self.client.post(url+'/start',json={},headers=headers).status_code,409)
+        guest = self.client.post(url+'/join',json=dict(color='blue')).json
+        self.assertFalse(guest['host'])
+        self.assertEqual(self.client.post(url+'/start',json={},headers={'X-Player-Token':guest['token']}).status_code,403)
+        started = self.client.post(url+'/start',json={},headers=headers)
+        self.assertEqual(started.status_code,200)
+        self.assertEqual(len(started.json['state']['players']),2)
+        self.assertFalse(started.json['waiting'])
+        self.assertEqual(self.client.post(url+'/join',json=dict(color='green')).status_code,409)
+        self.assertEqual(self.client.get(self.url).json['rooms'],[])
+        self.assertEqual(self.client.post(url+'/start',json={},headers=headers).status_code,409)
+
     def test_rules_match_browser(self):
         cases = json.loads(subprocess.check_output(['node', str(ROOT / 'tests/rules_corpus.cjs')], cwd=ROOT))
         self.assertGreater(len(cases), 2800)
