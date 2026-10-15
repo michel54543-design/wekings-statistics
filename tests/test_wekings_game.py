@@ -23,6 +23,34 @@ class GameTests(unittest.TestCase):
         self.assertEqual(r.status_code, 200)
         return r.json
 
+    def test_public_private_password_rooms(self):
+        public = self.client.post(self.url, json=dict(count=2, name='<Лагерь>', visibility='public', password='свой пароль')).json
+        private = self.client.post(self.url, json=dict(count=2, name='Секрет', visibility='private', password='123')).json
+        listing = self.client.get(self.url).json['rooms']
+        self.assertEqual([r['code'] for r in listing], [public['code']])
+        self.assertTrue(listing[0]['locked'])
+        self.assertEqual(listing[0]['colors'], ['blue', 'green', 'yellow'])
+        self.assertNotIn('password', json.dumps(listing))
+        self.assertNotIn('token', json.dumps(listing))
+        self.assertEqual(self.client.post(self.url+'/'+public['code']+'/join', json=dict(color='blue', password='ошибка')).status_code,403)
+        joined = self.client.post(self.url+'/'+public['code']+'/join', json=dict(color='blue', password='свой пароль'))
+        self.assertEqual(joined.status_code,200)
+        self.assertFalse(joined.json['waiting'])
+        self.assertEqual(self.client.get(self.url).json['rooms'], [])
+        self.assertEqual(self.client.post(self.url+'/'+private['code']+'/join', json=dict(color='green', password='123')).status_code,200)
+        self.assertEqual(self.client.post(self.url,json=dict(visibility='unknown')).status_code,400)
+        self.assertEqual(self.client.post(self.url,json=dict(name='')).status_code,400)
+        self.assertEqual(self.client.post(self.url,json=dict(password='x'*65)).status_code,400)
+
+    def test_password_attempt_limit_and_stale_listing(self):
+        room = self.client.post(self.url,json=dict(password='secret')).json
+        for _ in range(8):
+            self.assertEqual(self.client.post(self.url+'/'+room['code']+'/join',json=dict(password='wrong')).status_code,403)
+        self.assertEqual(self.client.post(self.url+'/'+room['code']+'/join',json=dict(password='wrong')).status_code,429)
+        with patch.object(game.time,'time',return_value=game.time.time()+61):
+            self.assertEqual(self.client.get(self.url).json['rooms'],[])
+            self.assertEqual(self.client.post(self.url+'/'+room['code']+'/join',json=dict(password='secret',color='blue')).status_code,200)
+
     def test_rules_match_browser(self):
         cases = json.loads(subprocess.check_output(['node', str(ROOT / 'tests/rules_corpus.cjs')], cwd=ROOT))
         self.assertGreater(len(cases), 2800)
