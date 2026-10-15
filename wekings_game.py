@@ -10,6 +10,7 @@ import secrets
 import time
 
 from flask import Blueprint, jsonify, request, send_from_directory
+from werkzeug.security import generate_password_hash, check_password_hash
 
 _RULES = json.loads(Path(__file__).with_name('wekings_game_rules.json').read_text(encoding='utf-8'))
 TILES = {int(k): v for k, v in _RULES['tiles'].items()}
@@ -238,7 +239,21 @@ def create_game_blueprint():
         now = time.time()
         room['seats'][seat]['seen'] = now
         room['updated'] = now
-        return dict(code=room['code'], seat=seat, capacity=room['capacity'], revision=room['revision'], readyAt=room['readyAt'], state=room['state'], last=room['last'], players=[dict(name='Викинг ' + str(i + 1), color=s['color'], online=now - s['seen'] < 15) for i, s in enumerate(room['seats'])], waiting=room['state'] is None)
+        return dict(name=room['name'], visibility=room['visibility'], locked=bool(room['password_hash']), code=room['code'], seat=seat, capacity=room['capacity'], revision=room['revision'], readyAt=room['readyAt'], state=room['state'], last=room['last'], players=[dict(name='Викинг ' + str(i + 1), color=s['color'], online=now - s['seen'] < 15) for i, s in enumerate(room['seats'])], waiting=room['state'] is None)
+
+    @bp.get('/api/rooms')
+    def list_rooms():
+        now = time.time()
+        with lock:
+            cleanup(now)
+            listing = []
+            for room in rooms.values():
+                if room['visibility'] != 'public' or room['state'] is not None or len(room['seats']) >= room['capacity']:
+                    continue
+                if not any(now - seat['seen'] < 20 for seat in room['seats']):
+                    continue
+                listing.append(dict(code=room['code'], name=room['name'], count=len(room['seats']), capacity=room['capacity'], mode=room['mode'], locked=bool(room['password_hash']), colors=[c for c in COLORS if c not in {seat['color'] for seat in room['seats']}]))
+            return jsonify(rooms=listing)
 
     @bp.post('/api/rooms')
     def create_room():
@@ -247,6 +262,12 @@ def create_game_blueprint():
             create_game(data.get('count', 4), data.get('color', 'red'), data.get('mode', 'adventure'))
         except (ValueError, TypeError):
             raise GameError('Неверные настройки')
+        visibility = data.get('visibility', 'public')
+        name = data.get('name', 'Дружина викингов')
+        password = data.get('password', '')
+        if visibility not in ('public', 'private') or not isinstance(name, str) or not 1 <= len(name.strip()) <= 40 or not isinstance(password, str) or len(password) > 64:
+            raise GameError('Название: 1–40 символов, пароль: до 64 символов')
+        password_hash = generate_password_hash(password) if password else ''
         with lock:
             cleanup(now)
             if len(rooms) >= 128 or len(creations) >= 30:
@@ -256,7 +277,7 @@ def create_game_blueprint():
             while code in rooms:
                 code = secrets.token_hex(3).upper()
             token = secrets.token_urlsafe(32)
-            room = dict(code=code, capacity=data.get('count', 4), color=data.get('color', 'red'), mode=data.get('mode', 'adventure'), seats=[dict(token=token, color=data.get('color', 'red'), seen=now)], state=None, revision=0, last=None, readyAt=0, updated=now)
+            room = dict(name=name.strip(), visibility=visibility, password_hash=password_hash, attempts=deque(maxlen=256), code=code, capacity=data.get('count', 4), color=data.get('color', 'red'), mode=data.get('mode', 'adventure'), seats=[dict(token=token, color=data.get('color', 'red'), seen=now)], state=None, revision=0, last=None, readyAt=0, updated=now)
             rooms[code] = room
             return jsonify(**view(room, token), token=token)
 
@@ -268,6 +289,16 @@ def create_game_blueprint():
             room = get_room(code)
             if room['state'] is not None or len(room['seats']) >= room['capacity']:
                 raise GameError('В комнате нет свободных мест', 409)
+            password = data.get('password', '')
+            if not isinstance(password, str) or len(password) > 64:
+                raise GameError('Неверный пароль', 403)
+            if room['password_hash']:
+                now, ip = time.time(), request.remote_addr
+                if sum(1 for who, when in room['attempts'] if who == ip and now - when < 60) >= 8:
+                    raise GameError('Слишком много попыток. Подождите минуту.', 429)
+                room['attempts'].append((ip, now))
+                if not check_password_hash(room['password_hash'], password):
+                    raise GameError('Неверный пароль комнаты', 403)
             available = [c for c in COLORS if c not in {s['color'] for s in room['seats']}]
             color = data.get('color', available[0])
             if color not in available:
