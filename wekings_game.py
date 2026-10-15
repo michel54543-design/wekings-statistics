@@ -239,7 +239,7 @@ def create_game_blueprint():
         now = time.time()
         room['seats'][seat]['seen'] = now
         room['updated'] = now
-        return dict(name=room['name'], visibility=room['visibility'], locked=bool(room['password_hash']), code=room['code'], seat=seat, capacity=room['capacity'], revision=room['revision'], readyAt=room['readyAt'], state=room['state'], last=room['last'], players=[dict(name='Викинг ' + str(i + 1), color=s['color'], online=now - s['seen'] < 15) for i, s in enumerate(room['seats'])], waiting=room['state'] is None)
+        return dict(name=room['name'], visibility=room['visibility'], locked=bool(room['password_hash']), code=room['code'], seat=seat, host=seat == 0, capacity=room['capacity'], revision=room['revision'], readyAt=room['readyAt'], state=room['state'], last=room['last'], players=[dict(name='Викинг ' + str(i + 1), color=s['color'], online=now - s['seen'] < 15) for i, s in enumerate(room['seats'])], waiting=room['state'] is None)
 
     @bp.get('/api/rooms')
     def list_rooms():
@@ -306,11 +306,30 @@ def create_game_blueprint():
             token = secrets.token_urlsafe(32)
             room['seats'].append(dict(token=token, color=color, seen=time.time()))
             if len(room['seats']) == room['capacity']:
-                room['state'] = create_game(room['capacity'], room['color'], room['mode'])
-                for i, p in enumerate(room['state']['players']):
-                    p.update(name='Викинг ' + str(i + 1), color=room['seats'][i]['color'])
-                room['revision'] = 1
+                begin_room(room)
             return jsonify(**view(room, token), token=token)
+
+    def begin_room(room):
+        room['state'] = create_game(len(room['seats']), room['color'], room['mode'])
+        for i, player in enumerate(room['state']['players']):
+            player.update(name='Викинг ' + str(i + 1), color=room['seats'][i]['color'])
+        room['revision'] = 1
+
+    @bp.post('/api/rooms/<code>/start')
+    def start_room(code):
+        with lock:
+            cleanup(time.time())
+            room = get_room(code)
+            token = request.headers.get('X-Player-Token', '')
+            data = view(room, token)
+            if data['seat'] != 0:
+                raise GameError('Начать партию может только создатель комнаты', 403)
+            if room['state'] is not None:
+                raise GameError('Партия уже началась', 409)
+            if len(room['seats']) < 2:
+                raise GameError('Для начала нужны хотя бы 2 игрока', 409)
+            begin_room(room)
+            return jsonify(view(room, token))
 
     @bp.get('/api/rooms/<code>')
     def snapshot(code):
