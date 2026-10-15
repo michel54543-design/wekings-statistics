@@ -360,7 +360,7 @@ def create_game_blueprint():
             room['state'] = result['state']
             room['revision'] += 1
             room['last'] = dict(before=before, actions=result['actions'], value=value, actor=before['turn'])
-            room['readyAt'] = int(time.time() * 1000 + 1200 + sum(len(a.get('steps', [])) * 380 + (400 if a['type'] == 'event' else 0) for a in result['actions']))
+            room['readyAt'] = int(time.time() * 1000 + 2050 + sum(len(a.get('steps', [])) * 380 + (400 if a['type'] == 'event' else 0) for a in result['actions']))
             return jsonify(view(room, request.headers.get('X-Player-Token', '')))
 
     return bp
