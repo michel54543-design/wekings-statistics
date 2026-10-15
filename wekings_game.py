@@ -157,7 +157,7 @@ def fight(state, stance, value, rng=None):
             actions.append(dict(type='event', text='руна поглотила ответный удар'))
         b['heroHp'] = max(0, b['heroHp'] - incoming)
     text = ('Удар из-за щита' if stance == 'guard' else 'Атака') + f': {damage} урона. Ответ врага: {incoming}.'
-    actions.append(dict(type='event', text=text))
+    actions.append(dict(type='event', damage=damage, incoming=incoming, text=text))
     if b['enemyHp'] == 0:
         p['cleared'].append(b['at'])
         p['shield'], nxt['battle'] = True, None
@@ -379,7 +379,7 @@ def create_game_blueprint():
             room['state'] = result['state']
             room['revision'] += 1
             room['last'] = dict(before=before, actions=result['actions'], value=value, actor=before['turn'])
-            room['readyAt'] = int(time.time() * 1000 + 2050 + sum(len(a.get('steps', [])) * 380 + (400 if a['type'] == 'event' else 0) for a in result['actions']))
+            room['readyAt'] = int(time.time() * 1000 + 2050 + (1400 if before.get('battle') else 0) + sum(len(a.get('steps', [])) * 380 + (400 if a['type'] == 'event' else 0) for a in result['actions']))
             return jsonify(view(room, request.headers.get('X-Player-Token', '')))
 
     return bp
