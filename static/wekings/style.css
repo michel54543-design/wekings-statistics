@@ -43,3 +43,5 @@
 #map-battle .fighter-art{background:none!important;animation:none!important;transform:none!important}#map-battle .map-fighter{animation:none!important;transform:none!important} .fighter-art canvas{display:block;width:100%;height:100%;object-fit:contain}.damage-number{color:#ffe1a1;text-shadow:0 2px 5px #000}
 
 #map-battle .map-fighters{max-height:none;min-height:130px;gap:0}#map-battle .map-fighter{width:46%}#map-battle .battle-vs{width:8%;text-align:center}
+
+@media(max-width:760px){#map.is-fighting{height:460px!important}#map-battle .map-fighters{min-height:140px}#map-battle-message{flex-shrink:0}}
