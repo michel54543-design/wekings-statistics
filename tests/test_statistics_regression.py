@@ -62,11 +62,14 @@ class StatisticsRegression(unittest.TestCase):
 
     def test_existing_files_are_unchanged(self):
         # All original files except the two intentional integration points remain unchanged after Git newline normalization.
+        original_requirements = subprocess.check_output(['git','show',BASE_REV+':requirements.txt'],cwd=ROOT).decode().splitlines()
+        self.assertEqual((ROOT/'requirements.txt').read_text().splitlines(), original_requirements + ['psycopg[binary]>=3.2,<4'])
         tracked=subprocess.check_output(['git','ls-tree','-r','--name-only',BASE_REV],cwd=ROOT).decode().splitlines()
         for name in tracked:
-            if name not in ('app.py','templates/index.html'):
+            if name not in ('app.py','templates/index.html','requirements.txt'):
                 with self.subTest(file=name):
                     self.assertEqual(subprocess.run(['git','diff','--quiet',BASE_REV,'--',name],cwd=ROOT).returncode,0)
 
 if __name__=='__main__':
     unittest.main()
+
