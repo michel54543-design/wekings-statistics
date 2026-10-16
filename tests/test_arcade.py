@@ -10,7 +10,7 @@ class ArcadeRoutes(unittest.TestCase):
         self.client = app.test_client()
 
     def test_hub_and_scripts_are_served_without_statistics_dependencies(self):
-        for asset in ('arcade.html', 'arcade.css', 'arcade.js', 'mini-engine.js'):
+        for asset in ('arcade.html', 'arcade.css', 'arcade.js', 'mini-engine.js', 'platform-engine.js', 'platformer.js', 'platformer.css', 'platform-world.webp'):
             with self.subTest(asset=asset):
                 response = self.client.get('/games/wekings/' + asset)
                 self.assertEqual(response.status_code, 200)
@@ -28,6 +28,7 @@ class ArcadeRoutes(unittest.TestCase):
         self.assertIn('href="arcade.html"', html)
         response.close()
         self.assertEqual(self.client.get('/games/wekings/tests/test_mini_games.cjs').status_code, 404)
+        self.assertEqual(self.client.get('/games/wekings/platformer-preview.html').status_code, 404)
 
 
 if __name__ == '__main__':
