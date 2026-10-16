@@ -1,0 +1,30 @@
+(function(root){'use strict';
+const clamp=(n,a,b)=>Math.max(a,Math.min(b,n));
+class Game{
+ constructor(kind,random=Math.random){if(!['hunt','shield','storm'].includes(kind))throw Error('Unknown northern game');this.kind=kind;this.random=random;this.mode='ready';this.time=0;this.limit=kind==='shield'?45:60;this.score=0;this.hp=kind==='storm'?4:5;this.maxHp=this.hp;this.ammo=18;this.hits=0;this.shots=0;this.combo=0;this.stamina=100;this.direction=1;this.changed=-10;this.lane=1;this.boat=1;this.invulnerable=0;this.cooldown=0;this.spawn=0;this.objects=[];this.effects=[];this.events=[];this.id=0;this.shot=null;this.lightning=null;this.nextLightning=9;this.distance=0;this.pose='idle';this.poseUntil=0;}
+ start(){if(this.mode==='ready'||this.mode==='paused')this.mode='playing';}
+ pause(){if(this.mode==='playing')this.mode='paused';}
+ emit(type,text,x=360,y=390){this.events.push({type,text,x,y});if(this.events.length>20)this.events.shift();}
+ end(win){if(this.mode!=='playing')return;this.mode=win?'won':'lost';this.emit('end',this.kind==='hunt'?(win?'Удачная охота!':'Охота завершена'):win?(this.kind==='shield'?'Щит ярла выдержал!':'Гавань достигнута!'):(this.kind==='shield'?'Оборона прорвана':'Драккар не выдержал бури'));}
+ fire(x,y){if(this.kind!=='hunt'||this.mode!=='playing'||!this.ammo||this.cooldown>0||this.shot)return false;this.ammo--;this.shots++;this.cooldown=.36;this.shot={x:clamp(x,0,720),y:clamp(y,0,800),left:.16};this.pose='attack';this.poseUntil=this.time+.35;return true;}
+ defend(direction){if(this.kind!=='shield'||this.mode!=='playing'||![0,1,2].includes(direction))return false;if(direction!==this.direction){this.direction=direction;this.changed=this.time;}return true;}
+ steer(delta){if(this.kind!=='storm'||this.mode!=='playing')return false;this.lane=clamp(this.lane+Math.sign(delta),0,2);return true;}
+ hurt(text){if(this.invulnerable>0)return;this.hp=Math.max(0,this.hp-1);this.combo=0;this.invulnerable=this.kind==='storm'?1.2:.25;this.pose='hit';this.poseUntil=this.time+.4;this.emit('hurt',text);if(!this.hp)this.end(false);}
+ update(dt){if(this.mode!=='playing'||!Number.isFinite(dt)||dt<=0)return;let left=Math.min(dt,.25);while(left>1e-8&&this.mode==='playing'){const step=Math.min(left,1/120);this.step(step);left-=step;}}
+ step(dt){this.time+=dt;this.cooldown=Math.max(0,this.cooldown-dt);this.invulnerable=Math.max(0,this.invulnerable-dt);if(this.time>this.poseUntil)this.pose='idle';for(const f of this.effects)f.life-=dt;this.effects=this.effects.filter(f=>f.life>0);if(this.kind==='hunt')this.hunt(dt);else if(this.kind==='shield')this.shield(dt);else this.storm(dt);if(this.mode==='playing'&&this.time>=this.limit)this.end(this.kind==='hunt'?this.score>=350:true);}
+ hunt(dt){this.spawn-=dt;if(this.spawn<=0){const kind=Math.floor(this.random()*3),sign=this.random()<.5?1:-1;this.objects.push({id:++this.id,kind,x:sign>0?-100:820,y:260+this.random()*290,vx:sign*(75+this.random()*65),r:kind===2?45:55});this.spawn=1.1+this.random()*.9;}
+ for(const o of this.objects)o.x+=o.vx*dt;this.objects=this.objects.filter(o=>o.x>-180&&o.x<900);
+ if(this.shot){this.shot.left-=dt;if(this.shot.left<=0){const shot=this.shot;this.shot=null;let target=null,best=Infinity;for(const o of this.objects){const d=((shot.x-o.x)/o.r)**2+((shot.y-o.y)/(o.r*.7))**2;if(d<=1&&d<best){best=d;target=o;}}if(target){const points=[80,60,100][target.kind];this.score+=points;this.hits++;this.combo++;this.objects=this.objects.filter(o=>o!==target);this.effects.push({x:target.x,y:target.y,text:'+'+points,life:.85});this.emit('hit','Попадание! +'+points,target.x,target.y);}else{this.combo=0;this.effects.push({x:shot.x,y:shot.y,text:'Промах',life:.6});this.emit('miss','Промах. Бери упреждение по движению зверя.',shot.x,shot.y);}}}
+ if(this.ammo===0&&!this.shot)this.end(this.score>=350);}
+ shield(dt){this.stamina=Math.min(100,this.stamina+dt*16);this.spawn-=dt;if(this.spawn<=0){this.objects.push({id:++this.id,lane:Math.floor(this.random()*3),left:1.05,total:1.05});this.spawn=Math.max(.58,1.15-this.time*.01)+this.random()*.2;}
+ for(const o of this.objects){o.left-=dt;if(o.left<=0&&!o.done){o.done=true;if(o.lane===this.direction&&this.stamina>=18){this.stamina-=18;this.combo++;const perfect=this.time-this.changed<=.24;const points=(perfect?35:20)+Math.min(20,this.combo*2);this.score+=points;this.pose='block';this.poseUntil=this.time+.3;this.effects.push({x:360,y:520,text:perfect?'ТОЧНЫЙ БЛОК +'+points:'БЛОК +'+points,life:.65});this.emit('block',perfect?'Точный блок!':'Удар отражён');}else this.hurt(o.lane!==this.direction?'Удар с другой стороны!':'Щит устал — восстанавливай силы.');}}
+ this.objects=this.objects.filter(o=>!o.done);}
+ storm(dt){this.distance=Math.min(6000,this.time*100);this.boat+=(this.lane-this.boat)*Math.min(1,dt*10);this.spawn-=dt;if(this.spawn<=0){const roll=this.random(),kind=roll<.18?'rune':roll<.25?'repair':roll<.65?'rock':roll<.86?'wood':'whirlpool';this.objects.push({id:++this.id,lane:Math.floor(this.random()*3),y:-70,kind,done:false});this.spawn=Math.max(.58,1.05-this.time*.006)+this.random()*.25;}
+ for(const o of this.objects){o.y+=(200+this.time*1.5)*dt;if(!o.done&&Math.abs(o.y-650)<42&&Math.abs(this.boat-o.lane)<.38){o.done=true;if(o.kind==='rune'){this.score+=50;this.emit('hit','Морская руна +50');}else if(o.kind==='repair'){this.hp=Math.min(this.maxHp,this.hp+1);this.emit('heal','Починка корпуса +1');}else this.hurt('Столкновение! Смени курс.');}}
+ this.objects=this.objects.filter(o=>!o.done&&o.y<880);
+ if(this.time>=this.nextLightning&&!this.lightning){this.lightning={lane:Math.floor(this.random()*3),left:1.7};this.nextLightning=this.time+8+this.random()*3;}
+ if(this.lightning){this.lightning.left-=dt;if(this.lightning.left<=0){if(Math.abs(this.boat-this.lightning.lane)<.48)this.hurt('Молния попала в драккар!');this.effects.push({x:120+this.lightning.lane*240,y:350,text:'ϟ',life:.4});this.lightning=null;}}
+ if(this.time>=60&&this.mode==='playing'){this.score+=Math.round(this.hp*100+this.distance/10);this.end(true);}}
+}
+const api={Game,clamp};root.Northern=api;if(typeof module!=='undefined')module.exports=api;
+})(globalThis);

@@ -22,3 +22,7 @@ Lost Drakkar platformer: platform-world.webp is an original AI-generated Norse b
 
 ## Shared Viking hero (2026-10-16)
 `viking-hero.webp`: original generated 16-frame atlas based on the character reference supplied by the project owner. Created with the built-in image generation tool; transparent frames packed into a 4×4 grid (384px cells). Used for board pawns, combat, platformer and arcade avatars. Old licensed enemy assets and credits remain unchanged.
+
+
+## Northern mini-games (2026-10-16)
+`north-animals.webp`: original deer, boar and wolf sprite atlas created with the built-in image generation tool for this project. The three new mini-games reuse the existing original Viking/world/wildlife artwork and the credited Flare goblin atlas above. Weather, shield, projectiles, sea obstacles and effects are drawn by game code.
