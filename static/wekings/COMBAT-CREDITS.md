@@ -15,3 +15,6 @@ Changes: one direction selected, frames cropped, resized and packed into a WebP 
 All other downloaded animations were cropped, resized and packed into atlases.
 
 Sea serpent uses the existing WEKINGS illustration with procedural body deformation and water effects.
+
+
+Lost Drakkar platformer: platform-world.webp is an original AI-generated Norse background atlas created for WEKINGS with the built-in imagegen tool. It contains forest, icy mountain pass and volcanic harbour scenes. Platforms, effects, UI and the final ship are drawn separately in code; they are not part of the background image. Viking walking art is the existing WEKINGS viking-walk.webp. Goblin and dragon animations reuse the credited and licensed sources above.
