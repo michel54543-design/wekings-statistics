@@ -182,7 +182,7 @@ def create_game_blueprint():
     bp = Blueprint('wekings_game', __name__, url_prefix='/games/wekings')
     assets = Path(__file__).parent / 'static' / 'wekings'
     rooms, lock, creations = {}, RLock(), deque()
-    allowed = {'platform-engine.js', 'platformer.js', 'platformer.css', 'platform-world.webp', 'arcade.html', 'arcade.css', 'arcade.js', 'mini-engine.js', 'combat-renderer.js', 'combat-sprites.json', 'combat-dragon.webp', 'combat-zombie.webp', 'combat-knight.webp', 'combat-goblin.webp', 'COMBAT-CREDITS.md', 'combat-goblin-license.txt', 'index.html', 'app.js', 'engine.js', 'style.css', 'viking-map-dark.webp', 'encounters.webp', 'viking-walk.webp', 'landmarks.webp', 'wildlife.webp'}
+    allowed = {'viking-hero.webp', 'platform-engine.js', 'platformer.js', 'platformer.css', 'platform-world.webp', 'arcade.html', 'arcade.css', 'arcade.js', 'mini-engine.js', 'combat-renderer.js', 'combat-sprites.json', 'combat-dragon.webp', 'combat-zombie.webp', 'combat-knight.webp', 'combat-goblin.webp', 'COMBAT-CREDITS.md', 'combat-goblin-license.txt', 'index.html', 'app.js', 'engine.js', 'style.css', 'viking-map-dark.webp', 'encounters.webp', 'viking-walk.webp', 'landmarks.webp', 'wildlife.webp'}
 
     @bp.before_request
     def validate_game_request():
