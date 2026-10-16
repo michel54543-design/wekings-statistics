@@ -18,3 +18,7 @@ Sea serpent uses the existing WEKINGS illustration with procedural body deformat
 
 
 Lost Drakkar platformer: platform-world.webp is an original AI-generated Norse background atlas created for WEKINGS with the built-in imagegen tool. It contains forest, icy mountain pass and volcanic harbour scenes. Platforms, effects, UI and the final ship are drawn separately in code; they are not part of the background image. Viking walking art is the existing WEKINGS viking-walk.webp. Goblin and dragon animations reuse the credited and licensed sources above.
+
+
+## Shared Viking hero (2026-10-16)
+`viking-hero.webp`: original generated 16-frame atlas based on the character reference supplied by the project owner. Created with the built-in image generation tool; transparent frames packed into a 4×4 grid (384px cells). Used for board pawns, combat, platformer and arcade avatars. Old licensed enemy assets and credits remain unchanged.
