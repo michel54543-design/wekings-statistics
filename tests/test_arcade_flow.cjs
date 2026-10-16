@@ -1,7 +1,7 @@
 const assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm');
 const Mini=require('../static/wekings/mini-engine.js');
 const source=fs.readFileSync(require.resolve('../static/wekings/arcade.js'),'utf8');
-const axe=source.slice(source.indexOf('function mountAxe(life){'),source.indexOf('function mountSnake(life){'));
+const axe=source.slice(source.indexOf('function mountAxe(life){'),source.indexOf('function mountSea(life){'));
 const handlers=new Map(),nodes=new Map();
 const paint=new Proxy({createLinearGradient:()=>({addColorStop(){}})},{get(o,key){return o[key]??(()=>{});}});
 function node(id){if(!nodes.has(id))nodes.set(id,{id,textContent:'',disabled:false,hidden:false,open:false,getContext:()=>paint});return nodes.get(id);}
