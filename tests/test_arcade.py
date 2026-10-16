@@ -10,7 +10,7 @@ class ArcadeRoutes(unittest.TestCase):
         self.client = app.test_client()
 
     def test_hub_and_scripts_are_served_without_statistics_dependencies(self):
-        for asset in ('arcade.html', 'arcade.css', 'arcade.js', 'mini-engine.js', 'platform-engine.js', 'platformer.js', 'platformer.css', 'platform-world.webp'):
+        for asset in ('arcade.html', 'arcade.css', 'arcade.js', 'mini-engine.js', 'platform-engine.js', 'platformer.js', 'platformer.css', 'platform-world.webp', 'viking-hero.webp'):
             with self.subTest(asset=asset):
                 response = self.client.get('/games/wekings/' + asset)
                 self.assertEqual(response.status_code, 200)
