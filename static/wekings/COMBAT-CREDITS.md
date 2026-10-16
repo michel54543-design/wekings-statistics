@@ -26,3 +26,7 @@ Lost Drakkar platformer: platform-world.webp is an original AI-generated Norse b
 
 ## Northern mini-games (2026-10-16)
 `north-animals.webp`: original deer, boar and wolf sprite atlas created with the built-in image generation tool for this project. The three new mini-games reuse the existing original Viking/world/wildlife artwork and the credited Flare goblin atlas above. Weather, shield, projectiles, sea obstacles and effects are drawn by game code.
+
+
+## Dragon hunt wingbeat atlas (2026-10-16)
+`hunt-dragons.webp`: original 12-frame flight atlas created with the built-in image generation tool for this project, three species × four articulated wing poses. Frames were packed around fixed torso anchors into 384px cells so the body hit area stays stable. This replaces the animal artwork in the hunting game; no third-party assets were added.
