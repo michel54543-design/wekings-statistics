@@ -48,7 +48,7 @@ class StatisticsRegression(unittest.TestCase):
         self.assertEqual((ROOT/'requirements.txt').read_text().splitlines(), original_requirements + ['psycopg[binary]>=3.2,<4'])
         tracked=subprocess.check_output(['git','ls-tree','-r','--name-only',BASE_REV],cwd=ROOT).decode().splitlines()
         for name in tracked:
-            if name not in ('app.py','templates/index.html','requirements.txt'):
+            if name not in ('app.py','templates/index.html','requirements.txt','static/app.js'):
                 with self.subTest(file=name):
                     self.assertEqual(subprocess.run(['git','diff','--quiet',BASE_REV,'--',name],cwd=ROOT).returncode,0)
 

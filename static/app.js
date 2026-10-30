@@ -106,20 +106,21 @@ async function loadPlayerDetail(playerId, scroll = true) {
 }
 
 function attackTimeText(value, stayMinutes, goneText) {
-  // Время Дракона/Змея — это суточное расписание. После начала события
-  // оставляем время до окончания пребывания, а затем показываем статус.
+  // Игровые часы: UTC+3 круглый год, независимо от перевода часов у игрока.
   if (!value) return "Ожидаем новое время";
-  const start = new Date(value);
+  // SQLite может вернуть UTC без суффикса часового пояса.
+  const timestamp = /(?:Z|[+-]\d{2}:?\d{2})$/i.test(value) ? value : `${value}Z`;
+  const start = new Date(timestamp);
   if (Number.isNaN(start.getTime())) return "Ожидаем новое время";
 
   const now = new Date();
-  const end = new Date(start.getTime() + stayMinutes * 60 * 1000);
-  if (now >= end) return goneText;
+  if (now.getTime() >= start.getTime() + stayMinutes * 60 * 1000) return goneText;
 
-  const sameDay = start.getFullYear() === now.getFullYear() &&
-    start.getMonth() === now.getMonth() && start.getDate() === now.getDate();
-  const time = start.toLocaleTimeString("ru-RU", {hour:"2-digit", minute:"2-digit"});
-  return sameDay ? time : `${time} · ${String(start.getDate()).padStart(2,"0")}.${String(start.getMonth()+1).padStart(2,"0")}`;
+  const options = {timeZone: "Europe/Moscow"};
+  const day = date => date.toLocaleDateString("en-CA", options);
+  const time = start.toLocaleTimeString("ru-RU", {...options, hour:"2-digit", minute:"2-digit"});
+  const date = start.toLocaleDateString("ru-RU", {...options, day:"2-digit", month:"2-digit"});
+  return day(start) === day(now) ? time : `${time} · ${date}`;
 }
 
 function weatherTimeText(value) {
