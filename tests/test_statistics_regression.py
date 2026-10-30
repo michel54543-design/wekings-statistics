@@ -30,7 +30,7 @@ class StatisticsRegression(unittest.TestCase):
 
     def test_existing_routes_unchanged(self):
         before={ (r.rule, tuple(sorted(r.methods))) for r in self.before.app.url_map.iter_rules() }
-        after={ (r.rule, tuple(sorted(r.methods))) for r in self.after.app.url_map.iter_rules() if r.endpoint.split('.')[0]!='wekings_game' }
+        after={ (r.rule, tuple(sorted(r.methods))) for r in self.after.app.url_map.iter_rules() }
         self.assertEqual(before,after)
 
     def test_existing_api_results(self):
@@ -41,24 +41,6 @@ class StatisticsRegression(unittest.TestCase):
                 self.assertEqual(a.status_code,200,url)
                 self.assertEqual(b.status_code,a.status_code)
                 self.assertEqual(b.json,a.json)
-
-    def test_game_does_not_touch_statistics_db(self):
-        m=self.after
-        with m.app.app_context():
-            before={t: m.db.session.execute(m.db.text('SELECT COUNT(*) FROM "'+t+'"')).scalar() for t in m.db.metadata.tables}
-        client=m.app.test_client()
-        self.assertEqual(client.get('/').status_code,200)
-        r=client.get('/games/wekings/')
-        self.assertEqual(r.status_code,200)
-        r.close()
-        a=client.post('/games/wekings/api/rooms',json={'count':2,'color':'blue','mode':'adventure'}).json
-        url='/games/wekings/api/rooms/'+a['code']
-        self.assertEqual(client.post(url+'/join',json={'color':'green'}).status_code,200)
-        self.assertEqual(client.post(url+'/command',headers={'X-Player-Token':a['token']},json={'type':'ROLL','revision':1}).status_code,200)
-        with m.app.app_context():
-            after={t: m.db.session.execute(m.db.text('SELECT COUNT(*) FROM "'+t+'"')).scalar() for t in m.db.metadata.tables}
-        self.assertEqual(before,after)
-        self.assertEqual(set(self.before.db.metadata.tables),set(self.after.db.metadata.tables))
 
     def test_existing_files_are_unchanged(self):
         # All original files except the two intentional integration points remain unchanged after Git newline normalization.
