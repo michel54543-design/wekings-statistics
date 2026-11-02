@@ -360,7 +360,8 @@ table.levels-table .level-group-row.open td{border-bottom-color:transparent}
 .game-links-content strong{color:#f0cd83;font-size:13px}
 .game-links-content a{color:#7acbff;text-decoration:underline;text-underline-offset:3px}
 .game-links-content a:focus-visible{outline:2px solid #f0cd83;outline-offset:3px}
-.game-links:hover .game-links-track,.game-links:focus-within .game-links-track,.game-links-pause:checked~.game-links-viewport .game-links-track{animation-play-state:paused}
+.game-links-viewport:focus-within .game-links-track,.game-links-pause:checked~.game-links-viewport .game-links-track{animation-play-state:paused}
+@media(hover:hover) and (pointer:fine){.game-links-viewport:hover .game-links-track{animation-play-state:paused}}
 @keyframes game-links-scroll{to{transform:translateX(-50%)}}
 @media(prefers-reduced-motion:reduce){.game-links-control{display:none}.game-links-track{animation:none;width:auto}.game-links-content{flex-wrap:wrap;white-space:normal;gap:10px 24px;padding:0 12px;overflow-wrap:anywhere}.game-links-content[aria-hidden]{display:none}}
 
