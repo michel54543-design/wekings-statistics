@@ -363,3 +363,5 @@ table.levels-table .level-group-row.open td{border-bottom-color:transparent}
 .game-links:hover .game-links-track,.game-links:focus-within .game-links-track,.game-links-pause:checked~.game-links-viewport .game-links-track{animation-play-state:paused}
 @keyframes game-links-scroll{to{transform:translateX(-50%)}}
 @media(prefers-reduced-motion:reduce){.game-links-control{display:none}.game-links-track{animation:none;width:auto}.game-links-content{flex-wrap:wrap;white-space:normal;gap:10px 24px;padding:0 12px;overflow-wrap:anywhere}.game-links-content[aria-hidden]{display:none}}
+
+@media(max-width:760px){.game-links{position:sticky;top:0;z-index:60;box-shadow:0 4px 12px #0006}}
