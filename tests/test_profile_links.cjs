@@ -28,7 +28,7 @@ test('profiles use current default and preserve player ID', () => {
 });
 test('each domain updates existing links, future links, and saved preference', () => {
   const {context, links, storage} = setup();
-  for (const origin of ['https://wekings.online', 'http://87.228.3.220', 'https://playwekings.com']) {
+  for (const origin of ["https://playwekings.com", "https://wekings.online", "https://playwekings.mobi", "https://playwekings.ru", "https://proxy.playwekings.ru", "https://wekings.mobi", "http://87.228.3.220"]) {
     context.setGameOrigin(origin);
     assert.equal(links[0].href, `${origin}/hero/detail?player=666`);
     assert.equal(links[1].href, `${origin}/hero/detail?player=123`);

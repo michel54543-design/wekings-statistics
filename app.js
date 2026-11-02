@@ -32,7 +32,7 @@ const rankBadge = rank => rank < 4
   ? `<span class="rank-medal place-${rank}">${rank}</span>`
   : `<span class="rank-number">${rank}</span>`;
 
-const gameOrigins = ["https://playwekings.com", "https://wekings.online", "http://87.228.3.220"];
+const gameOrigins = ["https://playwekings.com", "https://wekings.online", "https://playwekings.mobi", "https://playwekings.ru", "https://proxy.playwekings.ru", "https://wekings.mobi", "http://87.228.3.220"];
 const gameOriginStorageKey = "wekings.profileOrigin";
 let selectedGameOrigin = gameOrigins[0];
 try {
