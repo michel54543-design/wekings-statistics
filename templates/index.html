@@ -8,7 +8,7 @@
   <link rel="icon" href="/static/favicon.ico?v=41" sizes="any">
   <link rel="icon" href="/static/favicon.svg?v=41" type="image/svg+xml">
   <link rel="apple-touch-icon" href="/static/apple-touch-icon.png?v=41">
-  <link rel="stylesheet" href="/static/style.css?v=97">
+  <link rel="stylesheet" href="/static/style.css?v=98">
 </head>
 <body class="dark">
   <main class="page">
@@ -22,6 +22,24 @@
       <time id="todayBadge" class="today-badge"></time>
       {% if is_admin %}<a href="/admin/wekings-events" style="margin-left:auto;color:#9cf;font-size:13px;white-space:nowrap">📋 События</a>{% endif %}
     </header>
+
+    <section class="game-links" aria-label="Актуальные рабочие ссылки на игру">
+      <input class="game-links-pause" type="checkbox" id="gameLinksPause">
+      <label class="game-links-control" for="gameLinksPause" title="Остановить или продолжить бегущую строку"><span class="game-links-stop">Ⅱ Пауза</span><span class="game-links-play">▶ Продолжить</span></label>
+      <div class="game-links-viewport">
+        <div class="game-links-track">
+          {% for copy in range(2) %}
+          <div class="game-links-content"{% if copy %} aria-hidden="true" inert{% endif %}>
+            <strong>⚔️ АКТУАЛЬНЫЕ РАБОЧИЕ ССЫЛКИ НА ИГРУ</strong>
+            <span>Сохраните и используйте следующие адреса:</span>
+            <span>🇷🇺 Для игроков из России: <a href="https://playwekings.com" target="_blank" rel="noopener noreferrer">https://playwekings.com</a></span>
+            <span>🌍 Для всех игроков: <a href="https://wekings.online" target="_blank" rel="noopener noreferrer">https://wekings.online</a></span>
+            <span>🔧 Резервная ссылка (если первые две недоступны): <a href="http://87.228.3.220" target="_blank" rel="noopener noreferrer">http://87.228.3.220</a></span>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+    </section>
 
     <section id="attackSchedule" class="attack-schedule" aria-label="Ближайшие нападения">
       <div class="attack-event dragon"><span aria-hidden="true">🐉</span><b>Дракон</b><strong id="dragonTime">Ожидаем новое время</strong></div>

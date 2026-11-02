@@ -345,3 +345,21 @@ table.levels-table .level-group-row.open td{border-bottom-color:transparent}
 @media(max-width:700px){.luck-info{padding:11px 12px}.luck-info-grid{grid-template-columns:22px minmax(0,1fr);row-gap:7px}.luck-info-grid p{font-size:11px}}
 
 .luck-potion-badge{min-width:42px;text-align:center;padding:5px 6px;border:1px solid #5b4b31;border-radius:7px;background:#211c13;color:#e3bd65;font-size:10px;font-weight:900}.luck-potion-check{width:17px!important;height:17px!important}.luck-member-tools #luckPotionContinue{background:linear-gradient(180deg,#e3bd65,#b98128);color:#15110a;border-color:#8a6b32;margin-left:auto}.luck-member-tools #luckPotionContinue:disabled{opacity:.45;cursor:not-allowed}@media(max-width:700px){.luck-member-tools #luckPotionContinue{margin-left:0;width:100%}}
+
+/* Game address ticker: duplicate content keeps the scroll seamless. */
+.game-links{position:relative;display:flex;align-items:stretch;min-width:0;margin:0 0 16px;border:1px solid #665331;border-radius:10px;background:#191c20;color:#f2e7d0;overflow:hidden;font-size:14px}
+.game-links-pause{position:absolute;width:1px;height:1px;opacity:0}
+.game-links-control{display:flex;align-items:center;flex:none;padding:10px 12px;background:#29251d;border-right:1px solid #665331;color:#f0cd83;cursor:pointer;font-size:12px;z-index:1}
+.game-links-play{display:none}
+.game-links-pause:checked+.game-links-control .game-links-stop{display:none}
+.game-links-pause:checked+.game-links-control .game-links-play{display:inline}
+.game-links-pause:focus-visible+.game-links-control{outline:2px solid #f0cd83;outline-offset:-3px}
+.game-links-viewport{min-width:0;overflow:hidden;flex:1;padding:12px 0}
+.game-links-track{display:flex;width:max-content;animation:game-links-scroll 65s linear infinite}
+.game-links-content{display:flex;align-items:center;gap:32px;flex-shrink:0;padding-right:32px;white-space:nowrap}
+.game-links-content strong{color:#f0cd83;font-size:13px}
+.game-links-content a{color:#7acbff;text-decoration:underline;text-underline-offset:3px}
+.game-links-content a:focus-visible{outline:2px solid #f0cd83;outline-offset:3px}
+.game-links:hover .game-links-track,.game-links:focus-within .game-links-track,.game-links-pause:checked~.game-links-viewport .game-links-track{animation-play-state:paused}
+@keyframes game-links-scroll{to{transform:translateX(-50%)}}
+@media(prefers-reduced-motion:reduce){.game-links-control{display:none}.game-links-track{animation:none;width:auto}.game-links-content{flex-wrap:wrap;white-space:normal;gap:10px 24px;padding:0 12px;overflow-wrap:anywhere}.game-links-content[aria-hidden]{display:none}}
