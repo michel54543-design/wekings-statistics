@@ -32,6 +32,29 @@ const rankBadge = rank => rank < 4
   ? `<span class="rank-medal place-${rank}">${rank}</span>`
   : `<span class="rank-number">${rank}</span>`;
 
+const gameOrigins = ["https://playwekings.com", "https://wekings.online", "http://87.228.3.220"];
+const gameOriginStorageKey = "wekings.profileOrigin";
+let selectedGameOrigin = gameOrigins[0];
+try {
+  const savedOrigin = localStorage.getItem(gameOriginStorageKey);
+  if (gameOrigins.includes(savedOrigin)) selectedGameOrigin = savedOrigin;
+} catch (_) { /* Links still work when browser storage is unavailable. */ }
+
+function gameProfileUrl(playerId) {
+  return `${selectedGameOrigin}/hero/detail?player=${encodeURIComponent(playerId)}`;
+}
+
+function setGameOrigin(origin) {
+  if (!gameOrigins.includes(origin)) return;
+  selectedGameOrigin = origin;
+  try { localStorage.setItem(gameOriginStorageKey, origin); } catch (_) {}
+  document.querySelectorAll("a.game-profile-link, a#detailProfile").forEach(link => {
+    const url = new URL(link.href, window.location.href);
+    const playerId = url.searchParams.get("player");
+    if (url.pathname === "/hero/detail" && playerId) link.href = gameProfileUrl(playerId);
+  });
+}
+
 function syncMobileNav() {
   document.querySelectorAll(".mobile-nav button").forEach(item => item.classList.remove("active"));
   if (["growth", "best"].includes(state.mode)) {
@@ -91,7 +114,7 @@ async function loadPlayerDetail(playerId, scroll = true) {
     player.brotherhood ? `Братство: ${escapeHtml(player.brotherhood)}` : "",
     player.clan ? `Клан: ${escapeHtml(player.clan)}` : ""
   ].filter(Boolean).map(value => `<span>${value}</span>`).join("");
-  $("detailProfile").href = player.profile_url;
+  $("detailProfile").href = gameProfileUrl(player.id);
   const options = player.history.map((item, index) =>
     `<option value="${index}">${dateText(item.date)}</option>`
   ).join("");
@@ -296,7 +319,7 @@ async function loadOrganizations() {
       return (
       `<div class="org-player">
         <b class="org-player-place">${memberPlace}</b>
-        <a class="org-player-name game-profile-link" href="https://playwekings.mobi/hero/detail?player=${member.id}"><span>${escapeHtml(member.nickname)}</span></a>
+        <a class="org-player-name game-profile-link" href="${gameProfileUrl(member.id)}"><span>${escapeHtml(member.nickname)}</span></a>
         <small>ур. ${member.level ?? "—"} · ${fmt(member.stat_sum)} ${gainHtml}</small>
         <button class="show-stats" data-player-id="${member.id}" title="Показать статистику" aria-label="Показать статистику игрока">▥</button>
       </div>`
@@ -306,7 +329,7 @@ async function loadOrganizations() {
       <div class="org-weekly-top">
         <div class="org-weekly-title"><span>🏆</span><div class="org-weekly-title-text"><strong>ТОП-3 игроков ${type === "clan" ? "клана" : "братства"} за неделю</strong><small>Кто больше всего добавил статов</small></div></div>
         <div class="org-weekly-list">${group.weekly_top.map((item, index) => `
-          <div class="org-weekly-item"><b>${index + 1}</b><a class="org-weekly-player game-profile-link" href="https://playwekings.mobi/hero/detail?player=${item.player_id}">${escapeHtml(item.nickname)}</a><strong>+${fmt(item.gain)}</strong></div>`).join("")}
+          <div class="org-weekly-item"><b>${index + 1}</b><a class="org-weekly-player game-profile-link" href="${gameProfileUrl(item.player_id)}">${escapeHtml(item.nickname)}</a><strong>+${fmt(item.gain)}</strong></div>`).join("")}
         </div>
       </div>` : `<div class="org-weekly-top empty"><div class="org-weekly-title"><span>🏆</span><div><strong>ТОП-3 ${type === "clan" ? "клана" : "братства"} за неделю</strong><small>Пока недостаточно данных</small></div></div></div>`;
     const joined = group.joined.length
@@ -571,7 +594,7 @@ const levelGroupState = { open: new Set(), cache: new Map() };
 
 function levelPlayerCard(player, index) {
   return `<div class="level-player-card">
-    <div class="level-player-name"><span>${index + 1}</span><a class="game-profile-link" href="${escapeHtml(player.profile_url)}">${escapeHtml(player.nickname)}</a></div>
+    <div class="level-player-name"><span>${index + 1}</span><a class="game-profile-link" href="${gameProfileUrl(player.id)}">${escapeHtml(player.nickname)}</a></div>
     <div class="level-player-stat"><small>Сила</small><b>${fmt(player.power)}</b></div>
     <div class="level-player-stat"><small>Защита</small><b>${fmt(player.defense)}</b></div>
     <div class="level-player-stat"><small>Ловкость</small><b>${fmt(player.agility)}</b></div>
@@ -698,7 +721,7 @@ async function loadPlayers() {
     const gain = p.gain;
     return `<tr>
       <td class="rank" data-label="Место">${medal}</td>
-      <td class="player-name" data-label="Игрок"><a href="${escapeHtml(p.profile_url)}" class="game-profile-link">${escapeHtml(p.nickname)}</a><button class="show-stats" data-player-id="${p.id}" title="Показать статистику" aria-label="Показать статистику игрока">▥</button><b class="mobile-level">${p.level ?? "—"}</b></td>
+      <td class="player-name" data-label="Игрок"><a href="${gameProfileUrl(p.id)}" class="game-profile-link">${escapeHtml(p.nickname)}</a><button class="show-stats" data-player-id="${p.id}" title="Показать статистику" aria-label="Показать статистику игрока">▥</button><b class="mobile-level">${p.level ?? "—"}</b></td>
       <td data-label="Уровень"><b class="level">${p.level ?? "—"}</b></td>
       <td class="group" data-label="Братство">${escapeHtml(p.brotherhood || "—")}</td>
       <td class="group" data-label="Клан">${escapeHtml(p.clan || "—")}</td>
@@ -731,7 +754,7 @@ async function loadLife(period=lifeState.period) {
   if(!data.ready){$("lifeRange").textContent="Нужно минимум два завершённых снимка";$("lifeHeroes").innerHTML="";$("lifeEvents").innerHTML='<p class="life-empty">Пока недостаточно данных.</p>';return;}
   $("lifeRange").textContent=`${lifeDateText(data.from_date)} → ${lifeDateText(data.to_date)}`;
   $("lifeHeroes").innerHTML=data.heroes?.length?data.heroes.slice(0,4).map(h=>`<article class="life-hero"><span>${h.icon} ${escapeHtml(h.label)}</span><strong>${escapeHtml(h.nickname)}</strong><b>+${fmt(h.gain)}</b></article>`).join(""):"";
-  $("lifeEvents").innerHTML=data.events?.length?data.events.map(e=>`<article class="life-event"><span class="life-event-icon">${e.icon}</span><div><a class="game-profile-link" href="https://playwekings.mobi/hero/detail?player=${e.player_id}">${escapeHtml(e.nickname)}</a><p>${escapeHtml(e.text)}</p></div></article>`).join(""):'<p class="life-empty">За выбранный период заметных изменений нет.</p>';
+  $("lifeEvents").innerHTML=data.events?.length?data.events.map(e=>`<article class="life-event"><span class="life-event-icon">${e.icon}</span><div><a class="game-profile-link" href="${gameProfileUrl(e.player_id)}">${escapeHtml(e.nickname)}</a><p>${escapeHtml(e.text)}</p></div></article>`).join(""):'<p class="life-empty">За выбранный период заметных изменений нет.</p>';
   lifeState.loaded=true;
 }
 
@@ -756,7 +779,7 @@ async function loadLifeSummary() {
       <header><span>👑</span><div><small>ГЕРОЙ ДНЯ</small><strong>${escapeHtml(h.nickname)}</strong></div></header>
       <div class="life-hero-reasons">${achievements.slice(0,4).map(x => `<div>${x}</div>`).join("")}</div>
       <p><b>За наибольшую активность сегодня</b></p>
-      <a class="game-profile-link" href="https://playwekings.mobi/hero/detail?player=${h.player_id}">Открыть игрока →</a>`;
+      <a class="game-profile-link" href="${gameProfileUrl(h.player_id)}">Открыть игрока →</a>`;
   } else {
     $("lifeHeroDay").innerHTML = `<header><span>👑</span><div><small>ГЕРОЙ ДНЯ</small><strong>Пока определяется</strong></div></header>`;
   }
@@ -765,7 +788,7 @@ async function loadLifeSummary() {
     ? items.slice(0,5).map((x, i) => `
         <div class="life-contributor-row">
           <span class="life-contributor-rank">${i + 1}</span>
-          <div><a class="game-profile-link" href="https://playwekings.mobi/hero/detail?player=${x.player_id}">${escapeHtml(x.nickname)}</a>
+          <div><a class="game-profile-link" href="${gameProfileUrl(x.player_id)}">${escapeHtml(x.nickname)}</a>
           <small>${escapeHtml(x.organization)}</small></div>
           <b>+${fmt(x.gain)}</b>
         </div>`).join("")
@@ -809,12 +832,12 @@ async function loadTodayTops(force = false) {
   const hero = data.hero;
   $("todayHero").innerHTML = hero ? `
     <span>👑 Герой сегодняшнего дня</span>
-    <a class="game-profile-link" href="https://playwekings.mobi/hero/detail?player=${hero.player_id}">${escapeHtml(hero.nickname)}</a>
+    <a class="game-profile-link" href="${gameProfileUrl(hero.player_id)}">${escapeHtml(hero.nickname)}</a>
     <b>${hero.first_places} ${hero.first_places === 1 ? "первое место" : "первых мест"}</b>` : "";
   $("todayTopsGrid").innerHTML = data.tops?.length ? data.tops.map(x => `
     <article class="yesterday-top-card">
       <span>${x.icon} ${escapeHtml(x.label)}</span>
-      <a class="game-profile-link" href="https://playwekings.mobi/hero/detail?player=${x.player_id}">${escapeHtml(x.nickname)}</a>
+      <a class="game-profile-link" href="${gameProfileUrl(x.player_id)}">${escapeHtml(x.nickname)}</a>
       <b>+${fmt(x.gain)}</b>
     </article>`).join("") : '<p class="life-empty">За сегодня прироста по этим показателям нет.</p>';
     todayTopsState.loaded = true;
@@ -861,12 +884,12 @@ async function loadYesterdayTops(force = false) {
   const hero = data.hero;
   $("yesterdayHero").innerHTML = hero ? `
     <span>👑 Герой вчерашнего дня</span>
-    <a class="game-profile-link" href="https://playwekings.mobi/hero/detail?player=${hero.player_id}">${escapeHtml(hero.nickname)}</a>
+    <a class="game-profile-link" href="${gameProfileUrl(hero.player_id)}">${escapeHtml(hero.nickname)}</a>
     <b>${hero.first_places} ${hero.first_places === 1 ? "первое место" : "первых места"}</b>` : "";
   $("yesterdayTopsGrid").innerHTML = data.tops?.length ? data.tops.map(x => `
     <article class="yesterday-top-card">
       <span>${x.icon} ${escapeHtml(x.label)}</span>
-      <a class="game-profile-link" href="https://playwekings.mobi/hero/detail?player=${x.player_id}">${escapeHtml(x.nickname)}</a>
+      <a class="game-profile-link" href="${gameProfileUrl(x.player_id)}">${escapeHtml(x.nickname)}</a>
       <b>+${fmt(x.gain)}</b>
     </article>`).join("") : '<p class="life-empty">За вчера прироста по этим показателям нет.</p>';
     yesterdayTopsState.loaded = true;
@@ -1041,6 +1064,11 @@ $("luckCopy").onclick = copyLuck;
 $("todayBadge").textContent = new Date().toLocaleDateString("ru-RU", {
   day: "2-digit", month: "short"
 }).replace(".", "").toUpperCase();
+const gameOriginSelect = $("gameOriginSelect");
+if (gameOriginSelect) {
+  gameOriginSelect.value = selectedGameOrigin;
+  gameOriginSelect.addEventListener("change", () => setGameOrigin(gameOriginSelect.value));
+}
 syncMobileNav();
 if ($("attackRefresh")) $("attackRefresh").onclick = refreshAttacks;
 loadStatus().catch(() => {});

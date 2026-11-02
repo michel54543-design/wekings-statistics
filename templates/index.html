@@ -8,7 +8,7 @@
   <link rel="icon" href="/static/favicon.ico?v=41" sizes="any">
   <link rel="icon" href="/static/favicon.svg?v=41" type="image/svg+xml">
   <link rel="apple-touch-icon" href="/static/apple-touch-icon.png?v=41">
-  <link rel="stylesheet" href="/static/style.css?v=101">
+  <link rel="stylesheet" href="/static/style.css?v=102">
 </head>
 <body class="dark">
   <main class="page">
@@ -41,6 +41,16 @@
         </div>
       </div>
     </section>
+
+    <div class="game-origin-setting">
+      <label for="gameOriginSelect">Открывать игроков через:</label>
+      <select id="gameOriginSelect">
+        <option value="https://playwekings.com">playwekings.com — для России</option>
+        <option value="https://wekings.online">wekings.online — для всех</option>
+        <option value="http://87.228.3.220">87.228.3.220 — резервный адрес</option>
+      </select>
+      <small>Выбор сохраняется в вашем браузере.</small>
+    </div>
 
     <section id="attackSchedule" class="attack-schedule" aria-label="Ближайшие нападения">
       <div class="attack-event dragon"><span aria-hidden="true">🐉</span><b>Дракон</b><strong id="dragonTime">Ожидаем новое время</strong></div>
@@ -212,6 +222,6 @@
     <button data-mobile-mode="growth"><span class="nav-icon">↗</span>Прирост</button>
     <button id="mobilePlayer"><span class="nav-icon">♙</span>Игрок</button>
   </nav>
-  <script src="/static/app.js?v=103"></script>
+  <script src="/static/app.js?v=104"></script>
 </body>
 </html>

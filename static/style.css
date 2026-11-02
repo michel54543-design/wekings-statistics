@@ -366,3 +366,9 @@ table.levels-table .level-group-row.open td{border-bottom-color:transparent}
 @media(prefers-reduced-motion:reduce){.game-links-control{display:none}.game-links-track{animation:none;width:auto}.game-links-content{flex-wrap:wrap;white-space:normal;gap:10px 24px;padding:0 12px;overflow-wrap:anywhere}.game-links-content[aria-hidden]{display:none}}
 
 .game-links{position:sticky;top:0;z-index:60;box-shadow:0 4px 12px #0006}
+
+.game-origin-setting{display:flex;align-items:center;flex-wrap:wrap;gap:8px 12px;margin:0 0 16px;color:var(--text);font-size:13px}
+.game-origin-setting label{font-weight:700}
+.game-origin-setting select{max-width:100%;min-height:42px;padding:8px 12px;border:1px solid #665331;border-radius:9px;background:#191c20;color:#f2e7d0;font:inherit}
+.game-origin-setting small{color:var(--muted);font-size:12px}
+@media(max-width:760px){.game-origin-setting{align-items:stretch;flex-direction:column}.game-origin-setting select{width:100%}}
