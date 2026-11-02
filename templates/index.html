@@ -23,25 +23,6 @@
       {% if is_admin %}<a href="/admin/wekings-events" style="margin-left:auto;color:#9cf;font-size:13px;white-space:nowrap">📋 События</a>{% endif %}
     </header>
 
-    <section class="game-links" aria-label="Актуальные рабочие ссылки на игру">
-      <input class="game-links-pause" type="checkbox" id="gameLinksPause">
-      <label class="game-links-control" for="gameLinksPause" title="Остановить или продолжить бегущую строку"><span class="game-links-stop">Ⅱ Пауза</span><span class="game-links-play">▶ Продолжить</span></label>
-      <div class="game-links-viewport">
-        <div class="game-links-track">
-          {% for copy in range(2) %}
-          <div class="game-links-content"{% if copy %} aria-hidden="true" inert{% endif %}>
-            <strong>⚔️ РАБОТАЮЩИЕ СЕЙЧАС ДОМЕНЫ</strong>
-            <span>1. Для РФ: <a href="https://playwekings.com" target="_blank" rel="noopener noreferrer">https://playwekings.com</a></span>
-            <span>2. Для всех: <a href="https://wekings.online" target="_blank" rel="noopener noreferrer">https://wekings.online</a></span>
-            <span>3. Если не работают первые два: <a href="http://87.228.3.220" target="_blank" rel="noopener noreferrer">http://87.228.3.220</a></span>
-            <span>Также игра доступна в ВК Играх, можете играть там.</span>
-            <strong>❗ ЧТОБЫ ССЫЛКИ РАБОТАЛИ, СКОПИРУЙТЕ ИХ И ВСТАВЬТЕ В БРАУЗЕР ❗</strong>
-          </div>
-          {% endfor %}
-        </div>
-      </div>
-    </section>
-
     <div class="game-origin-setting">
       <label for="gameOriginSelect">Открывать игроков через:</label>
       <select id="gameOriginSelect">
