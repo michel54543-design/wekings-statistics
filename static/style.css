@@ -372,3 +372,32 @@ table.levels-table .level-group-row.open td{border-bottom-color:transparent}
 .game-origin-setting select{max-width:100%;min-height:42px;padding:8px 12px;border:1px solid #665331;border-radius:9px;background:#191c20;color:#f2e7d0;font:inherit}
 .game-origin-setting small{color:var(--muted);font-size:12px}
 @media(max-width:760px){.game-origin-setting{align-items:stretch;flex-direction:column}.game-origin-setting select{width:100%}}
+
+/* Player statistics: reveal the existing panel with a card flip. */
+.player-detail::after{
+  content:"";
+  position:absolute;left:50%;top:50%;width:min(230px,65vw);height:min(330px,65vh);
+  border:1px solid var(--gold-bright,#e4bd62);border-radius:16px;
+  background:url("/static/wekings-gold.svg") center/76px no-repeat,
+    repeating-linear-gradient(45deg,transparent 0 12px,#c99d3c12 12px 13px),
+    linear-gradient(145deg,#292215,#0f0e0b);
+  box-shadow:inset 0 0 0 8px #15120e,inset 0 0 0 9px #a78038,0 20px 70px #000a;
+  pointer-events:none;visibility:hidden;backface-visibility:hidden;
+}
+@media(prefers-reduced-motion:no-preference){
+  .player-detail:not(.hidden)::after{animation:player-card-back 850ms ease-in-out both}
+  .player-detail:not(.hidden) .player-detail-panel{
+    backface-visibility:hidden;animation:player-card-reveal 850ms cubic-bezier(.22,.68,.24,1) both;
+  }
+}
+@keyframes player-card-back{
+  0%{visibility:visible;opacity:0;transform:translate(-50%,-46%) perspective(1200px) rotateY(-18deg) scale(.86)}
+  18%,30%{visibility:visible;opacity:1;transform:translate(-50%,-50%) perspective(1200px) rotateY(0) scale(1)}
+  50%{visibility:visible;opacity:1;transform:translate(-50%,-50%) perspective(1200px) rotateY(90deg) scale(1)}
+  50.01%,100%{visibility:hidden;opacity:0;transform:translate(-50%,-50%) perspective(1200px) rotateY(90deg)}
+}
+@keyframes player-card-reveal{
+  0%,50%{opacity:0;transform:perspective(1400px) rotateY(-90deg) scale(.8)}
+  50.01%{opacity:1;transform:perspective(1400px) rotateY(-90deg) scale(.8)}
+  100%{opacity:1;transform:perspective(1400px) rotateY(0) scale(1)}
+}
