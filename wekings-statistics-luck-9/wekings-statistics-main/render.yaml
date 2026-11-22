@@ -1,0 +1,47 @@
+services:
+  - type: web
+    name: wekings-statistics
+    runtime: python
+    plan: starter
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn --bind 0.0.0.0:$PORT --workers 1 --threads 4 --timeout 120 --access-logfile - --error-logfile - app:app
+    healthCheckPath: /health
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.4
+      - key: DATABASE_URL
+        fromDatabase:
+          name: wekings-statistics-db
+          property: connectionString
+      - key: SCAN_ENABLED
+        value: "true"
+      - key: REQUEST_DELAY
+        value: "0.65"
+      - key: SCAN_WORKERS
+        value: "4"
+      - key: TRANSIENT_RETRIES
+        value: "3"
+      - key: CONNECT_TIMEOUT
+        value: "5"
+      - key: REQUEST_TIMEOUT
+        value: "12"
+      - key: RATE_LIMIT_DELAY
+        value: "60"
+      - key: MAX_RETRY_DELAY
+        value: "120"
+      - key: WEKINGS_FALLBACK_URLS
+        value: "https://playwekings.mobi,https://playwekings.ru,https://proxy.playwekings.ru,https://wekings.mobi"
+      - key: SAVE_EVERY
+        value: "20"
+      - key: START_SCAN_ON_BOOT
+        value: "false"
+      - key: DB_INIT_ON_BOOT
+        value: "false"
+      - key: DB_MAINTENANCE_ON_BOOT
+        value: "false"
+
+databases:
+  - name: wekings-statistics-db
+    plan: starter
+    databaseName: wekings
+    user: wekings
