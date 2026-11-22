@@ -424,6 +424,7 @@ function renderLuckMembers(players) {
       <span class="luck-member-choices" data-player-id="${player.id}" aria-label="Количество удачи для ${escapeHtml(player.nickname)}">
         <button type="button" class="luck-member-choice active" data-player-id="${player.id}" data-amount="5" disabled>5</button>
         <button type="button" class="luck-member-choice" data-player-id="${player.id}" data-amount="7" disabled>7</button>
+        <button type="button" class="luck-member-choice" data-player-id="${player.id}" data-amount="9" disabled>9</button>
         <input type="hidden" class="luck-member-amount" data-player-id="${player.id}" value="5">
       </span>
     </label>`).join("") : '<p class="life-empty">В братстве нет участников.</p>';
