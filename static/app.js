@@ -275,7 +275,7 @@ async function loadAttacks() {
 }
 
 async function loadStatus() {
-  const data = await fetch("/api/status").then(r => r.json());
+  const data = await fetch("/api/status", { cache: "no-store" }).then(r => r.json());
   $("statusText").textContent = data.running
     ? `Сейчас проверяется игрок №${fmt(data.current_player_id)}`
     : data.last_error ? "Обновление временно приостановлено — продолжится автоматически" : data.finished_at
@@ -771,7 +771,7 @@ async function loadPlayers() {
     if (state.mode === "growth") params.set("from", $("dateFrom").value);
   }
   $("rows").innerHTML = '<tr><td colspan="7" class="loading">Загрузка…</td></tr>';
-  const data = await fetch(`/api/players?${params}`).then(r => r.json());
+  const data = await fetch(`/api/players?${params}`, { cache: "no-store" }).then(r => r.json());
   fillLevels(data.max_level);
   if (!state.datesLoaded && data.dates?.length) fillDates(data.dates, data.date_from, data.date_to);
   state.pages = Math.max(1, data.pages);
