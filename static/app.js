@@ -398,6 +398,34 @@ async function loadOrganizations() {
 }
 
 
+// Авточерновик распределения удачи. Локальное сохранение, отдельно по дате и братству.
+// Не подключается к статистическим API и не изменяет серверные данные.
+function luckDraftDateKey() {
+  return new Intl.DateTimeFormat("en-CA", {timeZone:"Europe/Chisinau", year:"numeric", month:"2-digit", day:"2-digit"}).format(new Date());
+}
+function luckDraftKey() { return `wekings_luck_draft_v2_${luckDraftDateKey()}_${encodeURIComponent(state.luckBrotherhood || "unknown")}`; }
+function readLuckDraft() { try { return JSON.parse(localStorage.getItem(luckDraftKey()) || "null"); } catch (_) { return null; } }
+function updateLuckDraftStatus(message, saved = false) { const el = $("luckDraftStatus"); if (!el) return; el.textContent = message; el.classList.toggle("saved", saved); }
+function saveLuckDraft(step = "members") {
+  try {
+    if (!state.luckBrotherhood) return;
+    const selected = [...document.querySelectorAll(".luck-member-check:checked")].map(check => ({id:Number(check.dataset.playerId), amount:Number(document.querySelector(`.luck-member-amount[data-player-id=\"${check.dataset.playerId}\"]`)?.value || 5), order:Number(check.dataset.selectionOrder || 0)}));
+    const potion = [...document.querySelectorAll(".luck-potion-check:checked")].map(c => Number(c.dataset.playerId));
+    if (!selected.length && !potion.length) { localStorage.removeItem(luckDraftKey()); updateLuckDraftStatus("Изменения сохраняются автоматически"); return; }
+    localStorage.setItem(luckDraftKey(), JSON.stringify({version:2,date:luckDraftDateKey(),brotherhood:state.luckBrotherhood,step,selected,potion,savedAt:Date.now()}));
+    updateLuckDraftStatus("✓ Черновик сохранён на этом устройстве", true);
+  } catch (_) { updateLuckDraftStatus("Не удалось сохранить черновик — проверьте память браузера"); }
+}
+function restoreLuckDraft(players) {
+  const draft=readLuckDraft();
+  if (!draft || draft.date!==luckDraftDateKey() || draft.brotherhood!==state.luckBrotherhood) { updateLuckDraftStatus("Изменения сохраняются автоматически"); return; }
+  let restored=0;
+  (draft.potion||[]).forEach(id=>{const c=document.querySelector(`.luck-potion-check[data-player-id=\"${id}\"]`);if(c){c.checked=true;restored++;}});
+  (draft.selected||[]).sort((a,b)=>a.order-b.order).forEach(item=>{const c=document.querySelector(`.luck-member-check[data-player-id=\"${item.id}\"]`);if(!c)return;c.checked=true;c.dataset.selectionOrder=String(item.order||0);restored++;const choices=document.querySelector(`.luck-member-choices[data-player-id=\"${item.id}\"]`);if(choices){choices.querySelectorAll(".luck-member-choice").forEach(b=>{b.disabled=false;b.classList.toggle("active",Number(b.dataset.amount)===Number(item.amount));});const hidden=choices.querySelector(".luck-member-amount");if(hidden)hidden.value=String(item.amount);}});
+  if(draft.step==="members"){$("luckPotionBox").classList.add("hidden");$("luckMemberBox").classList.remove("hidden");}
+  updateLuckDraftStatus(restored?"↻ Ваш сегодняшний черновик восстановлен":"Изменения сохраняются автоматически",restored>0);updateLuckCalculateState();updateLuckPotionState();
+}
+
 function renderLuckMembers(players) {
   const potionBox = $("luckPotionBox");
   const potionList = $("luckPotionMembers");
@@ -415,6 +443,7 @@ function renderLuckMembers(players) {
   potionList.querySelectorAll(".luck-potion-check").forEach(check => {
     check.onchange = () => {
       updateLuckPotionState();
+      saveLuckDraft("potion");
     };
   });
   list.innerHTML = players.length ? players.map(player => `
@@ -441,6 +470,7 @@ function renderLuckMembers(players) {
         delete check.dataset.selectionOrder;
       }
       updateLuckCalculateState();
+      saveLuckDraft("members");
     };
   });
   list.querySelectorAll(".luck-member-choice").forEach(button => {
@@ -452,9 +482,11 @@ function renderLuckMembers(players) {
       button.classList.add("active");
       const amount = choices.querySelector(".luck-member-amount");
       if (amount) amount.value = button.dataset.amount;
+      saveLuckDraft("members");
     };
   });
   updateLuckCalculateState();
+  restoreLuckDraft(players);
 }
 
 function updateLuckPotionState() {
@@ -1079,6 +1111,7 @@ $("luckPotionContinue").onclick = () => {
   $("luckPotionBox").classList.add("hidden");
   $("luckMemberBox").classList.remove("hidden");
   $("luckResults").innerHTML = '<p class="life-empty">Выберите игроков и укажите, сколько удачи им нужно.</p>';
+  saveLuckDraft("members");
 };
 
 $("luckSelectAll").onclick = () => {
@@ -1088,6 +1121,7 @@ $("luckSelectAll").onclick = () => {
     if (choices) choices.querySelectorAll(".luck-member-choice").forEach(button => { button.disabled = false; });
   });
   updateLuckCalculateState();
+  saveLuckDraft("members");
 };
 $("luckClearAll").onclick = () => {
   document.querySelectorAll(".luck-member-check").forEach(check => {
@@ -1096,6 +1130,7 @@ $("luckClearAll").onclick = () => {
     if (choices) choices.querySelectorAll(".luck-member-choice").forEach(button => { button.disabled = true; });
   });
   updateLuckCalculateState();
+  saveLuckDraft("members");
 };
 $("luckCalculate").onclick = () => calculateLuck().catch(error => {
   $("luckResults").innerHTML = `<p class="life-empty">${escapeHtml(error.message || "Ошибка расчёта")}</p>`;

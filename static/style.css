@@ -401,3 +401,6 @@ table.levels-table .level-group-row.open td{border-bottom-color:transparent}
   50.01%{opacity:1;transform:perspective(1400px) rotateY(-90deg) scale(.8)}
   100%{opacity:1;transform:perspective(1400px) rotateY(0) scale(1)}
 }
+
+/* Luck draft status */
+.luck-draft-status{margin:10px 0;padding:9px 12px;border-radius:9px;border:1px solid #39352d;background:#171715;color:#aaa398;font-size:12px;transition:all .2s}.luck-draft-status.saved{border-color:#326a48;background:#14231a;color:#83d3a0;font-weight:700}

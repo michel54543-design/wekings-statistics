@@ -129,20 +129,21 @@ async function loadPlayerDetail(playerId, scroll = true) {
 }
 
 function attackTimeText(value, stayMinutes, goneText) {
-  // Время Дракона/Змея — это суточное расписание. После начала события
-  // оставляем время до окончания пребывания, а затем показываем статус.
+  // Игровые часы: UTC+3 круглый год, независимо от перевода часов у игрока.
   if (!value) return "Ожидаем новое время";
-  const start = new Date(value);
+  // SQLite может вернуть UTC без суффикса часового пояса.
+  const timestamp = /(?:Z|[+-]\d{2}:?\d{2})$/i.test(value) ? value : `${value}Z`;
+  const start = new Date(timestamp);
   if (Number.isNaN(start.getTime())) return "Ожидаем новое время";
 
   const now = new Date();
-  const end = new Date(start.getTime() + stayMinutes * 60 * 1000);
-  if (now >= end) return goneText;
+  if (now.getTime() >= start.getTime() + stayMinutes * 60 * 1000) return goneText;
 
-  const sameDay = start.getFullYear() === now.getFullYear() &&
-    start.getMonth() === now.getMonth() && start.getDate() === now.getDate();
-  const time = start.toLocaleTimeString("ru-RU", {hour:"2-digit", minute:"2-digit"});
-  return sameDay ? time : `${time} · ${String(start.getDate()).padStart(2,"0")}.${String(start.getMonth()+1).padStart(2,"0")}`;
+  const options = {timeZone: "Europe/Moscow"};
+  const day = date => date.toLocaleDateString("en-CA", options);
+  const time = start.toLocaleTimeString("ru-RU", {...options, hour:"2-digit", minute:"2-digit"});
+  const date = start.toLocaleDateString("ru-RU", {...options, day:"2-digit", month:"2-digit"});
+  return day(start) === day(now) ? time : `${time} · ${date}`;
 }
 
 function weatherTimeText(value) {
@@ -193,18 +194,55 @@ async function refreshAttacks() {
 }
 
 
+const ATTACKS_STORAGE_KEY = "wekings_attack_schedule_v1";
+
+function restoreAttackSchedule() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(ATTACKS_STORAGE_KEY) || "null");
+    if (!saved) return;
+    if (saved.dragon_at) $("dragonTime").textContent = attackTimeText(saved.dragon_at, 60, "Дракон улетел");
+    else if (saved.dragon_status) $("dragonTime").textContent = saved.dragon_status;
+    if (saved.serpent_at) $("serpentTime").textContent = attackTimeText(saved.serpent_at, 90, "Змей уплыл");
+    else if (saved.serpent_status) $("serpentTime").textContent = saved.serpent_status;
+    if (saved.fetched_at) {
+      $("attackUpdated").textContent = `обновлено ${new Date(saved.fetched_at).toLocaleTimeString("ru-RU", {hour:"2-digit", minute:"2-digit"})}`;
+    }
+  } catch (_) {}
+}
+
 async function loadAttacks() {
   const box = $("attackSchedule");
   try {
     const response = await fetch(`/api/attacks?_=${Date.now()}`, { cache: "no-store" });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const data = await response.json();
-    $("dragonTime").textContent = data.dragon_at
-      ? attackTimeText(data.dragon_at, 60, "Дракон улетел")
-      : (data.dragon_status || "Ожидаем новое время");
-    $("serpentTime").textContent = data.serpent_at
-      ? attackTimeText(data.serpent_at, 90, "Змей уплыл")
-      : (data.serpent_status || "Ожидаем новое время");
+
+    // Никогда не заменяем уже известное расписание надписью
+    // «Ожидаем новое время», если сервер временно не отдал данные.
+    // Последнее корректное расписание хранится также в браузере, поэтому
+    // обычное обновление страницы не создаёт пустое окно на 3–5 минут.
+    if (data.dragon_at) {
+      $("dragonTime").textContent = attackTimeText(data.dragon_at, 60, "Дракон улетел");
+    } else if (data.dragon_status && data.dragon_status !== "Ожидаем новое время") {
+      $("dragonTime").textContent = data.dragon_status;
+    }
+    if (data.serpent_at) {
+      $("serpentTime").textContent = attackTimeText(data.serpent_at, 90, "Змей уплыл");
+    } else if (data.serpent_status && data.serpent_status !== "Ожидаем новое время") {
+      $("serpentTime").textContent = data.serpent_status;
+    }
+
+    if (data.dragon_at || data.serpent_at) {
+      try {
+        localStorage.setItem(ATTACKS_STORAGE_KEY, JSON.stringify({
+          fetched_at: data.fetched_at || new Date().toISOString(),
+          dragon_at: data.dragon_at || null,
+          serpent_at: data.serpent_at || null,
+          dragon_status: data.dragon_status || null,
+          serpent_status: data.serpent_status || null
+        }));
+      } catch (_) {}
+    }
     // Основной источник — БД. Резерв — parsed из диагностического ответа.
     // Это закрывает случай, когда парсер уже нашёл прогноз, а запись БД ещё
     // не успела попасть в JSON-ответ.
@@ -222,7 +260,9 @@ async function loadAttacks() {
     } else {
       $("attackUpdated").textContent = "";
     }
-    box?.classList.toggle("waiting", !data.dragon_at || !data.serpent_at);
+    box?.classList.toggle("waiting", !data.dragon_at && !data.serpent_at &&
+      $("dragonTime").textContent === "Ожидаем новое время" &&
+      $("serpentTime").textContent === "Ожидаем новое время");
   } catch (error) {
     // При временной ошибке запроса не затираем уже показанное расписание.
     // Следующий успешный запрос обновит его.
@@ -358,6 +398,34 @@ async function loadOrganizations() {
 }
 
 
+// Авточерновик распределения удачи. Локальное сохранение, отдельно по дате и братству.
+// Не подключается к статистическим API и не изменяет серверные данные.
+function luckDraftDateKey() {
+  return new Intl.DateTimeFormat("en-CA", {timeZone:"Europe/Chisinau", year:"numeric", month:"2-digit", day:"2-digit"}).format(new Date());
+}
+function luckDraftKey() { return `wekings_luck_draft_v2_${luckDraftDateKey()}_${encodeURIComponent(state.luckBrotherhood || "unknown")}`; }
+function readLuckDraft() { try { return JSON.parse(localStorage.getItem(luckDraftKey()) || "null"); } catch (_) { return null; } }
+function updateLuckDraftStatus(message, saved = false) { const el = $("luckDraftStatus"); if (!el) return; el.textContent = message; el.classList.toggle("saved", saved); }
+function saveLuckDraft(step = "members") {
+  try {
+    if (!state.luckBrotherhood) return;
+    const selected = [...document.querySelectorAll(".luck-member-check:checked")].map(check => ({id:Number(check.dataset.playerId), amount:Number(document.querySelector(`.luck-member-amount[data-player-id=\"${check.dataset.playerId}\"]`)?.value || 5), order:Number(check.dataset.selectionOrder || 0)}));
+    const potion = [...document.querySelectorAll(".luck-potion-check:checked")].map(c => Number(c.dataset.playerId));
+    if (!selected.length && !potion.length) { localStorage.removeItem(luckDraftKey()); updateLuckDraftStatus("Изменения сохраняются автоматически"); return; }
+    localStorage.setItem(luckDraftKey(), JSON.stringify({version:2,date:luckDraftDateKey(),brotherhood:state.luckBrotherhood,step,selected,potion,savedAt:Date.now()}));
+    updateLuckDraftStatus("✓ Черновик сохранён на этом устройстве", true);
+  } catch (_) { updateLuckDraftStatus("Не удалось сохранить черновик — проверьте память браузера"); }
+}
+function restoreLuckDraft(players) {
+  const draft=readLuckDraft();
+  if (!draft || draft.date!==luckDraftDateKey() || draft.brotherhood!==state.luckBrotherhood) { updateLuckDraftStatus("Изменения сохраняются автоматически"); return; }
+  let restored=0;
+  (draft.potion||[]).forEach(id=>{const c=document.querySelector(`.luck-potion-check[data-player-id=\"${id}\"]`);if(c){c.checked=true;restored++;}});
+  (draft.selected||[]).sort((a,b)=>a.order-b.order).forEach(item=>{const c=document.querySelector(`.luck-member-check[data-player-id=\"${item.id}\"]`);if(!c)return;c.checked=true;c.dataset.selectionOrder=String(item.order||0);restored++;const choices=document.querySelector(`.luck-member-choices[data-player-id=\"${item.id}\"]`);if(choices){choices.querySelectorAll(".luck-member-choice").forEach(b=>{b.disabled=false;b.classList.toggle("active",Number(b.dataset.amount)===Number(item.amount));});const hidden=choices.querySelector(".luck-member-amount");if(hidden)hidden.value=String(item.amount);}});
+  if(draft.step==="members"){$("luckPotionBox").classList.add("hidden");$("luckMemberBox").classList.remove("hidden");}
+  updateLuckDraftStatus(restored?"↻ Ваш сегодняшний черновик восстановлен":"Изменения сохраняются автоматически",restored>0);updateLuckCalculateState();updateLuckPotionState();
+}
+
 function renderLuckMembers(players) {
   const potionBox = $("luckPotionBox");
   const potionList = $("luckPotionMembers");
@@ -375,6 +443,7 @@ function renderLuckMembers(players) {
   potionList.querySelectorAll(".luck-potion-check").forEach(check => {
     check.onchange = () => {
       updateLuckPotionState();
+      saveLuckDraft("potion");
     };
   });
   list.innerHTML = players.length ? players.map(player => `
@@ -384,6 +453,7 @@ function renderLuckMembers(players) {
       <span class="luck-member-choices" data-player-id="${player.id}" aria-label="Количество удачи для ${escapeHtml(player.nickname)}">
         <button type="button" class="luck-member-choice active" data-player-id="${player.id}" data-amount="5" disabled>5</button>
         <button type="button" class="luck-member-choice" data-player-id="${player.id}" data-amount="7" disabled>7</button>
+        <button type="button" class="luck-member-choice" data-player-id="${player.id}" data-amount="9" disabled>9</button>
         <input type="hidden" class="luck-member-amount" data-player-id="${player.id}" value="5">
       </span>
     </label>`).join("") : '<p class="life-empty">В братстве нет участников.</p>';
@@ -400,6 +470,7 @@ function renderLuckMembers(players) {
         delete check.dataset.selectionOrder;
       }
       updateLuckCalculateState();
+      saveLuckDraft("members");
     };
   });
   list.querySelectorAll(".luck-member-choice").forEach(button => {
@@ -411,9 +482,11 @@ function renderLuckMembers(players) {
       button.classList.add("active");
       const amount = choices.querySelector(".luck-member-amount");
       if (amount) amount.value = button.dataset.amount;
+      saveLuckDraft("members");
     };
   });
   updateLuckCalculateState();
+  restoreLuckDraft(players);
 }
 
 function updateLuckPotionState() {
@@ -1038,6 +1111,7 @@ $("luckPotionContinue").onclick = () => {
   $("luckPotionBox").classList.add("hidden");
   $("luckMemberBox").classList.remove("hidden");
   $("luckResults").innerHTML = '<p class="life-empty">Выберите игроков и укажите, сколько удачи им нужно.</p>';
+  saveLuckDraft("members");
 };
 
 $("luckSelectAll").onclick = () => {
@@ -1047,6 +1121,7 @@ $("luckSelectAll").onclick = () => {
     if (choices) choices.querySelectorAll(".luck-member-choice").forEach(button => { button.disabled = false; });
   });
   updateLuckCalculateState();
+  saveLuckDraft("members");
 };
 $("luckClearAll").onclick = () => {
   document.querySelectorAll(".luck-member-check").forEach(check => {
@@ -1055,6 +1130,7 @@ $("luckClearAll").onclick = () => {
     if (choices) choices.querySelectorAll(".luck-member-choice").forEach(button => { button.disabled = true; });
   });
   updateLuckCalculateState();
+  saveLuckDraft("members");
 };
 $("luckCalculate").onclick = () => calculateLuck().catch(error => {
   $("luckResults").innerHTML = `<p class="life-empty">${escapeHtml(error.message || "Ошибка расчёта")}</p>`;
@@ -1074,4 +1150,6 @@ if ($("attackRefresh")) $("attackRefresh").onclick = refreshAttacks;
 loadStatus().catch(() => {});
 loadPlayers().catch(() => $("rows").innerHTML = '<tr><td colspan="7" class="loading">Не удалось загрузить данные</td></tr>');
 setInterval(() => loadStatus().catch(() => {}), 30000);
+restoreAttackSchedule();
+loadAttacks().catch(() => {});
 setInterval(() => loadAttacks().catch(() => {}), 30000);
