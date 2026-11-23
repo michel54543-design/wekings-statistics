@@ -422,7 +422,7 @@ function restoreLuckDraft(players) {
   let restored=0;
   (draft.potion||[]).forEach(id=>{const c=document.querySelector(`.luck-potion-check[data-player-id=\"${id}\"]`);if(c){c.checked=true;restored++;}});
   (draft.selected||[]).sort((a,b)=>a.order-b.order).forEach(item=>{const c=document.querySelector(`.luck-member-check[data-player-id=\"${item.id}\"]`);if(!c)return;c.checked=true;c.dataset.selectionOrder=String(item.order||0);restored++;const choices=document.querySelector(`.luck-member-choices[data-player-id=\"${item.id}\"]`);if(choices){choices.querySelectorAll(".luck-member-choice").forEach(b=>{b.disabled=false;b.classList.toggle("active",Number(b.dataset.amount)===Number(item.amount));});const hidden=choices.querySelector(".luck-member-amount");if(hidden)hidden.value=String(item.amount);}});
-  if(draft.step==="members"){$("luckPotionBox").classList.add("hidden");$("luckMemberBox").classList.remove("hidden");}
+  if(draft.step==="members"){$("luckPotionBox").classList.add("hidden");$("luckMemberBox").classList.remove("hidden");}else{$("luckPotionBox").classList.remove("hidden");$("luckMemberBox").classList.add("hidden");}
   updateLuckDraftStatus(restored?"↻ Ваш сегодняшний черновик восстановлен":"Изменения сохраняются автоматически",restored>0);updateLuckCalculateState();updateLuckPotionState();
 }
 
@@ -1107,6 +1107,11 @@ document.addEventListener("click", event => {
   const wrap = document.querySelector(".luck-search-wrap");
   if (wrap && !wrap.contains(event.target)) hideLuckSuggestions();
 });
+$("luckBackToPotion").onclick = () => {
+  $("luckMemberBox").classList.add("hidden");
+  $("luckPotionBox").classList.remove("hidden");
+  saveLuckDraft("potion");
+};
 $("luckPotionContinue").onclick = () => {
   $("luckPotionBox").classList.add("hidden");
   $("luckMemberBox").classList.remove("hidden");

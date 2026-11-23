@@ -404,3 +404,12 @@ table.levels-table .level-group-row.open td{border-bottom-color:transparent}
 
 /* Luck draft status */
 .luck-draft-status{margin:10px 0;padding:9px 12px;border-radius:9px;border:1px solid #39352d;background:#171715;color:#aaa398;font-size:12px;transition:all .2s}.luck-draft-status.saved{border-color:#326a48;background:#14231a;color:#83d3a0;font-weight:700}
+
+/* Compact two-column potion chooser */
+#luckPotionMembers.luck-members{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:5px}
+#luckPotionMembers .luck-member-row{grid-template-columns:20px minmax(0,1fr) auto;gap:6px;padding:5px 7px;min-width:0}
+#luckPotionMembers .luck-member-name{display:block;min-width:0}
+#luckPotionMembers .luck-member-name b{font-size:11px;display:block}
+#luckPotionMembers .luck-member-name small{font-size:9px;display:block;margin-top:1px}
+#luckPotionMembers .luck-potion-badge{font-size:9px;padding:3px 4px;min-width:32px}
+@media(max-width:600px){#luckPotionMembers.luck-members{grid-template-columns:repeat(2,minmax(0,1fr))}#luckPotionMembers .luck-member-row{grid-template-columns:18px minmax(0,1fr) auto;gap:4px;padding:4px 5px}}
